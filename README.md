@@ -1,6 +1,6 @@
-# React Music Player
+# Luna Music (Sono)
 
-React Music Player is a sleek and modern music streaming application built with React, designed to provide an immersive music experience. This project combines cutting-edge technology with a user-friendly interface, making it easy for music lovers to discover, play, and manage their favorite tracks. With a focus on aesthetics and performance, React Music Player is the perfect solution for anyone looking to create a music streaming service that stands out from the crowd.
+Luna Music is a sleek and modern music streaming application built with React, designed to provide an immersive music experience. This project combines cutting-edge technology with a user-friendly interface, making it easy for music lovers to discover, play, and manage their favorite tracks. With a focus on aesthetics and performance, React Music Player is the perfect solution for anyone looking to create a music streaming service that stands out from the crowd.
 
 Key Features:
 
@@ -37,15 +37,13 @@ If you like this resource, please follow me on GitHub. Thank you!
 1. Clone the project:
 
    ```bash
-   git clone https://github.com/cenksari/react-music-player.git
+   git clone https://github.com/draco-mordred/Luna.git
    ```
-
 2. Navigate to the project directory:
 
    ```bash
-   cd react-music-player
+   cd Luna
    ```
-
 3. Install dependencies:
 
    ```bash
@@ -57,7 +55,6 @@ If you like this resource, please follow me on GitHub. Thank you!
    ```bash
    yarn install
    ```
-
 4. Start the application:
 
    ```bash
@@ -74,7 +71,9 @@ If you would like to contribute, please create a new branch and submit a pull re
 
 ## Authors
 
-@cenksari
+@draco-mordred
+
+@cenksari (original)
 
 ## License
 

@@ -1,90 +1,105 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import './Sidebar.css';
 
 interface SidebarProps {
-  onNavigate?: (section: string) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
+const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const [activeSection, setActiveSection] = useState('library');
 
   const navigate = (section: string) => {
     setActiveSection(section);
-    onNavigate?.(section);
   };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      {/* Sidebar Header */}
       <div className="sidebar-header">
         <div className="logo">
           <span className="logo-icon">music_note</span>
-          <span className="logo-text">Luna</span>
+          {!collapsed && <span className="logo-text">Luna</span>}
         </div>
       </div>
 
+      {/* Navigation */}
       <nav className="sidebar-nav">
         <ul className="nav-list">
           <li className="nav-item">
-            <button 
+            <Link 
+              to="/" 
               className={`nav-button ${activeSection === 'library' ? 'active' : ''}`}
               onClick={() => navigate('library')}
             >
               <span className="nav-icon">library_music</span>
-              <span className="nav-label">Library</span>
-            </button>
+              {!collapsed && <span className="nav-label">Library</span>}
+            </Link>
           </li>
           
           <li className="nav-item">
-            <button 
+            <Link 
+              to="/browse" 
               className={`nav-button ${activeSection === 'browse' ? 'active' : ''}`}
               onClick={() => navigate('browse')}
             >
               <span className="nav-icon">explore</span>
-              <span className="nav-label">Browse</span>
-            </button>
+              {!collapsed && <span className="nav-label">Browse</span>}
+            </Link>
           </li>
 
           <li className="nav-item">
-            <button 
+            <Link 
+              to="/radio" 
               className={`nav-button ${activeSection === 'radio' ? 'active' : ''}`}
               onClick={() => navigate('radio')}
             >
               <span className="nav-icon">radio</span>
-              <span className="nav-label">Radio</span>
-            </button>
+              {!collapsed && <span className="nav-label">Radio</span>}
+            </Link>
           </li>
 
           <li className="nav-item">
-            <button 
+            <Link 
+              to="/search" 
               className={`nav-button ${activeSection === 'search' ? 'active' : ''}`}
               onClick={() => navigate('search')}
             >
               <span className="nav-icon">search</span>
-              <span className="nav-label">Search</span>
-            </button>
+              {!collapsed && <span className="nav-label">Search</span>}
+            </Link>
           </li>
         </ul>
       </nav>
 
+      {/* Playlists Section */}
       <div className="sidebar-footer">
         <div className="playlists-section">
-          <h4 className="playlists-title">Playlists</h4>
+          {!collapsed && <h4 className="playlists-title">Playlists</h4>}
           <ul className="playlists-list">
             <li className="playlist-item active">
               <span className="playlist-icon">play_circle</span>
-              <span className="playlist-name">Recently Played</span>
+              {!collapsed && <span className="playlist-name">Recently Played</span>}
             </li>
             <li className="playlist-item">
               <span className="playlist-icon">favorite</span>
-              <span className="playlist-name">Favorites</span>
+              {!collapsed && <span className="playlist-name">Favorites</span>}
             </li>
             <li className="playlist-item">
               <span className="playlist-icon">queue_music</span>
-              <span className="playlist-name">My Queue</span>
+              {!collapsed && <span className="playlist-name">My Queue</span>}
             </li>
           </ul>
         </div>
       </div>
+
+      {/* Collapse Toggle */}
+      <button className="collapse-toggle" onClick={onToggle}>
+        <span className="material-symbols-outlined">
+          {collapsed ? 'chevron_right' : 'chevron_left'}
+        </span>
+      </button>
     </aside>
   );
 };

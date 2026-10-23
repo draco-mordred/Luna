@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow;
 
@@ -49,6 +50,30 @@ function createWindow() {
   ipcMain.handle('close-window', () => {
     if (mainWindow) mainWindow.close();
   });
+
+  // Handle folder selection
+  ipcMain.handle('select-folders', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Music Folders',
+      buttonLabel: 'Select',
+      properties: ['openDirectory', 'multiSelections'],
+    });
+    
+    if (!result.canceled && result.filePaths) {
+      return result.filePaths;
+    }
+    return [];
+  });
+
+  // Handle folder scanning
+  ipcMain.handle('scan-folders', async (event, folders) => {
+    // Implement actual file scanning with music-metadata
+    // For now, return mock data
+    return folders.map(folder => ({
+      path: folder,
+      files: [],
+    }));
+  });
 }
 
 app.whenReady().then(createWindow);
@@ -75,19 +100,26 @@ if (process.platform === 'darwin') {
     new TouchBarSpacer({ size: 'large' }),
     new TouchBarButton({
       label: '←',
-      click: () => mainWindow.webContents.send('touchbar-previous'),
+      click: () => {
+        if (mainWindow) mainWindow.webContents.send('touchbar-previous');
+      },
     }),
     new TouchBarButton({
       label: '▮▮',
-      click: () => mainWindow.webContents.send('touchbar-play-pause'),
+      click: () => {
+        if (mainWindow) mainWindow.webContents.send('touchbar-play-pause');
+      },
     }),
     new TouchBarButton({
       label: '→',
-      click: () => mainWindow.webContents.send('touchbar-next'),
+      click: () => {
+        if (mainWindow) mainWindow.webContents.send('touchbar-next');
+      },
     }),
   ]);
 
-  mainWindow = new BrowserWindow({
-    touchBar,
-  });
+  // Create a new window with touch bar or update existing
+  if (mainWindow) {
+    mainWindow.setTouchBar(touchBar);
+  }
 }

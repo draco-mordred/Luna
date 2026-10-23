@@ -17,6 +17,10 @@ interface PlayBarProps {
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
+  isShuffled: boolean;
+  onToggleShuffle: () => void;
+  repeatMode: 'off' | 'one' | 'all';
+  onToggleRepeat: () => void;
 }
 
 // Inline SVG for default album art
@@ -48,6 +52,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
   currentTime,
   duration,
   onSeek,
+  isShuffled = false,
+  onToggleShuffle,
+  repeatMode = 'off',
+  onToggleRepeat,
 }) => {
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
   const [height, setHeight] = useState(72);
@@ -117,6 +125,30 @@ const PlayBar: React.FC<PlayBarProps> = ({
   // Calculate progress percentage
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Handle shuffle toggle
+  const handleShuffle = () => {
+    onToggleShuffle?.();
+  };
+
+  // Handle repeat toggle
+  const handleRepeat = () => {
+    onToggleRepeat?.();
+  };
+
+  // Get repeat icon based on mode
+  const getRepeatIcon = () => {
+    switch (repeatMode) {
+      case 'off':
+        return 'repeat';
+      case 'one':
+        return 'repeat_one';
+      case 'all':
+        return 'repeat';
+      default:
+        return 'repeat';
+    }
+  };
+
   return (
     <div
       ref={playBarRef}
@@ -130,37 +162,71 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
       {/* Expanded View - Now Playing */}
       <div className={`now-playing ${state === 'expanded' ? 'visible' : 'hidden'}`}>
-        <div className="album-art" onClick={handleAlbumArtClick}>
-          {track?.albumArt ? (
-            <img src={track.albumArt} alt={track.album} />
-          ) : (
-            <div className="default-art">{DEFAULT_ALBUM_ART}</div>
-          )}
-        </div>
-        <div className="track-info">
-          <h2 className="track-name">{track?.name || 'No Track Selected'}</h2>
-          <p className="artist-name">{track?.artist || 'Unknown Artist'}</p>
-          <p className="album-name">{track?.album || 'Unknown Album'}</p>
-        </div>
-        <div className="progress-bar-container">
-          <div className="progress-bar" onClick={(e) => {
-            const rect = (e.target as HTMLDivElement).getBoundingClientRect();
-            const percent = (e.clientX - rect.left) / rect.width;
-            onSeek(percent * duration);
-          }}>
-            <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+        <div className="now-playing-container">
+          {/* Album Art */}
+          <div className="album-art" onClick={handleAlbumArtClick}>
+            {track?.albumArt ? (
+              <img src={track.albumArt} alt={track.album} />
+            ) : (
+              <div className="default-art">{DEFAULT_ALBUM_ART}</div>
+            )}
           </div>
-          <div className="time-display">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
+          
+          {/* Track Info */}
+          <div className="track-info">
+            <h2 className="track-name">{track?.name || 'No Track Selected'}</h2>
+            <p className="artist-name">{track?.artist || 'Unknown Artist'}</p>
+            <p className="album-name">{track?.album || 'Unknown Album'}</p>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="progress-bar-container">
+            <div className="progress-bar" onClick={(e) => {
+              const rect = (e.target as HTMLDivElement).getBoundingClientRect();
+              const percent = (e.clientX - rect.left) / rect.width;
+              onSeek(percent * duration);
+            }}>
+              <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+            </div>
+            <div className="time-display">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+          
+          {/* Controls */}
+          <div className="controls expanded-controls">
+            <button className="control-btn" onClick={handleShuffle}>
+              <span className={`material-symbols-outlined ${isShuffled ? 'active' : ''}`}>
+                shuffle
+              </span>
+            </button>
+            
+            <button className="control-btn" onClick={onPrevious} disabled={!track}>
+              <span className="material-symbols-outlined">skip_previous</span>
+            </button>
+            
+            <button className="control-btn play-pause" onClick={onPlayPause}>
+              <span className="material-symbols-outlined">{isPlaying ? 'pause' : 'play_arrow'}</span>
+            </button>
+            
+            <button className="control-btn" onClick={onNext} disabled={!track}>
+              <span className="material-symbols-outlined">skip_next</span>
+            </button>
+            
+            <button className="control-btn" onClick={handleRepeat}>
+              <span className={`material-symbols-outlined ${repeatMode !== 'off' ? 'active' : ''}`}>
+                {getRepeatIcon()}
+              </span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Collapsed View - Mini Player */}
       <div className="mini-player">
-        <div className="track-info-mini">
-          <div className="album-art-mini" onClick={handleAlbumArtClick}>
+        <div className="track-info-mini" onClick={handleAlbumArtClick}>
+          <div className="album-art-mini">
             {track?.albumArt ? (
               <img src={track.albumArt} alt={track.album} />
             ) : (
@@ -185,6 +251,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
           <span className="mini-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
         </div>
         
+        {/* Controls */}
         <div className="controls">
           <button className="control-btn" onClick={onPrevious} disabled={!track}>
             <span className="material-symbols-outlined">skip_previous</span>

@@ -8,29 +8,51 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 72px;
 }
 
 .sidebar-header {
   padding: 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: center;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: all 0.3s ease;
 }
 
 .logo-icon {
   font-family: 'Material Symbols Outlined';
   font-size: 1.8rem;
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  transition: all 0.3s ease;
+}
+
+.logo.collapsed .logo-icon {
+  font-size: 1.5rem;
 }
 
 .logo-text {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.5px;
+  white-space: nowrap;
+  opacity: 1;
+  transition: all 0.3s ease;
+}
+
+.logo.collapsed .logo-text {
+  opacity: 0;
+  width: 0;
 }
 
 .sidebar-nav {
@@ -60,6 +82,12 @@
   text-align: left;
   border-radius: 8px;
   transition: all 0.2s ease;
+  justify-content: center;
+}
+
+.sidebar.collapsed .nav-button {
+  padding: 10px 8px;
+  justify-content: center;
 }
 
 .nav-button:hover {
@@ -83,11 +111,28 @@
 .nav-label {
   font-size: 0.95rem;
   font-weight: 500;
+  white-space: nowrap;
+  opacity: 1;
+  transition: all 0.3s ease;
+}
+
+.nav-button.collapsed .nav-label {
+  opacity: 0;
+  width: 0;
+}
+
+.sidebar.collapsed .nav-label {
+  display: none;
 }
 
 .sidebar-footer {
   padding: 16px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding: 8px 4px;
 }
 
 .playlists-section {
@@ -103,6 +148,15 @@
   letter-spacing: 0.5px;
   color: rgba(255, 255, 255, 0.5);
   padding: 0 12px;
+  white-space: nowrap;
+  opacity: 1;
+  transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .playlists-title {
+  opacity: 0;
+  height: 0;
+  padding: 0;
 }
 
 .playlists-list {
@@ -118,6 +172,12 @@
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
+  justify-content: center;
+}
+
+.sidebar.collapsed .playlist-item {
+  padding: 6px 4px;
+  gap: 0;
 }
 
 .playlist-item:hover {
@@ -143,9 +203,49 @@
 .playlist-name {
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  opacity: 1;
+  transition: all 0.3s ease;
 }
 
-.playlist-item.active .playlist-name,
-.playlist-item:hover .playlist-name {
+.sidebar.collapsed .playlist-name {
+  display: none;
+}
+
+/* Collapse Toggle */
+.collapse-toggle {
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 40px;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.collapse-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
+}
+
+.sidebar.collapsed .collapse-toggle {
+  right: -12px;
+  border-radius: 8px 0 0 8px;
+  border-right: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.collapse-toggle .material-symbols-outlined {
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 }

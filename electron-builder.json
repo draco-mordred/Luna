@@ -1,0 +1,53 @@
+{
+  "appId": "com.luna.music",
+  "productName": "Luna Music",
+  "directories": {
+    "buildResources": "public"
+  },
+  "files": [
+    "build/**/*",
+    "public/electron.js",
+    "public/preload.js"
+  ],
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "public/icon.ico"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "icon": "public/icon.icns",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "public/entitlements.mac.plist",
+    "entitlementsInherit": "public/entitlements.mac.plist"
+  },
+  "linux": {
+    "target": ["AppImage", "deb", "snap"],
+    "icon": "public/icon.png",
+    "category": "AudioVideo;Audio;Player;"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "portable": {
+    "artifactName": "Luna-Music-${version}-portable.${ext}"
+  },
+  "dmg": {
+    "artifactName": "Luna-Music-${version}.${ext}",
+    "background": "public/dmg-background.png",
+    "iconSize": 128,
+    "window": {
+      "width": 540,
+      "height": 420
+    }
+  },
+  "extraResources": [
+    {
+      "from": "public/",
+      "to": "public/",
+      "filter": ["**/*"]
+    }
+  ]
+}

@@ -1,80 +1,105 @@
-# Luna Music (Sono)
+# Luna Music Player
 
-Luna Music is a sleek and modern music streaming application built with React, designed to provide an immersive music experience. This project combines cutting-edge technology with a user-friendly interface, making it easy for music lovers to discover, play, and manage their favorite tracks. With a focus on aesthetics and performance, React Music Player is the perfect solution for anyone looking to create a music streaming service that stands out from the crowd.
+A minimal, beautiful music player app with Apple Music and Samsung Music inspired UI. Runs on **Electron (desktop)** and **Capacitor (mobile)**.
 
-Key Features:
+## Features
 
-- **Stunning UI/UX**: A visually appealing design that ensures a seamless user experience across various devices and screen sizes.
-- **Music Library Management**: Easily manage your music library, including creating playlists, adding songs, and editing track information.
-- **Search and Filter**: Quickly find your favorite songs, artists, or albums using the advanced search and filter functionality.
-- **Playback Controls**: Intuitive playback controls allow for easy music control, including play, pause, skip, and volume adjustment.
-- **Responsive Design**: Optimized for use on desktops, laptops, tablets, and mobile devices, ensuring a consistent experience regardless of the device.
+- Apple Music layout with Samsung Music "Now Playing" interface
+- Bottom-positioned draggable PlayBar
+- Expands to full "Now Playing" view
+- Displays album art with default fallback
+- Playback controls: Previous, Play/Pause, Next, Volume
+- Touch and mouse support
 
-Whether you're a music enthusiast, a developer, or a business looking to create a music streaming service, React Music Player is the perfect starting point. Its modular architecture and extensive documentation make it easy to customize and extend to meet your specific needs.
+## Project Structure
 
-## Support this project
+```
+luna-player/
+├── public/                  # Static files & Electron entry
+│   ├── electron.js          # Electron main process
+│   ├── preload.js           # Electron preload script
+│   └── ...
+├── src/
+│   ├── components/
+│   │   └── PlayBar/         # The draggable PlayBar component
+│   │       ├── PlayBar.tsx
+│   │       ├── PlayBar.css
+│   │       └── index.ts
+│   ├── App.tsx              # Main app component
+│   ├── App.css              # Global styles
+│   ├── index.tsx            # Entry point
+│   ├── react-app-env.d.ts
+│   └── types/
+│       └── index.ts         # TypeScript types
+├── capacitor.config.ts      # Mobile configuration
+├── electron-builder.json    # Desktop build configuration
+└── package.json
+```
 
-You are free to download, change and use it anywhere. I will regularly update this template with new resources and pages I found on the web. Don't hesitate to participate by sending a PR! Maybe your first on Github :)
+## Quick Start
 
-If you like this resource, please follow me on GitHub. Thank you!
+### Install Dependencies
+```bash
+npm install
+```
 
-## Demo
+### Run Web Version
+```bash
+npm start
+```
+Open [http://localhost:3000](http://localhost:3000)
 
-[https://react-music-player-rho-blush.vercel.app/](https://react-music-player-rho-blush.vercel.app/)
+### Run Electron (Desktop)
+```bash
+npm run electron:dev
+```
 
-## Screenshots
-
-![Album](https://raw.githubusercontent.com/cenksari/react-music-player/master/screenshots/album.png)
-
-![Artist](https://raw.githubusercontent.com/cenksari/react-music-player/master/screenshots/artist.png)
-
-![Album Mobile](https://raw.githubusercontent.com/cenksari/react-music-player/master/screenshots/album-mobile.png)
-
-![Artist Mobile](https://raw.githubusercontent.com/cenksari/react-music-player/master/screenshots/artist-mobile.png)
-
-## Installation
-
-1. Clone the project:
-
-   ```bash
-   git clone https://github.com/draco-mordred/Luna.git
-   ```
-2. Navigate to the project directory:
-
-   ```bash
-   cd Luna
-   ```
-3. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-   or
-
-   ```bash
-   yarn install
-   ```
-4. Start the application:
-
-   ```bash
-   npm start
-   ```
+### Set Up Mobile
+```bash
+npx cap init
+npm run cap:add android
+npm run cap:copy
+npm run cap:open android
+```
 
 ## Usage
 
-Once the application is started, navigate to [http://localhost:3000](http://localhost:3000) in your browser to test application.
+### PlayBar
+The PlayBar at the bottom provides:
 
-## Contributing
+- **Drag the top handle** to expand/collapse
+- **Album art** with default fallback
+- **Track info**: Name, Artist, Album
+- **Controls**: Previous, Play/Pause, Next
+- **Volume slider**
+- **Expand button** for quick toggle
 
-If you would like to contribute, please create a new branch and submit a pull request with your changes. Review may be needed before acceptance.
+### Touch & Drag
+- **Mouse**: Click and drag the top bar
+- **Touch**: Tap and drag on mobile
+- Auto-snaps to collapsed (72px) or expanded (400px)
 
-## Authors
+## Configuration
 
-@draco-mordred
+### Electron
+- Edit `public/electron.js` for window settings
+- Edit `electron-builder.json` for build options
 
-@cenksari (original)
+### Capacitor
+- Edit `capacitor.config.ts` for mobile settings
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Run web development server |
+| `npm run build` | Build for production |
+| `npm run electron:dev` | Run Electron with hot reload |
+| `npm run electron:build` | Build Electron app |
+| `npm run cap:add android/ios` | Add mobile platform |
+| `npm run cap:copy` | Copy web assets to mobile |
+| `npm run cap:open android/ios` | Open in IDE |
 
 ## License
 
-MIT
+MIT License - see [LICENSE.md](LICENSE.md)

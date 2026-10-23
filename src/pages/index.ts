@@ -3,3 +3,4 @@ export { default as Tracks } from './Tracks';
 export { default as Albums } from './Albums';
 export { default as Artists } from './Artists';
 export { default as Composer } from './Composer';
+export { default as Search } from './Search';

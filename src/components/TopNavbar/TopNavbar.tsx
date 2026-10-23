@@ -1,36 +1,62 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import type { MusicLibraryResponse } from '../../types/electron';
+import type { Track } from '../../services/MusicLibrary';
+import { buildSearchGroups } from '../../services/search';
 import './TopNavbar.css';
 
+interface TopNavbarProps {
+  tracks: Track[];
+  onSelectMusicFolders: () => Promise<MusicLibraryResponse | null>;
+  onRescanMusicLibrary: () => Promise<MusicLibraryResponse>;
+}
+
+type Section = 'library' | 'browse' | 'radio' | 'spotify' | 'search' | 'settings';
 type TabType = 'tracks' | 'albums' | 'artists' | 'composer';
 
-const TABS = [
-  { id: 'tracks' as TabType, label: 'Tracks', icon: 'music_note' },
-  { id: 'albums' as TabType, label: 'Albums', icon: 'album' },
-  { id: 'artists' as TabType, label: 'Artists', icon: 'person' },
-  { id: 'composer' as TabType, label: 'Composer', icon: 'edit_note' },
+const LIBRARY_TABS: Array<{ id: TabType; label: string; icon: string }> = [
+  { id: 'tracks', label: 'Tracks', icon: 'music_note' },
+  { id: 'albums', label: 'Albums', icon: 'album' },
+  { id: 'artists', label: 'Artists', icon: 'person' },
+  { id: 'composer', label: 'Composers', icon: 'edit_note' },
 ];
 
-const TopNavbar = () => {
+const SECTION_TITLES: Record<Section, string> = {
+  library: 'Library',
+  browse: 'Browse',
+  radio: 'Radio',
+  spotify: 'Spotify',
+  search: 'Search',
+  settings: 'Settings',
+};
+
+const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNavbarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('tracks');
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  // Sync active tab with URL
-  useEffect(() => {
-    const path = location.pathname.split('/')[1] as TabType | undefined;
-    if (TABS.some(tab => tab.id === path)) {
-      setActiveTab(path as TabType);
-    }
-  }, [location.pathname]);
+  const searchGroups = useMemo(() => buildSearchGroups(tracks, searchQuery), [searchQuery, tracks]);
+
+  const path = location.pathname.split('/')[1] ?? '';
+  const libraryTab = LIBRARY_TABS.find((tab) => tab.id === path);
+  const section: Section = libraryTab
+    ? 'library'
+    : path === '' || path === 'tracks'
+      ? 'library'
+      : path.startsWith('settings')
+        ? 'settings'
+        : path === 'browse' || path === 'radio' || path === 'spotify' || path === 'search'
+          ? path
+          : 'library';
 
   // Handle tab change
   const handleTabChange = (tabId: TabType) => {
-    setActiveTab(tabId);
     navigate(`/${tabId}`);
   };
 
@@ -43,11 +69,31 @@ const TopNavbar = () => {
       if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
         setShowAccountMenu(false);
       }
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchExpanded(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleSearchSubmit = (nextQuery: string) => {
+    const trimmedQuery = nextQuery.trim();
+    setSearchQuery(trimmedQuery);
+    setIsSearchExpanded(false);
+    if (trimmedQuery) {
+      navigate(`/search?q=${encodeURIComponent(trimmedQuery)}`);
+      return;
+    }
+    navigate('/search');
+  };
+
+  const handleSearchInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleSearchSubmit(event.currentTarget.value);
+    }
+  };
 
   const toggleSettingsMenu = () => {
     setShowSettingsMenu(!showSettingsMenu);
@@ -62,26 +108,94 @@ const TopNavbar = () => {
   return (
     <nav className="top-navbar">
       <div className="navbar-left">
-        {/* Tab Navigation */}
-        <div className="tabs-container">
-          {TABS.map((tab) => (
+        <h1 className="navbar-title">{SECTION_TITLES[section]}</h1>
+        {section === 'library' && (
+          <div className="tabs-container" role="tablist" aria-label="Library views">
+            {LIBRARY_TABS.map((tab) => (
             <button
               key={tab.id}
-              className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+              role="tab"
+              aria-selected={libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks')}
+              className={`tab-button ${(libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks')) ? 'active' : ''}`}
               onClick={() => handleTabChange(tab.id)}
             >
               <span className="material-symbols-outlined tab-icon">{tab.icon}</span>
               <span className="tab-label">{tab.label}</span>
             </button>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="navbar-right">
+      <div className="navbar-right" ref={searchRef}>
         {/* Search */}
-        <button className="navbar-button search-button">
-          <span className="material-symbols-outlined">search</span>
-        </button>
+        <div className={`search-inline ${isSearchExpanded ? 'open' : ''}`}>
+          <button
+            type="button"
+            className="navbar-button search-button"
+            aria-label="Search"
+            onClick={() => setIsSearchExpanded((current) => !current)}
+          >
+            <span className="material-symbols-outlined">search</span>
+          </button>
+
+          {isSearchExpanded && (
+            <div className="search-dropdown">
+              <div className="search-input-row">
+                <span className="material-symbols-outlined">search</span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  placeholder="Search library"
+                  aria-label="Search the library"
+                  autoFocus
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={handleSearchInputKeyDown}
+                />
+              </div>
+
+              <div className="search-results-panel">
+                {searchQuery.trim() ? (
+                  searchGroups.some((group) => group.items.length > 0) ? (
+                    searchGroups.map((group) => (
+                      group.items.length > 0 ? (
+                        <div key={group.title} className="search-result-group">
+                          <div className="search-result-header">{group.title}</div>
+                          {group.items.slice(0, 4).map((item) => (
+                            <button
+                              key={`${group.title}-${item.id}`}
+                              type="button"
+                              className="search-result-item"
+                              onClick={() => {
+                                if (item.type === 'track' && item.track) {
+                                  navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                                  setIsSearchExpanded(false);
+                                  return;
+                                }
+                                navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                                setIsSearchExpanded(false);
+                              }}
+                            >
+                              <span className="material-symbols-outlined">{item.type === 'track' ? 'music_note' : item.type === 'album' ? 'album' : item.type === 'artist' ? 'person' : 'tag'}</span>
+                              <span className="search-result-copy">
+                                <strong>{item.title}</strong>
+                                <small>{item.subtitle}</small>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null
+                    ))
+                  ) : (
+                    <div className="search-empty-state-inline">No matches found.</div>
+                  )
+                ) : (
+                  <div className="search-empty-state-inline">Type a song, artist, album, or genre.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Account/Profile */}
         <div className="account-section" ref={accountMenuRef}>
@@ -131,13 +245,25 @@ const TopNavbar = () => {
                   </Link>
                 </li>
                 <li className="menu-item">
-                  <button className="menu-button">
+                  <button
+                    className="menu-button"
+                    onClick={() => {
+                      setShowSettingsMenu(false);
+                      void onSelectMusicFolders();
+                    }}
+                  >
                     <span className="material-symbols-outlined">folder_open</span>
                     <span>Add Music Folder</span>
                   </button>
                 </li>
                 <li className="menu-item">
-                  <button className="menu-button">
+                  <button
+                    className="menu-button"
+                    onClick={() => {
+                      setShowSettingsMenu(false);
+                      void onRescanMusicLibrary();
+                    }}
+                  >
                     <span className="material-symbols-outlined">refresh</span>
                     <span>Rescan Library</span>
                   </button>

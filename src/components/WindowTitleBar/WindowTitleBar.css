@@ -1,0 +1,62 @@
+.window-titlebar {
+  position: relative;
+  z-index: 1200;
+  display: flex;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  /* background: var(--bg-secondary); */
+  background: transparent;
+  color: var(--text-primary);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.window-titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.window-titlebar-brand .material-symbols-outlined {
+  color: var(--system-accent);
+  font-size: 1.1rem;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.window-titlebar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.window-titlebar-button {
+  display: flex;
+  width: 46px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--system-accent);
+  cursor: pointer;
+}
+
+.window-titlebar-button:hover {
+  background: var(--system-accent);
+  color: var(--titlebar-hover-icon);
+}
+
+.window-titlebar-button.close:hover {
+  background: var(--system-accent);
+  color: var(--titlebar-hover-icon);
+}
+
+.window-titlebar-button .material-symbols-outlined {
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}

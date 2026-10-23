@@ -9,6 +9,8 @@ A minimal, beautiful music player app with Apple Music and Samsung Music inspire
 - Expands to full "Now Playing" view
 - Displays album art with default fallback
 - Playback controls: Previous, Play/Pause, Next, Volume
+- Desktop music library scanning with saved folders and audio metadata
+- Local track playback with seek, shuffle, and repeat controls
 - Touch and mouse support
 
 ## Project Structure
@@ -53,6 +55,10 @@ Open [http://localhost:3000](http://localhost:3000)
 ```bash
 npm run electron:dev
 ```
+On first launch, choose one or more music folders when prompted. Luna indexes supported audio files recursively and stores the folder list and track metadata in `music-library.json` under Electron's user data directory. On later launches, the cached library appears immediately while Luna checks saved folders in the background for added, changed, or removed tracks. App settings (theme, accent color, and last played track) are stored separately under Electron's user data directory. Windows uses a frameless custom title bar and can use the Windows accent color from **Settings → Appearance**. You can add folders from the Options menu or review saved locations and rescan from **Settings → Library**.
+
+Use the **Tracks** view to play a track. The web-only `npm start` version cannot scan arbitrary folders on your computer; local-folder access requires Electron.
+The Material Symbols icon font is bundled with the app, so Electron can render icons without an internet connection.
 
 ### Set Up Mobile
 ```bash

@@ -1,41 +1,49 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { Track } from '../services/MusicLibrary';
 import './Tracks.css';
 
-// Mock data - replace with real data from MusicLibrary
-const mockTracks = [
-  { id: '1', name: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', duration: 200, trackNumber: 1 },
-  { id: '2', name: 'Save Your Tears', artist: 'The Weeknd', album: 'After Hours', duration: 235, trackNumber: 2 },
-  { id: '3', name: 'In Your Eyes', artist: 'The Weeknd', album: 'After Hours', duration: 238, trackNumber: 3 },
-  { id: '4', name: 'Heartless', artist: 'The Weeknd', album: 'After Hours', duration: 192, trackNumber: 4 },
-  { id: '5', name: 'After Hours', artist: 'The Weeknd', album: 'After Hours', duration: 367, trackNumber: 5 },
-  { id: '6', name: 'Starboy', artist: 'The Weeknd', album: 'Starboy', duration: 234, trackNumber: 1 },
-  { id: '7', name: 'Party Monster', artist: 'The Weeknd', album: 'Starboy', duration: 252, trackNumber: 2 },
-  { id: '8', name: 'False Alarm', artist: 'The Weeknd', album: 'Starboy', duration: 194, trackNumber: 3 },
-];
+type SortField = 'name' | 'artist' | 'album' | 'genre' | 'year' | 'duration';
 
-const TracksPage = () => {
-  const [sortBy, setSortBy] = useState<'name' | 'artist' | 'album' | 'duration'>('name');
+const formatDuration = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+interface TracksPageProps {
+  tracks: Track[];
+  selectedTrackId: string | null;
+  isLoading: boolean;
+  libraryError: string | null;
+  isDesktopApp: boolean;
+  onPlayTrack: (track: Track) => void;
+  onAddMusicFolder: () => void;
+}
+
+const TracksPage = ({
+  tracks,
+  selectedTrackId,
+  isLoading,
+  libraryError,
+  isDesktopApp,
+  onPlayTrack,
+  onAddMusicFolder,
+}: TracksPageProps) => {
+  const [sortBy, setSortBy] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Sort tracks
-  const sortedTracks = [...mockTracks].sort((a, b) => {
-    const aVal = a[sortBy as keyof typeof mockTracks[0]];
-    const bVal = b[sortBy as keyof typeof mockTracks[0]];
-    
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const sortedTracks = useMemo(() => [...tracks].sort((a, b) => {
+    const aValue = a[sortBy] ?? '';
+    const bValue = b[sortBy] ?? '';
+    const comparison = typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue));
 
-  // Format duration
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+    return sortDirection === 'asc' ? comparison : -comparison;
+  }), [sortBy, sortDirection, tracks]);
 
-  // Handle sort
-  const handleSort = (field: 'name' | 'artist' | 'album' | 'duration') => {
+  const handleSort = (field: SortField) => {
     if (sortBy === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -44,88 +52,104 @@ const TracksPage = () => {
     }
   };
 
+  const trackRows = useMemo(() => sortedTracks.map((track, index) => (
+    <div
+      key={track.id}
+      className={`track-item ${selectedTrackId === track.id ? 'selected' : ''}`}
+    >
+      <span className='track-number' aria-hidden='true'>{index + 1}</span>
+      <div className='track-title-cell'>
+        <div className='track-art-thumb' aria-hidden='true'>
+          {track.albumArt ? (
+            <img src={track.albumArt} alt='' loading='lazy' decoding='async' />
+          ) : (
+            <span className='material-symbols-outlined'>music_note</span>
+          )}
+        </div>
+        <button
+          className='track-name track-play-button'
+          type='button'
+          title={`Play ${track.name}`}
+          onClick={() => onPlayTrack(track)}
+        >
+          {track.name}
+        </button>
+      </div>
+      <div className='track-artist' title={track.artist}>{track.artist}</div>
+      <div className='track-album' title={track.album}>{track.album}</div>
+      <div className='track-genre' title={track.genre || ''}>{track.genre || '—'}</div>
+      <div className='track-year'>{track.year || '—'}</div>
+      <div className='track-duration'>{formatDuration(track.duration)}</div>
+      <button className='track-menu' type='button' aria-label={`More options for ${track.name}`}>
+        <span className='material-symbols-outlined'>more_vert</span>
+      </button>
+    </div>
+  )), [onPlayTrack, selectedTrackId, sortedTracks]);
+
   return (
-    <div className="tracks-page">
-      {/* Page Header */}
-      <header className="page-header">
+    <div className='tracks-page'>
+      <header className='page-header'>
         <h1>Tracks</h1>
-        <p className="track-count">{mockTracks.length} tracks</p>
+        <p className='track-count'>{tracks.length} tracks</p>
       </header>
 
-      {/* Track List Header */}
-      <div className="track-list-header">
-        <button 
-          className={`sort-button ${sortBy === 'name' ? 'active' : ''}`}
-          onClick={() => handleSort('name')}
-        >
-          <span>Title</span>
-          <span className="sort-icon">
-            {sortBy === 'name' && (
-              <span className="material-symbols-outlined">
-                {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-              </span>
-            )}
-          </span>
-        </button>
-        <button 
-          className={`sort-button ${sortBy === 'artist' ? 'active' : ''}`}
-          onClick={() => handleSort('artist')}
-        >
-          <span>Artist</span>
-          <span className="sort-icon">
-            {sortBy === 'artist' && (
-              <span className="material-symbols-outlined">
-                {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-              </span>
-            )}
-          </span>
-        </button>
-        <button 
-          className={`sort-button ${sortBy === 'album' ? 'active' : ''}`}
-          onClick={() => handleSort('album')}
-        >
-          <span>Album</span>
-          <span className="sort-icon">
-            {sortBy === 'album' && (
-              <span className="material-symbols-outlined">
-                {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-              </span>
-            )}
-          </span>
-        </button>
-        <div className="header-spacer"></div>
-        <button 
-          className={`sort-button ${sortBy === 'duration' ? 'active' : ''}`}
-          onClick={() => handleSort('duration')}
-        >
-          <span className="material-symbols-outlined">timer</span>
-          <span className="sort-icon">
-            {sortBy === 'duration' && (
-              <span className="material-symbols-outlined">
-                {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-              </span>
-            )}
-          </span>
-        </button>
-      </div>
+      {libraryError && <p className='library-message library-error' role='alert'>{libraryError}</p>}
 
-      {/* Track List */}
-      <div className="track-list">
-        {sortedTracks.map((track, index) => (
-          <div key={track.id} className="track-item">
-            <div className="track-number">{index + 1}</div>
-            <div className="track-info">
-              <h3 className="track-name">{track.name}</h3>
-              <p className="track-artist">{track.artist}</p>
-            </div>
-            <div className="track-album">{track.album}</div>
-            <div className="track-duration">{formatDuration(track.duration)}</div>
-            <button className="track-menu">
-              <span className="material-symbols-outlined">more_vert</span>
+      {isLoading ? (
+        <p className='library-message'>Scanning your music folders…</p>
+      ) : tracks.length === 0 ? (
+        <section className='library-empty-state'>
+          <span className='material-symbols-outlined' aria-hidden='true'>library_music</span>
+          <h2>Your music library is empty</h2>
+          <p>
+            {isDesktopApp
+              ? 'Choose a folder containing your music files to add them to Luna.'
+              : 'Local music folders can be indexed and played in the Luna desktop app.'}
+          </p>
+          {isDesktopApp && (
+            <button className='add-music-folder-button' type='button' onClick={onAddMusicFolder}>
+              <span className='material-symbols-outlined' aria-hidden='true'>folder_open</span>
+              Add Music Folder
             </button>
+          )}
+        </section>
+      ) : (
+        <>
+          <div className='track-list-header'>
+            <span aria-hidden='true' />
+            {([
+              ['name', 'Name'],
+              ['artist', 'Artist'],
+              ['album', 'Album'],
+              ['genre', 'Genre'],
+              ['year', 'Year'],
+              ['duration', 'Duration'],
+            ] as Array<[SortField, string]>).map(([field, label]) => (
+              <button
+                key={field}
+                type='button'
+                className={`sort-button ${sortBy === field ? 'active' : ''}`}
+                aria-label={sortBy === field
+                  ? `${label}, sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'}`
+                  : label}
+                onClick={() => handleSort(field)}
+              >
+                <span>{label}</span>
+                {sortBy === field && (
+                  <span className='material-symbols-outlined sort-icon' aria-hidden='true'>
+                    {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                  </span>
+                )}
+              </button>
+            ))}
+            <span aria-hidden='true' />
           </div>
-        ))}
-      </div>
+
+          <div className='track-list'>
+            {trackRows}
+          </div>
+        </>
+      )}
     </div>
   );
 };

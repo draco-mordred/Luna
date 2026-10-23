@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { musicLibrary, Track, Album, Artist } from '../services/MusicLibrary';
 
 // Type for the music library state
@@ -9,16 +9,6 @@ interface MusicLibraryState {
   folders: string[];
   isScanning: boolean;
   error: string | null;
-}
-
-// Electron API type declaration
-declare global {
-  interface Window {
-    electronAPI?: {
-      selectFolders: () => Promise<string[]>;
-      scanFolders: (folders: string[]) => Promise<Track[]>;
-    };
-  }
 }
 
 // Capacitor Filesystem API type
@@ -36,6 +26,7 @@ declare global {
 }
 
 export const useMusicLibrary = () => {
+  const initialLoadStarted = useRef(false);
   const [libraryState, setLibraryState] = useState<MusicLibraryState>({
     tracks: [],
     albums: [],
@@ -47,14 +38,29 @@ export const useMusicLibrary = () => {
 
   // Load initial state
   useEffect(() => {
-    setLibraryState({
-      tracks: musicLibrary.getTracks(),
-      albums: musicLibrary.getAlbums(),
-      artists: musicLibrary.getArtists(),
-      folders: musicLibrary.getFolders(),
-      isScanning: false,
-      error: null,
-    });
+    if (!window.electronAPI || initialLoadStarted.current) return;
+    initialLoadStarted.current = true;
+    setLibraryState((prev) => ({ ...prev, isScanning: true, error: null }));
+    window.electronAPI.loadMusicLibrary()
+      .then((library) => {
+        musicLibrary.replaceLibrary(library.folders, library.tracks);
+        setLibraryState({
+          tracks: musicLibrary.getTracks(),
+          albums: musicLibrary.getAlbums(),
+          artists: musicLibrary.getArtists(),
+          folders: musicLibrary.getFolders(),
+          isScanning: false,
+          error: library.errors.length > 0 ? 'Some music files could not be read.' : null,
+        });
+      })
+      .catch((error: unknown) => {
+        console.error('Error loading local music library:', error);
+        setLibraryState((prev) => ({
+          ...prev,
+          isScanning: false,
+          error: 'Failed to load the local music library.',
+        }));
+      });
   }, []);
 
   // Select folders for desktop (Electron)
@@ -63,19 +69,25 @@ export const useMusicLibrary = () => {
       // Check if we're in Electron
       if (typeof window !== 'undefined' && window.electronAPI) {
         // Use Electron's native dialog
-        const folders = await window.electronAPI.selectFolders();
-        if (folders && folders.length > 0) {
-          musicLibrary.addFolders(folders);
+        const library = await window.electronAPI.selectMusicFolders();
+        if (library) {
+          musicLibrary.replaceLibrary(library.folders, library.tracks);
           setLibraryState(prev => ({
             ...prev,
-            folders: musicLibrary.getFolders(),
+            tracks: library.tracks,
+            albums: musicLibrary.getAlbums(),
+            artists: musicLibrary.getArtists(),
+            folders: library.folders,
+            isScanning: false,
+            error: library.errors.length > 0 ? 'Some music files could not be read.' : null,
           }));
-          return folders;
+          return library.folders;
         }
       } else {
-        // For development/testing, use a mock folder selector
-        // In production, this would be handled by Electron
-        console.log('Folder selection requires Electron. Using mock data for development.');
+        setLibraryState((prev) => ({
+          ...prev,
+          error: 'Folder selection is only available in the desktop app.',
+        }));
       }
       return [];
     } catch (error) {
@@ -90,15 +102,20 @@ export const useMusicLibrary = () => {
     try {
       setLibraryState(prev => ({ ...prev, isScanning: true, error: null }));
       
-      const tracks = await musicLibrary.scanAll();
+      if (!window.electronAPI) {
+        throw new Error('Music library scanning is only available in the desktop app.');
+      }
+      const library = await window.electronAPI.rescanMusicLibrary();
+      musicLibrary.replaceLibrary(library.folders, library.tracks);
+      const tracks = library.tracks;
       
       setLibraryState({
         tracks,
         albums: musicLibrary.getAlbums(),
         artists: musicLibrary.getArtists(),
-        folders: musicLibrary.getFolders(),
+        folders: library.folders,
         isScanning: false,
-        error: null,
+        error: library.errors.length > 0 ? 'Some music files could not be read.' : null,
       });
       
       return tracks;
@@ -123,12 +140,27 @@ export const useMusicLibrary = () => {
   }, []);
 
   // Remove a folder
-  const removeFolder = useCallback((folder: string) => {
-    musicLibrary.removeFolder(folder);
-    setLibraryState(prev => ({
-      ...prev,
-      folders: musicLibrary.getFolders(),
-    }));
+  const removeFolder = useCallback(async (folder: string) => {
+    if (!window.electronAPI) {
+      setLibraryState((prev) => ({ ...prev, error: 'Folder management is only available in the desktop app.' }));
+      return;
+    }
+    try {
+      setLibraryState((prev) => ({ ...prev, isScanning: true, error: null }));
+      const library = await window.electronAPI.removeMusicFolder(folder);
+      musicLibrary.replaceLibrary(library.folders, library.tracks);
+      setLibraryState({
+        tracks: musicLibrary.getTracks(),
+        albums: musicLibrary.getAlbums(),
+        artists: musicLibrary.getArtists(),
+        folders: musicLibrary.getFolders(),
+        isScanning: false,
+        error: library.errors.length > 0 ? 'Some music files could not be read.' : null,
+      });
+    } catch (error) {
+      console.error(`Error removing music folder "${folder}":`, error);
+      setLibraryState((prev) => ({ ...prev, isScanning: false, error: 'Failed to remove the music folder.' }));
+    }
   }, []);
 
   // Cancel scan

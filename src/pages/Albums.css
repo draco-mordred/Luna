@@ -2,9 +2,8 @@
 
 .albums-page {
   width: 100%;
-  height: 100%;
-  padding: 24px;
-  overflow-y: auto;
+  min-height: 100%;
+  padding: 136px 24px 24px;
 }
 
 .page-header {
@@ -17,12 +16,12 @@
 .header-left h1 {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .album-count {
   font-size: 0.95rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
   margin-top: 4px;
 }
 
@@ -35,7 +34,7 @@
 /* View Mode Toggle */
 .view-mode-toggle {
   display: flex;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   border-radius: 8px;
   padding: 4px;
 }
@@ -46,7 +45,7 @@
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -55,12 +54,12 @@
 }
 
 .view-mode-btn:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary);
 }
 
 .view-mode-btn.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background: var(--active);
+  color: var(--text-primary);
 }
 
 .view-mode-btn .material-symbols-outlined {
@@ -72,28 +71,28 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   padding: 6px 12px;
   border-radius: 8px;
 }
 
 .sort-label {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
 }
 
 .sort-select {
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
   outline: none;
 }
 
 .sort-select option {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sort-direction {
@@ -102,7 +101,7 @@
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -111,8 +110,8 @@
 }
 
 .sort-direction:hover {
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  background: var(--hover);
 }
 
 .sort-direction .material-symbols-outlined {
@@ -135,12 +134,12 @@
 /* Grid View */
 .albums-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 20px;
 }
 
 .album-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
@@ -149,7 +148,7 @@
 }
 
 .album-card:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--active);
   transform: translateY(-4px);
 }
 
@@ -158,6 +157,23 @@
   aspect-ratio: 1/1;
   position: relative;
   overflow: hidden;
+}
+
+.album-cover-placeholder,
+.album-list-cover.album-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-tertiary), var(--surface-strong));
+  color: var(--text-tertiary);
+}
+
+.album-cover-placeholder > .material-symbols-outlined {
+  font-size: 3rem;
+}
+
+.album-list-cover.album-cover-placeholder > .material-symbols-outlined {
+  font-size: 1.5rem;
 }
 
 .album-cover img {
@@ -178,9 +194,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--text-primary);
   border: none;
-  color: #000000;
+  color: var(--bg-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -208,7 +224,7 @@
 .album-name {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -216,7 +232,7 @@
 
 .album-artist {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -225,7 +241,7 @@
 
 .album-meta {
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-tertiary);
   margin-top: 4px;
 }
 
@@ -240,20 +256,20 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .album-list-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--active);
 }
 
 .album-list-number {
   width: 32px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-tertiary);
   font-weight: 500;
 }
 
@@ -280,7 +296,7 @@
 .album-list-name {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -288,7 +304,7 @@
 
 .album-list-artist {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -297,21 +313,21 @@
 .album-list-year {
   width: 60px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
 .album-list-tracks {
   width: 80px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
 .album-list-duration {
   width: 60px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-tertiary);
   text-align: right;
 }
 
@@ -321,7 +337,7 @@
   border-radius: 50%;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-tertiary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -332,13 +348,13 @@
 
 .album-list-item:hover .album-list-menu {
   opacity: 1;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  background: var(--hover);
 }
 
 .album-list-menu:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  background: var(--active);
 }
 
 .album-list-menu .material-symbols-outlined {
@@ -348,7 +364,7 @@
 /* Responsive */
 @media (max-width: 1200px) {
   .albums-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -364,7 +380,7 @@
   }
   
   .albums-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
   
   .view-mode-toggle {
@@ -374,7 +390,7 @@
 
 @media (max-width: 768px) {
   .albums-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 16px;
   }
   
@@ -393,7 +409,7 @@
 
 @media (max-width: 600px) {
   .albums-page {
-    padding: 16px;
+    padding: 128px 16px 16px;
   }
   
   .page-header h1 {

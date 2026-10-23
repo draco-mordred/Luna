@@ -1,8 +1,22 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Settings.css';
 
 type ThemeMode = 'light' | 'dark' | 'system';
+
+interface SettingsPageProps {
+  themeMode: ThemeMode;
+  onThemeChange: (mode: ThemeMode) => void;
+  accentColor: string;
+  onAccentColorChange: (color: string) => void;
+  systemAccentColor: string | null;
+  musicFolders: string[];
+  trackCount: number;
+  isDesktopApp: boolean;
+  onAddMusicFolder: () => void;
+  onRescanMusicLibrary: () => void;
+  onRemoveMusicFolder: (folder: string) => void;
+}
 
 type SettingsSection = {
   id: string;
@@ -11,30 +25,21 @@ type SettingsSection = {
   component: React.ReactNode;
 };
 
-const SettingsPage = () => {
+const SettingsPage: React.FC<SettingsPageProps> = ({
+  themeMode,
+  onThemeChange,
+  accentColor,
+  onAccentColorChange,
+  systemAccentColor,
+  musicFolders,
+  trackCount,
+  isDesktopApp,
+  onAddMusicFolder,
+  onRescanMusicLibrary,
+  onRemoveMusicFolder,
+}) => {
   const navigate = useNavigate();
-  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const [activeSection, setActiveSection] = useState('appearance');
-
-  // Load saved settings
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('luna-theme') as ThemeMode | null;
-    if (savedTheme) {
-      setThemeMode(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
-    }
-  }, []);
-
-  // Update theme
-  useEffect(() => {
-    localStorage.setItem('luna-theme', themeMode);
-    document.documentElement.setAttribute('data-theme', themeMode);
-  }, [themeMode]);
-
-  // Handle theme change
-  const handleThemeChange = (mode: ThemeMode) => {
-    setThemeMode(mode);
-  };
 
   // Navigation
   const goBack = () => {
@@ -52,32 +57,58 @@ const SettingsPage = () => {
           <div className="setting-item">
             <div className="setting-info">
               <h3>Theme</h3>
-              <p>Choose your preferred color theme</p>
+              <p>Choose a theme or follow your system appearance</p>
             </div>
             <div className="setting-control">
               <div className="theme-options">
                 <button 
                   className={`theme-option ${themeMode === 'light' ? 'active' : ''}`}
-                  onClick={() => handleThemeChange('light')}
+                  onClick={() => onThemeChange('light')}
+                  aria-pressed={themeMode === 'light'}
                 >
                   <span className="theme-icon light"></span>
                   <span>Light</span>
                 </button>
                 <button 
                   className={`theme-option ${themeMode === 'dark' ? 'active' : ''}`}
-                  onClick={() => handleThemeChange('dark')}
+                  onClick={() => onThemeChange('dark')}
+                  aria-pressed={themeMode === 'dark'}
                 >
                   <span className="theme-icon dark"></span>
                   <span>Dark</span>
                 </button>
                 <button 
                   className={`theme-option ${themeMode === 'system' ? 'active' : ''}`}
-                  onClick={() => handleThemeChange('system')}
+                  onClick={() => onThemeChange('system')}
+                  aria-pressed={themeMode === 'system'}
                 >
                   <span className="theme-icon system"></span>
                   <span>System</span>
                 </button>
               </div>
+            </div>
+          </div>
+          <div className="setting-item">
+            <div className="setting-info">
+              <h3>Accent Color</h3>
+              <p>Personalize highlights and controls across Luna</p>
+            </div>
+            <div className="setting-control accent-color-control">
+              <input
+                type="color"
+                aria-label="Accent color"
+                value={accentColor}
+                onChange={(event) => onAccentColorChange(event.currentTarget.value)}
+              />
+              {systemAccentColor && (
+                <button
+                  type="button"
+                  className="manage-button"
+                  onClick={() => onAccentColorChange(systemAccentColor)}
+                >
+                  Use Windows accent
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -92,24 +123,47 @@ const SettingsPage = () => {
           <div className="setting-item">
             <div className="setting-info">
               <h3>Music Folders</h3>
-              <p>Manage your music library folders</p>
+              <p>{isDesktopApp ? `${musicFolders.length} folder(s) • ${trackCount} tracks indexed` : 'Folder management is available in the desktop app'}</p>
             </div>
             <div className="setting-control">
-              <Link to="/settings/library" className="manage-button">
-                Manage Folders
-              </Link>
+              {isDesktopApp && (
+                <button type="button" className="manage-button" onClick={onAddMusicFolder}>
+                  Add Folder
+                </button>
+              )}
             </div>
           </div>
+          {musicFolders.length > 0 && (
+            <div className="music-folder-list" aria-label="Indexed music folders">
+              {musicFolders.map((folder) => (
+                <div className="music-folder-path" key={folder} title={folder}>
+                  <span className="material-symbols-outlined" aria-hidden="true">folder</span>
+                  <span>{folder}</span>
+                  {isDesktopApp && (
+                    <button
+                      className="remove-music-folder"
+                      type="button"
+                      aria-label={`Remove ${folder} from music folders`}
+                      onClick={() => onRemoveMusicFolder(folder)}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="setting-item">
             <div className="setting-info">
-              <h3>Auto Rescan</h3>
-              <p>Rescan library on startup</p>
+              <h3>Rescan Library</h3>
+              <p>Search the saved folders for new, changed, or missing tracks</p>
             </div>
             <div className="setting-control">
-              <label className="toggle-switch">
-                <input type="checkbox" defaultChecked />
-                <span className="toggle-slider"></span>
-              </label>
+              {isDesktopApp && (
+                <button type="button" className="manage-button" onClick={onRescanMusicLibrary}>
+                  Rescan
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,112 +1,86 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { Track } from '../services/MusicLibrary';
 import './Artists.css';
 
-// Mock data
-const mockArtists = [
-  {
-    id: '1',
-    name: 'The Weeknd',
-    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-    albumCount: 4,
-    trackCount: 62,
-    topTracks: ['Blinding Lights', 'Save Your Tears', 'Starboy'],
-  },
-  {
-    id: '2',
-    name: 'Drake',
-    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=200&h=200&fit=crop',
-    albumCount: 6,
-    trackCount: 87,
-    topTracks: ['Gods Plan', 'Hotline Bling', 'One Dance'],
-  },
-  {
-    id: '3',
-    name: 'Taylor Swift',
-    image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=crop',
-    albumCount: 10,
-    trackCount: 125,
-    topTracks: ['Blank Space', 'Shake It Off', 'Love Story'],
-  },
-  {
-    id: '4',
-    name: 'Travis Scott',
-    image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=200&h=200&fit=crop',
-    albumCount: 4,
-    trackCount: 54,
-    topTracks: ['SICKO MODE', 'Goosebumps', 'Antidote'],
-  },
-];
+interface ArtistsPageProps {
+  tracks: Track[];
+  onPlayTrack: (track: Track) => void;
+}
 
-const ArtistsPage = () => {
+const ArtistsPage = ({ tracks, onPlayTrack }: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Sort artists
-  const sortedArtists = [...mockArtists].sort((a, b) => {
-    let aVal: string | number;
-    let bVal: string | number;
-    
-    switch (sortBy) {
-      case 'name':
-        aVal = a.name;
-        bVal = b.name;
-        break;
-      case 'albums':
-        aVal = a.albumCount;
-        bVal = b.albumCount;
-        break;
-      case 'tracks':
-        aVal = a.trackCount;
-        bVal = b.trackCount;
-        break;
-      default:
-        aVal = a.name;
-        bVal = b.name;
-    }
-    
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
+  const artists = useMemo(() => {
+    const artistsByName = new Map<string, { id: string; name: string; albums: Set<string>; tracks: Track[] }>();
+    tracks.forEach((track) => {
+      const id = track.artist.toLocaleLowerCase();
+      const artist = artistsByName.get(id) ?? { id, name: track.artist, albums: new Set<string>(), tracks: [] };
+      artist.albums.add(track.album.toLocaleLowerCase());
+      artist.tracks.push(track);
+      artistsByName.set(id, artist);
+    });
+    return Array.from(artistsByName.values());
+  }, [tracks]);
+
+  const sortedArtists = [...artists].sort((a, b) => {
+    const aValue = sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
+    const bValue = sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
+    const comparison = typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue));
+    return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  // Handle sort
-  const handleSort = (field: 'name' | 'albums' | 'tracks') => {
-    if (sortBy === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortDirection('asc');
-    }
-  };
-
   return (
-    <div className="artists-page">
-      <header className="page-header">
-        <h1>Artists</h1>
-        <p className="artist-count">{mockArtists.length} artists</p>
+    <div className='artists-page'>
+      <header className='page-header'>
+        <div>
+          <h1>Artists</h1>
+          <p className='artist-count'>{artists.length} artists</p>
+        </div>
+        {artists.length > 0 && (
+          <div className='sort-selector'>
+            <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
+            <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+              <option value='name'>Name</option>
+              <option value='albums'>Albums</option>
+              <option value='tracks'>Tracks</option>
+            </select>
+            <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
+              <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+            </button>
+          </div>
+        )}
       </header>
 
-      <div className="artists-grid">
-        {sortedArtists.map((artist) => (
-          <div key={artist.id} className="artist-card">
-            <div className="artist-image">
-              <img src={artist.image} alt={artist.name} />
-              <button className="play-button">
-                <span className="material-symbols-outlined">shuffle</span>
-              </button>
-            </div>
-            <div className="artist-info">
-              <h3 className="artist-name">{artist.name}</h3>
-              <p className="artist-stats">{artist.albumCount} albums • {artist.trackCount} tracks</p>
-              <div className="artist-toptracks">
-                {artist.topTracks.map((track, index) => (
-                  <span key={index} className="toptrack">{track}{index < artist.topTracks.length - 1 ? ', ' : ''}</span>
-                ))}
+      {artists.length === 0 ? (
+        <p className='library-message'>Artists from your indexed music folders will appear here.</p>
+      ) : (
+        <div className='artists-grid'>
+          {sortedArtists.map((artist) => (
+            <div key={artist.id} className='artist-card'>
+              <div className='artist-image artist-image-placeholder'>
+                <span className='material-symbols-outlined' aria-hidden='true'>person</span>
+                <button className='play-button' type='button' aria-label={`Play ${artist.name}`} onClick={() => onPlayTrack(artist.tracks[0])}>
+                  <span className='material-symbols-outlined'>play_arrow</span>
+                </button>
+              </div>
+              <div className='artist-info'>
+                <h3 className='artist-name'>{artist.name}</h3>
+                <p className='artist-stats'>{artist.albums.size} albums • {artist.tracks.length} tracks</p>
+                <div className='artist-toptracks'>
+                  {artist.tracks.slice(0, 3).map((track) => (
+                    <button key={track.id} type='button' className='artist-track-button' onClick={() => onPlayTrack(track)}>
+                      {track.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

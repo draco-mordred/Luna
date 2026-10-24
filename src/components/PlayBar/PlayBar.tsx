@@ -457,9 +457,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   <span className="material-symbols-outlined" aria-hidden="true">close</span>
                 </button>
               </div>
-              <p className="lyrics-text">
+              <p className="lyrics-text" dir="auto">
                 {track.syncedLyrics && track.syncedLyrics.length > 0 && showSyncedLyrics ? (
-                  <span className="synced-lyrics-line">
+                  <span className="synced-lyrics-line" dir="auto">
                     {visibleLyrics()}
                   </span>
                 ) : (

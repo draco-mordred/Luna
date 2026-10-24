@@ -57,6 +57,8 @@ npm run electron:dev
 ```
 On first launch, choose one or more music folders when prompted. Luna indexes supported audio files recursively and stores the folder list and track metadata in `music-library.json` under Electron's user data directory. On later launches, the cached library appears immediately while Luna checks saved folders in the background for added, changed, or removed tracks. App settings (theme, accent color, and last played track) are stored separately under Electron's user data directory. Windows uses a frameless custom title bar and can use the Windows accent color from **Settings → Appearance**. You can add folders from the Options menu or review saved locations and rescan from **Settings → Library**.
 
+Lyrics are read only from embedded lyric tags in audio files; unrelated comments, descriptions, and external sidecar files are not treated as lyrics. Text decoding supports Unicode byte-order marks and detected legacy encodings; lyric rendering supports right-to-left text and falls back to fonts available on the system for non-Latin scripts. Tracks with embedded timestamps are identified as synchronized lyrics.
+
 Use the **Tracks** view to play a track. The web-only `npm start` version cannot scan arbitrary folders on your computer; local-folder access requires Electron.
 The Material Symbols icon font is bundled with the app, so Electron can render icons without an internet connection.
 

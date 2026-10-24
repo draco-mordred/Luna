@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
 const { parseFile, selectCover } = require('music-metadata');
+const { extractEmbeddedLyrics } = require('./lyrics');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'luna-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
@@ -70,220 +71,13 @@ const readLibraryConfig = async () => {
   const library = await readJsonFile(getLibraryPath(), { folders: [], tracks: [] });
   return {
     folders: Array.isArray(library.folders) ? library.folders.filter(folder => typeof folder === 'string') : [],
-    tracks: Array.isArray(library.tracks) ? library.tracks : [],
-  };
-};
-
-const decodeTextBuffer = (buffer, fallback = 'utf8') => {
-  if (!Buffer.isBuffer(buffer)) return '';
-  if (buffer.length === 0) return '';
-
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-    try {
-      return buffer.toString('utf16le').replace(/\u0000+$/, '').trim();
-    } catch (error) {
-      return '';
-    }
-  }
-
-  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    try {
-      return buffer.toString('utf16be').replace(/\u0000+$/, '').trim();
-    } catch (error) {
-      return '';
-    }
-  }
-
-  const sample = buffer.subarray(0, Math.min(buffer.length, 64));
-  const hasUtf16Nulls = sample.some((byte, index) => index % 2 === 1 && byte === 0);
-  if (hasUtf16Nulls) {
-    try {
-      return buffer.toString('utf16le').replace(/\u0000+$/, '').trim();
-    } catch (error) {
-      return '';
-    }
-  }
-
-  const utf8Text = buffer.toString('utf8');
-  if (utf8Text.includes('\uFFFD')) {
-    const latin1Text = buffer.toString('latin1');
-    return latin1Text.replace(/\u0000/g, '').trim();
-  }
-
-  try {
-    const decoded = buffer.toString(fallback);
-    return decoded.replace(/\u0000/g, '').trim();
-  } catch (error) {
-    try {
-      return buffer.toString('latin1').replace(/\u0000/g, '').trim();
-    } catch (innerError) {
-      return '';
-    }
-  }
-};
-
-const normalizeTextValue = (value) => {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (Buffer.isBuffer(value)) return decodeTextBuffer(value).trim();
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => normalizeTextValue(entry))
-      .filter(Boolean)
-      .join('\n');
-  }
-  if (typeof value === 'object') {
-    if (typeof value.text === 'string') return value.text.trim();
-    if (typeof value.value === 'string') return value.value.trim();
-    if (typeof value.data === 'string') return value.data.trim();
-    if (Buffer.isBuffer(value.data)) return decodeTextBuffer(value.data).trim();
-    if (typeof value.description === 'string' && !/lyrics/i.test(value.description)) {
-      return value.description.trim();
-    }
-  }
-  return '';
-};
-
-const parseTimestampToSeconds = (token) => {
-  if (typeof token !== 'string') return null;
-
-  const normalized = token.trim().replace(/\[,]/g, '.').replace(/\[|\]/g, '');
-  if (!normalized) return null;
-
-  const parts = normalized.split(':');
-  if (parts.length < 2 || parts.length > 3) return null;
-
-  try {
-    const values = parts.map((part) => Number.parseFloat(part));
-    if (values.some((value) => !Number.isFinite(value))) return null;
-
-    if (parts.length === 2) {
-      return values[0] * 60 + values[1];
-    }
-
-    return values[0] * 3600 + values[1] * 60 + values[2];
-  } catch (error) {
-    return null;
-  }
-};
-
-const parseSyncedLyrics = (rawText) => {
-  if (typeof rawText !== 'string') return [];
-
-  const lines = rawText.replace(/\r/g, '').split(/\n+/);
-  const cues = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    const openBracketMatches = [...trimmed.matchAll(/\[(\d{1,2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}(?:[.,]\d{1,3})?\s*\+\d{2}?:\d{2})\]/g)];
-
-    if (openBracketMatches.length > 0) {
-      for (const match of openBracketMatches) {
-        const timestampToken = match[1];
-        const time = parseTimestampToSeconds(timestampToken);
-        const valueAfter = trimmed.slice(match.index + match[0].length).trim();
-        if (Number.isFinite(time) && valueAfter) {
-          cues.push({ time, text: valueAfter });
-        }
-      }
-      continue;
-    }
-
-    const vttMatch = trimmed.match(/^(\d{1,2}:\d{2}:\d{2}[.,]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[.,]\d{1,3})\s*$/);
-    if (vttMatch) {
-      continue;
-    }
-
-    const promptMatch = trimmed.match(/^(\d{1,2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)(?:\s*[-–:]\s*|\s+)(.+)$/);
-    if (promptMatch) {
-      const time = parseTimestampToSeconds(promptMatch[1]);
-      const text = promptMatch[2].trim();
-      if (Number.isFinite(time) && text) {
-        cues.push({ time, text });
-      }
-    }
-  }
-
-  return cues
-    .filter((entry) => entry && entry.text)
-    .sort((a, b) => a.time - b.time);
-};
-
-const extractLyrics = (metadata) => {
-  const flattenValues = (value, result = []) => {
-    if (value == null) return result;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed) result.push(trimmed);
-      return result;
-    }
-    if (Buffer.isBuffer(value)) {
-      const decoded = value.toString('utf8').trim();
-      if (decoded) result.push(decoded);
-      return result;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item) => flattenValues(item, result));
-      return result;
-    }
-    if (typeof value === 'object') {
-      if (typeof value.text === 'string') {
-        const trimmed = value.text.trim();
-        if (trimmed) result.push(trimmed);
-      }
-      if (typeof value.value === 'string') {
-        const trimmed = value.value.trim();
-        if (trimmed) result.push(trimmed);
-      }
-      if (typeof value.description === 'string') {
-        const trimmed = value.description.trim();
-        if (trimmed && !/lyrics/i.test(trimmed)) result.push(trimmed);
-      }
-      if (typeof value.data === 'string') {
-        const trimmed = value.data.trim();
-        if (trimmed) result.push(trimmed);
-      }
-      Object.values(value).forEach((item) => flattenValues(item, result));
-    }
-    return result;
-  };
-
-  const rawValues = [
-    metadata?.common?.lyrics,
-    metadata?.common?.comment,
-    metadata?.native,
-    metadata?.common?.description,
-  ].flatMap((value) => flattenValues(value));
-
-  const decodedRawValues = rawValues
-    .map((value) => {
-      const normalized = normalizeTextValue(value);
-      return normalized || undefined;
-    })
-    .filter((value) => typeof value === 'string' && value.trim().length > 0);
-
-  const syncedLyrics = decodedRawValues.flatMap((value) => parseSyncedLyrics(value));
-  const dedupedSyncedLyrics = [];
-  const seenSyncedKeys = new Set();
-
-  for (const entry of syncedLyrics) {
-    const key = `${entry.time.toFixed(3)}::${entry.text}`;
-    if (!seenSyncedKeys.has(key)) {
-      dedupedSyncedLyrics.push(entry);
-      seenSyncedKeys.add(key);
-    }
-  }
-
-  const plainText = decodedRawValues
-    .filter((value) => !/\[(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?\]/.test(value))
-    .filter((value, index, array) => array.indexOf(value) === index)
-    .join('\n\n');
-
-  return {
-    lyrics: plainText || undefined,
-    syncedLyrics: dedupedSyncedLyrics.length > 0 ? dedupedSyncedLyrics : undefined,
+    tracks: Array.isArray(library.tracks)
+      ? library.tracks.map((track) => (
+        track && track.metadataVersion < 5
+          ? { ...track, lyrics: undefined, syncedLyrics: undefined }
+          : track
+      ))
+      : [],
   };
 };
 
@@ -389,7 +183,7 @@ const scanMusicFolders = async (folders, cachedTracks = []) => {
 
   const shouldReuseCachedTrack = (cachedTrack, stat) => (
     cachedTrack
-    && cachedTrack.metadataVersion >= 2
+    && cachedTrack.metadataVersion >= 5
     && cachedTrack.size === stat.size
     && cachedTrack.lastModified === stat.mtimeMs
     && typeof cachedTrack.path === 'string'
@@ -443,7 +237,7 @@ const scanMusicFolders = async (folders, cachedTracks = []) => {
         } catch (error) {
           console.warn(`Could not cache embedded artwork for "${entryPath}":`, error.message);
         }
-        const lyricData = extractLyrics(metadata);
+        const lyricData = extractEmbeddedLyrics(metadata);
 
         tracks.push({
           id: entryPath,
@@ -456,7 +250,7 @@ const scanMusicFolders = async (folders, cachedTracks = []) => {
           albumArt,
           lyrics: lyricData.lyrics,
           syncedLyrics: lyricData.syncedLyrics,
-          metadataVersion: 2,
+          metadataVersion: 5,
           duration: metadata?.format?.duration || 0,
           trackNumber: common.track?.no || undefined,
           year: common.year || undefined,
@@ -494,8 +288,8 @@ const removeStaleMetadataCache = async () => {
 
     const updatedTracks = library.tracks.map((track) => {
       if (!track || typeof track.path !== 'string') return track;
-      if (track.metadataVersion === 1 || track.metadataVersion === undefined) {
-        return { ...track, metadataVersion: 2, lyrics: undefined };
+      if (track.metadataVersion < 5 || track.metadataVersion === undefined) {
+        return { ...track, metadataVersion: 4, lyrics: undefined, syncedLyrics: undefined };
       }
       return track;
     });

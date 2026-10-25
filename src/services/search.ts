@@ -1,4 +1,5 @@
 import type { Track } from './MusicLibrary';
+import { splitArtistCredits } from '../utils/artistCredits';
 
 export interface SearchItem {
   id: string;
@@ -54,16 +55,18 @@ export const buildSearchGroups = (tracks: Track[], query: string): SearchGroup[]
 
   const artistMap = new Map<string, SearchItem>();
   tracks.forEach((track) => {
-    const artistKey = track.artist || 'Unknown artist';
-    if (!artistMap.has(artistKey) && matchesQuery(track.artist, normalizedQuery)) {
-      artistMap.set(artistKey, {
-        id: artistKey,
-        type: 'artist',
-        title: artistKey,
-        subtitle: `${(track.album || 'Unknown album')} · ${track.genre || 'Unspecified genre'}`,
-        track,
-      });
-    }
+    splitArtistCredits(track.artist || 'Unknown artist').forEach((artistName) => {
+      const artistKey = artistName.toLocaleLowerCase();
+      if (!artistMap.has(artistKey) && matchesQuery(artistName, normalizedQuery)) {
+        artistMap.set(artistKey, {
+          id: artistKey,
+          type: 'artist',
+          title: artistName,
+          subtitle: `${(track.album || 'Unknown album')} · ${track.genre || 'Unspecified genre'}`,
+          track,
+        });
+      }
+    });
   });
 
   const genreMap = new Map<string, SearchItem>();

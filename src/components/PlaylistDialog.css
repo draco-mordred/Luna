@@ -1,0 +1,101 @@
+.playlist-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.playlist-dialog {
+  width: min(100%, 420px);
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
+}
+
+.playlist-dialog h2 {
+  margin: 0 0 14px;
+  font-size: 1.25rem;
+}
+
+.playlist-dialog p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.playlist-dialog input,
+.playlist-dialog select {
+  width: 100%;
+  min-height: 42px;
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.playlist-dialog input:focus,
+.playlist-dialog select:focus {
+  border-color: var(--system-accent);
+  outline: 2px solid color-mix(in srgb, var(--system-accent) 28%, transparent);
+}
+
+.playlist-dialog-error {
+  color: #e45656 !important;
+  font-size: 0.88rem;
+}
+
+.playlist-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.playlist-dialog-actions button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.playlist-dialog-secondary {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.playlist-dialog-primary {
+  border-color: var(--system-accent) !important;
+  background: var(--system-accent);
+  color: var(--text-on-accent);
+}
+
+.playlist-dialog-danger {
+  border-color: #e45656 !important;
+  background: #e45656;
+  color: #fff;
+}
+
+.playlist-dialog-actions button:hover {
+  filter: brightness(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playlist-dialog-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

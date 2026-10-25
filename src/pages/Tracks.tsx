@@ -1,5 +1,9 @@
-import { useMemo, useState } from 'react';
-import type { Track } from '../services/MusicLibrary';
+import { memo, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { Playlist, Track } from '../services/MusicLibrary';
+import TrackQueueContextMenu from '../components/TrackQueueContextMenu';
+import { splitArtistCredits } from '../utils/artistCredits';
+import { getLibraryItemHash } from '../utils/libraryNavigation';
 import './Tracks.css';
 
 type SortField = 'name' | 'artist' | 'album' | 'genre' | 'year' | 'duration';
@@ -11,23 +15,117 @@ const formatDuration = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+interface TrackRowProps {
+  track: Track;
+  index: number;
+  isPlaying: boolean;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  queueTracks: Track[];
+}
+
+const TrackRow = memo(({ track, index, isPlaying, onPlayTrack, queueTracks }: TrackRowProps) => {
+  const navigate = useNavigate();
+  return (
+    <div
+      data-track-id={track.id}
+      className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}`}
+    >
+      <span className='track-number' aria-hidden='true'>{index + 1}</span>
+      <div className='track-title-cell'>
+        <div className='track-art-thumb'>
+          {track.albumArt ? (
+            <img src={track.albumArt} alt='' loading='lazy' decoding='async' />
+          ) : (
+            <span className='material-symbols-outlined' aria-hidden='true'>music_note</span>
+          )}
+          <button
+            className='track-art-play'
+            type='button'
+            aria-label={`Play ${track.name}`}
+            onClick={() => onPlayTrack(track, queueTracks)}
+          >
+            <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
+          </button>
+        </div>
+        <button
+          className='track-name track-play-button'
+          type='button'
+          title={`Play ${track.name}`}
+          onClick={() => onPlayTrack(track, queueTracks)}
+        >
+          {track.name}
+        </button>
+      </div>
+      <div className='track-artist' title={track.artist}>
+        {splitArtistCredits(track.artist).map((artist, artistIndex) => (
+          <span className='track-artist-credit' key={`${artist.toLocaleLowerCase()}-${artistIndex}`}>
+            {artistIndex > 0 && <span className='track-artist-separator' aria-hidden='true'>, </span>}
+            <button
+              className='track-library-link'
+              type='button'
+              title={`View artist ${artist}`}
+              onClick={() => navigate(`/artists${getLibraryItemHash('artist', artist)}`)}
+            >
+              {artist}
+            </button>
+          </span>
+        ))}
+      </div>
+      <button
+        className='track-album track-library-link'
+        type='button'
+        title={`View album ${track.album}`}
+        onClick={() => navigate(`/albums${getLibraryItemHash('album', track.album, track.artist)}`)}
+      >
+        {track.album}
+      </button>
+      {track.genre ? (
+        <button
+          className='track-genre track-library-link'
+          type='button'
+          title={`View genre ${track.genre}`}
+          onClick={() => navigate(`/genres${getLibraryItemHash('genre', track.genre ?? '')}`)}
+        >
+          {track.genre}
+        </button>
+      ) : (
+        <div className='track-genre' title=''>—</div>
+      )}
+      <div className='track-year'>{track.year || '—'}</div>
+      <div className='track-duration'>{formatDuration(track.duration)}</div>
+    </div>
+  );
+});
+
 interface TracksPageProps {
   tracks: Track[];
   selectedTrackId: string | null;
+  isPlaying: boolean;
   isLoading: boolean;
   libraryError: string | null;
   isDesktopApp: boolean;
-  onPlayTrack: (track: Track) => void;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  onShufflePlay: (tracks: Track[]) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  playlists: Playlist[];
+  onAddTracksToPlaylist: (playlistId: string, tracks: Track[]) => void;
+  onEditTrack?: (track: Track) => void;
   onAddMusicFolder: () => void;
 }
 
 const TracksPage = ({
   tracks,
   selectedTrackId,
+  isPlaying,
   isLoading,
   libraryError,
   isDesktopApp,
   onPlayTrack,
+  onShufflePlay,
+  onQueueTracks,
+  playlists,
+  onAddTracksToPlaylist,
+  onEditTrack,
   onAddMusicFolder,
 }: TracksPageProps) => {
   const [sortBy, setSortBy] = useState<SortField>('name');
@@ -52,45 +150,33 @@ const TracksPage = ({
     }
   };
 
-  const trackRows = useMemo(() => sortedTracks.map((track, index) => (
-    <div
+  const trackRows = sortedTracks.map((track, index) => (
+    <TrackRow
       key={track.id}
-      className={`track-item ${selectedTrackId === track.id ? 'selected' : ''}`}
-    >
-      <span className='track-number' aria-hidden='true'>{index + 1}</span>
-      <div className='track-title-cell'>
-        <div className='track-art-thumb' aria-hidden='true'>
-          {track.albumArt ? (
-            <img src={track.albumArt} alt='' loading='lazy' decoding='async' />
-          ) : (
-            <span className='material-symbols-outlined'>music_note</span>
-          )}
-        </div>
-        <button
-          className='track-name track-play-button'
-          type='button'
-          title={`Play ${track.name}`}
-          onClick={() => onPlayTrack(track)}
-        >
-          {track.name}
-        </button>
-      </div>
-      <div className='track-artist' title={track.artist}>{track.artist}</div>
-      <div className='track-album' title={track.album}>{track.album}</div>
-      <div className='track-genre' title={track.genre || ''}>{track.genre || '—'}</div>
-      <div className='track-year'>{track.year || '—'}</div>
-      <div className='track-duration'>{formatDuration(track.duration)}</div>
-      <button className='track-menu' type='button' aria-label={`More options for ${track.name}`}>
-        <span className='material-symbols-outlined'>more_vert</span>
-      </button>
-    </div>
-  )), [onPlayTrack, selectedTrackId, sortedTracks]);
+      track={track}
+      index={index}
+      isPlaying={selectedTrackId === track.id && isPlaying}
+      onPlayTrack={onPlayTrack}
+      queueTracks={sortedTracks}
+    />
+  ));
 
   return (
     <div className='tracks-page'>
       <header className='page-header'>
-        <h1>Tracks</h1>
-        <p className='track-count'>{tracks.length} tracks</p>
+        <div>
+          <h1>Tracks</h1>
+          <p className='track-count'>{tracks.length} tracks</p>
+        </div>
+        <button
+          className='shuffle-play-button'
+          type='button'
+          disabled={tracks.length === 0 || isLoading}
+          onClick={() => onShufflePlay(sortedTracks)}
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+          Shuffle &amp; Play
+        </button>
       </header>
 
       {libraryError && <p className='library-message library-error' role='alert'>{libraryError}</p>}
@@ -145,9 +231,15 @@ const TracksPage = ({
             <span aria-hidden='true' />
           </div>
 
-          <div className='track-list'>
-            {trackRows}
-          </div>
+          <TrackQueueContextMenu
+            tracks={sortedTracks}
+            onQueueTracks={onQueueTracks}
+            playlists={playlists}
+            onAddTracksToPlaylist={onAddTracksToPlaylist}
+            onEditTrack={isDesktopApp ? onEditTrack : undefined}
+          >
+            <div className='track-list'>{trackRows}</div>
+          </TrackQueueContextMenu>
         </>
       )}
     </div>

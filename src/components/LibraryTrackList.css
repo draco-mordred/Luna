@@ -1,0 +1,64 @@
+.library-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 12px 12px;
+  list-style: none;
+}
+
+.library-track-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 2fr) minmax(0, 1.5fr) 48px 44px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.library-track-row:hover,
+.library-track-row:focus-visible {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.library-track-number,
+.library-track-year,
+.library-track-duration {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.library-track-title,
+.library-track-artist {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-track-year,
+.library-track-duration {
+  text-align: right;
+}
+
+@media (max-width: 520px) {
+  .library-track-row {
+    grid-template-columns: 24px minmax(0, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .library-track-artist,
+  .library-track-year {
+    display: none;
+  }
+}

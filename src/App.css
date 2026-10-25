@@ -130,8 +130,11 @@ html, body, #root {
   width: 100%;
 }
 
-body {
+html, body, #root {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -194,7 +197,11 @@ select {
 
 @media (max-width: 768px) {
   .main-area{
-    left: 65px
+    left: 58px;
+    right: 4px;
+    position: absolute;
+    top: 0px;
+    bottom: 0;
   }
 }
 
@@ -205,25 +212,61 @@ select {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
+  padding-top: 140px;
   padding-bottom: var(--playbar-collapsed-height);
 }
 
+.shuffle-play-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--system-accent) 55%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--system-accent) 14%, var(--bg-secondary));
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.shuffle-play-button:hover:not(:disabled) {
+  border-color: var(--system-accent);
+  background: color-mix(in srgb, var(--system-accent) 24%, var(--bg-secondary));
+  transform: translateY(-1px);
+}
+
+.shuffle-play-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.shuffle-play-button .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
 .page-transition {
-  animation: page-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+  animation: page-enter 120ms ease-out both;
 }
 
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translate3d(0, 6px, 0);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .shuffle-play-button {
+    transition: none;
+  }
+
   .page-transition {
     animation: none;
   }
@@ -231,8 +274,14 @@ select {
 
 .section-placeholder {
   min-height: 100%;
-  padding: 136px 24px 24px;
+  padding: 24px;
   color: var(--text-primary);
+}
+
+@media (max-width: 600px) {
+  .page-content {
+    padding-top: 112px;
+  }
 }
 
 .section-placeholder h2 {
@@ -315,6 +364,34 @@ select {
   direction: ltr;
   -webkit-font-smoothing: antialiased;
   line-height: 1;
+}
+
+html[data-icon-style='windows'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-family: 'Material Symbols Sharp';
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24 !important;
+}
+
+html[data-icon-style='apple'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon),
+html[data-icon-style='round-filled'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon),
+html[data-icon-style='round-outline'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-family: 'Material Symbols Rounded';
+}
+
+html[data-icon-style='vlc'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-family: 'Material Symbols Sharp';
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24 !important;
+}
+
+html[data-icon-style='apple'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24 !important;
+}
+
+html[data-icon-style='round-filled'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+}
+
+html[data-icon-style='round-outline'] :is(.material-symbols-outlined, .nav-icon, .logo-icon, .playlist-icon) {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
 }
 
 /* Link Styles */

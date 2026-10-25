@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import '@fontsource/material-symbols-outlined/400.css';
+import '@fontsource/material-symbols-rounded/400.css';
+import '@fontsource/material-symbols-sharp/400.css';
 import '@fontsource/poppins/latin-300.css';
 import '@fontsource/poppins/latin-400.css';
 import '@fontsource/poppins/latin-500.css';

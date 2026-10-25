@@ -1,18 +1,59 @@
-import type { Track } from '../services/MusicLibrary';
+import type { Playlist, Track } from '../services/MusicLibrary';
 
 export interface MusicLibraryResponse {
   folders: string[];
   tracks: Track[];
   errors: string[];
   initialScan?: boolean;
+  playlists?: Playlist[];
+}
+
+export interface TrackMetadataUpdate {
+  title: string;
+  artist: string;
+  album: string;
+  albumArtist: string;
+  composer: string;
+  genre: string;
+  comment: string;
+  year: number | null;
+  trackNumber: number | null;
+  discNumber: number | null;
+  lyrics: string;
+  albumArtBase64?: string | null;
+  albumArtMimeType?: string;
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
+export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
+export type VisualizerStyle =
+  | 'wave-smooth'
+  | 'wave-sharp'
+  | 'wave-organic'
+  | 'bars-thin'
+  | 'bars-rounded'
+  | 'bars-outline'
+  | 'bars-alternating'
+  | 'bars-dense'
+  | 'bars-pill';
 
 export interface AppSettings {
   themeMode: ThemeMode;
   accentColor: string;
   lastPlayedTrackPath: string | null;
+  crossfadeSeconds: number;
+  iconStyle: IconStyle;
+  seekbarStyle: SeekbarStyle;
+  visualizerStyle: VisualizerStyle;
+  showVisualizer: boolean;
+  showArtistImageBackground: boolean;
+  showLyrics: boolean;
+  isShuffled: boolean;
+  repeatMode: 'off' | 'one' | 'all';
+  showBrowseSection: boolean;
+  showRadioSection: boolean;
+  showSpotifySection: boolean;
   systemTheme: 'light' | 'dark';
   systemAccentColor: string | null;
   platform: string;
@@ -29,10 +70,36 @@ declare global {
       closeWindow: () => Promise<void>;
       loadMusicLibrary: () => Promise<MusicLibraryResponse>;
       loadAppSettings: () => Promise<AppSettings>;
-      saveAppSettings: (settings: Partial<Pick<AppSettings, 'themeMode' | 'accentColor' | 'lastPlayedTrackPath'>>) => Promise<AppSettings>;
+      savePlaylists: (playlists: Playlist[]) => Promise<Playlist[]>;
+      saveAppSettings: (
+        settings: Partial<
+          Pick<
+            AppSettings,
+            | 'themeMode'
+            | 'accentColor'
+            | 'lastPlayedTrackPath'
+            | 'crossfadeSeconds'
+            | 'iconStyle'
+            | 'seekbarStyle'
+            | 'visualizerStyle'
+            | 'showVisualizer'
+            | 'showArtistImageBackground'
+            | 'showLyrics'
+            | 'isShuffled'
+            | 'repeatMode'
+            | 'showBrowseSection'
+            | 'showRadioSection'
+            | 'showSpotifySection'
+          >
+        >
+      ) => Promise<AppSettings>;
       selectMusicFolders: () => Promise<MusicLibraryResponse | null>;
       rescanMusicLibrary: () => Promise<MusicLibraryResponse>;
       removeMusicFolder: (folder: string) => Promise<MusicLibraryResponse>;
+      saveTrackMetadata: (
+        trackPath: string,
+        metadata: TrackMetadataUpdate
+      ) => Promise<MusicLibraryResponse>;
       onWindowStateChanged: (callback: (isMaximized: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
     };

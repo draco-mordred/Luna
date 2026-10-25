@@ -169,13 +169,22 @@ const extractEmbeddedLyrics = (metadata) => {
       .flatMap((tag) => extractLyricTextValues(tag.value)),
   ].filter((value, index, values) => values.indexOf(value) === index);
 
-  const syncedLyrics = lyricValues.flatMap(parseSyncedLyrics);
-  const uniqueSyncedLyrics = syncedLyrics.filter((line, index, lines) => lines.findIndex((candidate) => (
-    candidate.time.toFixed(3) === line.time.toFixed(3) && candidate.text === line.text
-  )) === index);
+  const parsedLyricValues = lyricValues.map((value) => ({
+    value,
+    cues: parseSyncedLyrics(value),
+  }));
+  const syncedLyrics = parsedLyricValues.flatMap(({ cues }) => cues);
+  const seenCues = new Set();
+  const uniqueSyncedLyrics = syncedLyrics.filter((line) => {
+    const key = `${line.time.toFixed(3)}\0${line.text}`;
+    if (seenCues.has(key)) return false;
+    seenCues.add(key);
+    return true;
+  });
 
-  const plainLyrics = lyricValues
-    .filter((value) => parseSyncedLyrics(value).length === 0)
+  const plainLyrics = parsedLyricValues
+    .filter(({ cues }) => cues.length === 0)
+    .map(({ value }) => value)
     .join('\n\n');
 
   return {

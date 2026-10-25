@@ -2,14 +2,17 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import { buildSearchGroups } from '../services/search';
+import QueueContextMenu from '../components/QueueContextMenu';
+import { artistCreditIncludes } from '../utils/artistCredits';
 import './Search.css';
 
 interface SearchPageProps {
   tracks: Track[];
-  onPlayTrack: (track: Track) => void;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-const SearchPage = ({ tracks, onPlayTrack }: SearchPageProps) => {
+const SearchPage = ({ tracks, onPlayTrack, onQueueTracks }: SearchPageProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showAllByGroup, setShowAllByGroup] = useState<Record<string, boolean>>({});
   const query = searchParams.get('q') ?? '';
@@ -77,26 +80,36 @@ const SearchPage = ({ tracks, onPlayTrack }: SearchPageProps) => {
                   <p className="search-group-empty">No matches found.</p>
                 ) : (
                   <div className="search-grid">
-                    {visibleItems.map((item) => (
-                      <button
-                        key={`${group.title}-${item.id}`}
-                        type="button"
-                        className="search-result-card"
-                        onClick={() => {
-                          if (item.type === 'track' && item.track) {
-                            onPlayTrack(item.track);
-                          }
-                        }}
-                      >
-                        <span className="material-symbols-outlined result-icon">
-                          {item.type === 'track' ? 'music_note' : item.type === 'album' ? 'album' : item.type === 'artist' ? 'person' : 'tag'}
-                        </span>
-                        <div className="result-copy">
-                          <strong>{item.title}</strong>
-                          <span>{item.subtitle}</span>
-                        </div>
-                      </button>
-                    ))}
+                    {visibleItems.map((item) => {
+                      const queueTracks = item.type === 'track' && item.track
+                        ? [item.track]
+                        : item.type === 'album'
+                          ? tracks.filter((track) => track.album === item.title && track.artist === item.subtitle)
+                          : item.type === 'artist'
+                            ? tracks.filter((track) => artistCreditIncludes(track.artist, item.title))
+                            : tracks.filter((track) => track.genre === item.title);
+                      return (
+                        <QueueContextMenu key={`${group.title}-${item.id}`} tracks={queueTracks} onQueueTracks={onQueueTracks}>
+                          <button
+                            type="button"
+                            className="search-result-card"
+                            onClick={() => {
+                              if (item.type === 'track' && item.track) {
+                                onPlayTrack(item.track, searchGroups[0].items.flatMap((trackItem) => trackItem.track ? [trackItem.track] : []));
+                              }
+                            }}
+                          >
+                            <span className="material-symbols-outlined result-icon">
+                              {item.type === 'track' ? 'music_note' : item.type === 'album' ? 'album' : item.type === 'artist' ? 'person' : 'tag'}
+                            </span>
+                            <div className="result-copy">
+                              <strong>{item.title}</strong>
+                              <span>{item.subtitle}</span>
+                            </div>
+                          </button>
+                        </QueueContextMenu>
+                      );
+                    })}
                   </div>
                 )}
               </section>

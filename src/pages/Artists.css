@@ -3,11 +3,22 @@
 .artists-page {
   width: 100%;
   min-height: 100%;
-  padding: 136px 24px 24px;
+  padding: 24px;
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+.artists-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .page-header h1 {
@@ -35,6 +46,13 @@
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  scroll-margin-block: 24px;
+}
+
+.artist-card:target,
+.artist-card:focus-visible {
+  outline: 2px solid var(--system-accent);
+  outline-offset: 3px;
 }
 
 .artist-card:hover {
@@ -133,6 +151,12 @@
   text-overflow: ellipsis;
 }
 
+.artist-info .collection-expand-title {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .artist-stats {
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -167,11 +191,15 @@
 
 @media (max-width: 600px) {
   .artists-page {
-    padding: 128px 16px 16px;
+    padding: 16px;
   }
   
   .page-header h1 {
     font-size: 1.5rem;
+  }
+
+  .artists-header-actions {
+    flex-wrap: wrap;
   }
   
   .artists-grid {

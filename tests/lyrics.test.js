@@ -92,6 +92,13 @@ test('tracks are only marked as synced when an embedded lyric field contains tim
   ]);
 });
 
+test('deduplicates large repeated synchronized lyric cue sets', () => {
+  const repeatedCues = Array.from({ length: 3000 }, () => '[00:01.00]Repeated lyric').join('\n');
+  const result = extractEmbeddedLyrics({ common: { lyrics: [repeatedCues] } });
+
+  assert.deepEqual(result.syncedLyrics, [{ time: 1, text: 'Repeated lyric' }]);
+});
+
 test('returns no lyrics when embedded lyric fields are absent', () => {
   const result = extractEmbeddedLyrics({
     common: {

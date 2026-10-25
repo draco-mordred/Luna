@@ -3,7 +3,7 @@
 .composer-page {
   width: 100%;
   min-height: 100%;
-  padding: 136px 24px 24px;
+  padding: 24px;
 }
 
 .page-header {
@@ -168,7 +168,7 @@
 
 @media (max-width: 600px) {
   .composer-page {
-    padding: 128px 16px 16px;
+    padding: 16px;
   }
   
   .page-header h1 {

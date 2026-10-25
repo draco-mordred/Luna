@@ -11,14 +11,15 @@ interface TopNavbarProps {
   onRescanMusicLibrary: () => Promise<MusicLibraryResponse>;
 }
 
-type Section = 'library' | 'browse' | 'radio' | 'spotify' | 'search' | 'settings';
-type TabType = 'tracks' | 'albums' | 'artists' | 'composer';
+type Section = 'library' | 'browse' | 'radio' | 'spotify' | 'search' | 'settings' | 'playlists';
+type TabType = 'tracks' | 'albums' | 'artists' | 'composer' | 'genres';
 
 const LIBRARY_TABS: Array<{ id: TabType; label: string; icon: string }> = [
   { id: 'tracks', label: 'Tracks', icon: 'music_note' },
   { id: 'albums', label: 'Albums', icon: 'album' },
   { id: 'artists', label: 'Artists', icon: 'person' },
   { id: 'composer', label: 'Composers', icon: 'edit_note' },
+  { id: 'genres', label: 'Genres', icon: 'style' },
 ];
 
 const SECTION_TITLES: Record<Section, string> = {
@@ -28,6 +29,7 @@ const SECTION_TITLES: Record<Section, string> = {
   spotify: 'Spotify',
   search: 'Search',
   settings: 'Settings',
+  playlists: 'Playlists',
 };
 
 const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNavbarProps) => {
@@ -51,6 +53,8 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
       ? 'library'
       : path.startsWith('settings')
         ? 'settings'
+        : path === 'playlists'
+          ? 'playlists'
         : path === 'browse' || path === 'radio' || path === 'spotify' || path === 'search'
           ? path
           : 'library';
@@ -275,7 +279,13 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
                   </button>
                 </li>
                 <li className="menu-item">
-                  <button className="menu-button">
+                  <button
+                    className="menu-button"
+                    onClick={() => {
+                      setShowSettingsMenu(false);
+                      navigate('/settings/about');
+                    }}
+                  >
                     <span className="material-symbols-outlined">info</span>
                     <span>About</span>
                   </button>

@@ -1,26 +1,103 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
+import QueueContextMenu from '../components/QueueContextMenu';
+import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
+import { sortCollectionTracks } from '../utils/sortCollectionTracks';
+import { splitArtistCredits } from '../utils/artistCredits';
+import { useArtistImage } from '../services/artistImages';
 import './Artists.css';
+
+interface ArtistCardProps {
+  artist: {
+    id: string;
+    name: string;
+    albums: Set<string>;
+    tracks: Track[];
+  };
+  onOpen: () => void;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+}
+
+const ArtistCard = ({ artist, onOpen, onPlayTrack }: ArtistCardProps) => {
+  const { elementRef, imageUrl } = useArtistImage(artist.name, { loadWhenVisible: true });
+
+  return (
+    <div
+      ref={elementRef}
+      id={getLibraryItemHash('artist', artist.name).slice(1)}
+      className='artist-card'
+      role='link'
+      tabIndex={0}
+      aria-label={`Open ${artist.name}`}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('button')) return;
+        onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onOpen();
+      }}
+    >
+      <div className={`artist-image ${imageUrl ? '' : 'artist-image-placeholder'}`}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={`${artist.name}`} loading='lazy' decoding='async' />
+        ) : (
+          <span className='material-symbols-outlined' aria-hidden='true'>person</span>
+        )}
+        <button className='play-button' type='button' aria-label={`Play ${artist.name}`} onClick={(event) => {
+          event.stopPropagation();
+          onPlayTrack(artist.tracks[0], artist.tracks);
+        }}>
+          <span className='material-symbols-outlined'>play_arrow</span>
+        </button>
+      </div>
+      <div className='artist-info'>
+        <button
+          type='button'
+          className='collection-expand-title'
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+        >
+          <span className='artist-name'>{artist.name}</span>
+        </button>
+        <p className='artist-stats'>{artist.albums.size} albums • {artist.tracks.length} tracks</p>
+      </div>
+    </div>
+  );
+};
 
 interface ArtistsPageProps {
   tracks: Track[];
-  onPlayTrack: (track: Track) => void;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  onShufflePlay: (tracks: Track[]) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-const ArtistsPage = ({ tracks, onPlayTrack }: ArtistsPageProps) => {
+const ArtistsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const navigate = useNavigate();
+  useScrollToLibraryItem();
 
   const artists = useMemo(() => {
     const artistsByName = new Map<string, { id: string; name: string; albums: Set<string>; tracks: Track[] }>();
     tracks.forEach((track) => {
-      const id = track.artist.toLocaleLowerCase();
-      const artist = artistsByName.get(id) ?? { id, name: track.artist, albums: new Set<string>(), tracks: [] };
-      artist.albums.add(track.album.toLocaleLowerCase());
-      artist.tracks.push(track);
-      artistsByName.set(id, artist);
+      splitArtistCredits(track.artist).forEach((artistName) => {
+        const id = artistName.toLocaleLowerCase();
+        const artist = artistsByName.get(id) ?? { id, name: artistName, albums: new Set<string>(), tracks: [] };
+        artist.albums.add(track.album.toLocaleLowerCase());
+        artist.tracks.push(track);
+        artistsByName.set(id, artist);
+      });
     });
-    return Array.from(artistsByName.values());
+    return Array.from(artistsByName.values()).map((artist) => ({
+      ...artist,
+      tracks: sortCollectionTracks(artist.tracks),
+    }));
   }, [tracks]);
 
   const sortedArtists = [...artists].sort((a, b) => {
@@ -39,19 +116,30 @@ const ArtistsPage = ({ tracks, onPlayTrack }: ArtistsPageProps) => {
           <h1>Artists</h1>
           <p className='artist-count'>{artists.length} artists</p>
         </div>
-        {artists.length > 0 && (
-          <div className='sort-selector'>
-            <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
-            <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
-              <option value='name'>Name</option>
-              <option value='albums'>Albums</option>
-              <option value='tracks'>Tracks</option>
-            </select>
-            <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
-              <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
-            </button>
-          </div>
-        )}
+        <div className='artists-header-actions'>
+          <button
+            className='shuffle-play-button'
+            type='button'
+            disabled={tracks.length === 0}
+            onClick={() => onShufflePlay(tracks)}
+          >
+            <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+            Shuffle &amp; Play
+          </button>
+          {artists.length > 0 && (
+            <div className='sort-selector'>
+              <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
+              <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+                <option value='name'>Name</option>
+                <option value='albums'>Albums</option>
+                <option value='tracks'>Tracks</option>
+              </select>
+              <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
+                <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {artists.length === 0 ? (
@@ -59,25 +147,13 @@ const ArtistsPage = ({ tracks, onPlayTrack }: ArtistsPageProps) => {
       ) : (
         <div className='artists-grid'>
           {sortedArtists.map((artist) => (
-            <div key={artist.id} className='artist-card'>
-              <div className='artist-image artist-image-placeholder'>
-                <span className='material-symbols-outlined' aria-hidden='true'>person</span>
-                <button className='play-button' type='button' aria-label={`Play ${artist.name}`} onClick={() => onPlayTrack(artist.tracks[0])}>
-                  <span className='material-symbols-outlined'>play_arrow</span>
-                </button>
-              </div>
-              <div className='artist-info'>
-                <h3 className='artist-name'>{artist.name}</h3>
-                <p className='artist-stats'>{artist.albums.size} albums • {artist.tracks.length} tracks</p>
-                <div className='artist-toptracks'>
-                  {artist.tracks.slice(0, 3).map((track) => (
-                    <button key={track.id} type='button' className='artist-track-button' onClick={() => onPlayTrack(track)}>
-                      {track.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
+              <ArtistCard
+                artist={artist}
+                onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
+                onPlayTrack={onPlayTrack}
+              />
+            </QueueContextMenu>
           ))}
         </div>
       )}

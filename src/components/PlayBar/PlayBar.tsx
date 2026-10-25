@@ -1,19 +1,22 @@
-import { useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import AudioVisualizer from './AudioVisualizer';
+import { useArtistImage } from '../../services/artistImages';
+import { splitArtistCredits } from '../../utils/artistCredits';
 import './PlayBar.css';
+import type { VisualizerStyle } from '../../types/electron';
+import type { Track } from '../../services/MusicLibrary';
 
 const COLLAPSED_HEIGHT = 126.4;
+const getExpandedHeight = () => Math.max(COLLAPSED_HEIGHT, window.innerHeight);
+const getExpandProgress = (currentHeight: number) => (
+  Math.max(0, Math.min(
+    1,
+    (currentHeight - COLLAPSED_HEIGHT) / Math.max(1, getExpandedHeight() - COLLAPSED_HEIGHT),
+  ))
+);
 
 interface PlayBarProps {
-  track?: {
-    id: string;
-    name: string;
-    artist: string;
-    album: string;
-    path?: string;
-    albumArt?: string;
-    lyrics?: string;
-    syncedLyrics?: { time: number; text: string }[];
-  } | null;
+  track?: Track | null;
   isPlaying: boolean;
   isLoved?: boolean;
   onPlayPause: () => void;
@@ -33,47 +36,205 @@ interface PlayBarProps {
   onToggleShuffle: () => void;
   repeatMode: 'off' | 'one' | 'all';
   onToggleRepeat: () => void;
+  visualizerAnalyser: AnalyserNode | null;
+  visualizerStyle: VisualizerStyle;
+  showVisualizer: boolean;
+  showArtistImageBackground: boolean;
+  showLyrics: boolean;
+  playQueue: Track[];
+  playQueueIndex: number;
+  onQueueSelect: (index: number) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-// Inline SVG for default album art
 const DEFAULT_ALBUM_ART = (
-  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#4a4a4a" />
-        <stop offset="100%" stopColor="#2a2a2a" />
-      </linearGradient>
-    </defs>
-    <rect width="200" height="200" rx="12" fill="url(#grad)" />
-    <path d="M60 60 L140 60 L140 140 L60 140 Z" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-    <path d="M70 70 L130 70 L130 130 L70 130 Z" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
-    <path d="M80 80 L120 80 L120 120 L80 120 Z" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-    <circle cx="100" cy="100" r="15" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />
-    <text x="100" y="170" fontFamily="Arial" fontSize="12" fill="rgba(255,255,255,0.6)" textAnchor="middle">MUSIC</text>
-  </svg>
+  <span className="material-symbols-outlined" aria-hidden="true">album</span>
 );
 
 const TransportIcon: React.FC<{ name: 'shuffle' | 'previous' | 'next' | 'repeat' | 'repeat_one' }> = ({ name }) => (
   <svg className="transport-icon" viewBox="0 0 24 24" aria-hidden="true">
     {name === 'previous' && (
-      <path d="M5 5h2v14H5zM20 6.5v11a1 1 0 0 1-1.55.83l-8-5.5a1 1 0 0 1 0-1.66l8-5.5A1 1 0 0 1 20 6.5Z" />
+      <>
+        <path className="standard-transport-glyph" d="M5 5h2v14H5zM20 6.5v11a1 1 0 0 1-1.55.83l-8-5.5a1 1 0 0 1 0-1.66l8-5.5A1 1 0 0 1 20 6.5Z" />
+        <path className="apple-transport-glyph" d="M11.2 5.5v13a1 1 0 0 1-1.6.8L2.2 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Zm10.6 0v13a1 1 0 0 1-1.6.8L12.8 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Z" />
+      </>
     )}
     {name === 'next' && (
-      <path d="M17 5h2v14h-2zM4 6.5v11a1 1 0 0 0 1.55.83l8-5.5a1 1 0 0 0 0-1.66l-8-5.5A1 1 0 0 0 4 6.5Z" />
+      <>
+        <path className="standard-transport-glyph" d="M17 5h2v14h-2zM4 6.5v11a1 1 0 0 0 1.55.83l8-5.5a1 1 0 0 0 0-1.66l-8-5.5A1 1 0 0 0 4 6.5Z" />
+        <path className="apple-transport-glyph" d="M2.8 5.5a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Zm10.6 0a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Z" />
+      </>
     )}
     {name === 'shuffle' && (
-      <path d="M14 4h6v6h-2V7.41l-4.29 4.3-1.42-1.42L16.59 6H14V4ZM4 5h3.5l6.3 6.3-1.42 1.42L6.67 7H4V5Zm12.59 7.59L18 14v-2h2v6h-6v-2h2.59l-4.3-4.29 1.42-1.42L16.59 12.59ZM4 17h2.67l3.71-3.71 1.42 1.42L7.5 19H4v-2Z" />
+      <>
+        <path className="standard-transport-glyph" d="M14 4h6v6h-2V7.41l-4.29 4.3-1.42-1.42L16.59 6H14V4ZM4 5h3.5l6.3 6.3-1.42 1.42L6.67 7H4V5Zm12.59 7.59L18 14v-2h2v6h-6v-2h2.59l-4.3-4.29 1.42-1.42L16.59 12.59ZM4 17h2.67l3.71-3.71 1.42 1.42L7.5 19H4v-2Z" />
+        <g className="apple-transport-glyph">
+          <path d="M3 7h2.5c4.6 0 6.8 10 11.5 10H21m-4-4 4 4-4 4" />
+          <path d="M3 17h2.5c2.2 0 3.8-2.8 5.2-5m2.6-4c1-.7 2-1 3.7-1H21m-4-4 4 4-4 4" />
+        </g>
+      </>
     )}
     {(name === 'repeat' || name === 'repeat_one') && (
       <>
-        <path d="M7 7h11v3l4-4-4-4v3H5v6h2V7Zm10 10H6v-3l-4 4 4 4v-3h13v-6h-2v4Z" />
+        <path className="standard-transport-glyph" d="M7 7h11v3l4-4-4-4v3H5v6h2V7Zm10 10H6v-3l-4 4 4 4v-3h13v-6h-2v4Z" />
         {name === 'repeat_one' && (
-          <text x="12" y="15" fill="currentColor" fontSize="7" fontWeight="700" textAnchor="middle">1</text>
+          <text className="standard-transport-glyph" x="12" y="15" fill="currentColor" fontSize="7" fontWeight="700" textAnchor="middle">1</text>
         )}
+        <g className="apple-transport-glyph">
+          <path d="M4 10V8a3 3 0 0 1 3-3h13m-3-3 3 3-3 3M20 14v2a3 3 0 0 1-3 3H4m3-3-3 3 3 3" />
+          {name === 'repeat_one' && (
+            <>
+              <circle className="apple-repeat-one-badge" cx="7" cy="7" r="4.5" />
+              <text className="apple-repeat-one-label" x="7" y="9.5" textAnchor="middle">1</text>
+            </>
+          )}
+        </g>
       </>
     )}
   </svg>
 );
+
+interface SyncedLyricCaptionProps {
+  lineKey: string;
+  text: string;
+  lines: { time: number; text: string }[];
+  currentIndex: number;
+  onSeek: (time: number) => void;
+  isVisible: boolean;
+}
+
+const SyncedLyricCaption = memo<SyncedLyricCaptionProps>(({
+  lineKey,
+  text,
+  lines,
+  currentIndex,
+  onSeek,
+  isVisible,
+}) => {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const activeGroupRef = useRef<HTMLButtonElement>(null);
+  const [displayedLine, setDisplayedLine] = useState({
+    key: lineKey,
+    text,
+    phase: 'enter' as 'enter' | 'exit',
+  });
+  const lyricGroups = useMemo(() => {
+    const groups: Array<{ key: string; time: number; lines: string[]; firstIndex: number }> = [];
+
+    lines.forEach((line, index) => {
+      const currentGroup = groups[groups.length - 1];
+      if (currentGroup && Math.abs(currentGroup.time - line.time) < 0.001) {
+        currentGroup.lines.push(line.text);
+        return;
+      }
+      groups.push({
+        key: `${line.time}:${line.text}`,
+        time: line.time,
+        lines: [line.text],
+        firstIndex: index,
+      });
+    });
+
+    return groups;
+  }, [lines]);
+  let low = 0;
+  let high = lyricGroups.length - 1;
+  let currentGroupIndex = 0;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (lyricGroups[middle].firstIndex <= currentIndex) {
+      currentGroupIndex = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const activeGroup = activeGroupRef.current;
+    if (!viewport || !activeGroup) return;
+
+    const viewportBounds = viewport.getBoundingClientRect();
+    const activeBounds = activeGroup.getBoundingClientRect();
+    const nextScrollTop = viewport.scrollTop
+      + activeBounds.top
+      - viewportBounds.top
+      - (viewport.clientHeight - activeBounds.height) / 2;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    viewport.scrollTo({
+      top: Math.max(0, nextScrollTop),
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+    });
+  }, [currentGroupIndex, lyricGroups]);
+
+  useEffect(() => {
+    if (lineKey === displayedLine.key) return undefined;
+
+    let timeout: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      setDisplayedLine((current) => ({ ...current, phase: 'exit' }));
+      timeout = window.setTimeout(() => {
+        setDisplayedLine({ key: lineKey, text, phase: 'enter' });
+      }, 110);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [displayedLine.key, lineKey, text]);
+
+  if (!text) return null;
+
+  return (
+    <div
+      className={`synced-lyric-caption ${isVisible ? 'is-visible' : 'is-hidden'}`}
+      aria-label="Current synchronized lyric"
+      aria-hidden={!isVisible}
+    >
+      <span className={`synced-lyric-caption-line synced-lyric-caption-current ${displayedLine.phase}`} dir="auto" aria-live="off">
+        {displayedLine.text}
+      </span>
+      <div
+        className="synced-lyric-viewport"
+        ref={viewportRef}
+        role="region"
+        aria-label="Synchronized lyrics. Select a line to seek to its timestamp."
+      >
+        <div className="synced-lyric-stack">
+          {lyricGroups.map((group, groupIndex) => {
+            const isActive = groupIndex === currentGroupIndex;
+            const positionClass = isActive
+              ? 'active'
+              : groupIndex < currentGroupIndex
+                ? 'past'
+                : 'upcoming';
+
+            return (
+              <button
+                type="button"
+                className={`synced-lyric-group ${positionClass}`}
+                key={group.key}
+                dir="auto"
+                aria-current={isActive ? 'true' : undefined}
+                tabIndex={isVisible ? 0 : -1}
+                ref={isActive ? activeGroupRef : null}
+                onClick={() => onSeek(group.time)}
+              >
+                {group.lines.map((lyricLine, lyricIndex) => (
+                  <span className="synced-lyric-group-line" key={`${group.key}-${lyricIndex}`}>
+                    {lyricLine}
+                  </span>
+                ))}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const PlayBar: React.FC<PlayBarProps> = ({
   track,
@@ -96,7 +257,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onToggleShuffle,
   repeatMode = 'off',
   onToggleRepeat,
+  visualizerAnalyser,
+  visualizerStyle,
+  showVisualizer,
+  showArtistImageBackground,
+  showLyrics: lyricsEnabled,
+  playQueue,
+  playQueueIndex,
+  onQueueSelect,
+  onQueueTracks,
 }) => {
+  const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
+  const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
+    enabled: showArtistImageBackground,
+  });
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -104,24 +278,64 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showTrackMenu, setShowTrackMenu] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [showPlayQueue, setShowPlayQueue] = useState(false);
+  const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
   const [showLyricsHint, setShowLyricsHint] = useState(false);
   const [showSyncedLyrics, setShowSyncedLyrics] = useState(true);
-  const [currentSyncedLyricIndex, setCurrentSyncedLyricIndex] = useState(0);
   const playBarRef = useRef<HTMLDivElement>(null);
   const dragStartYRef = useRef<number | null>(null);
   const dragStartHeightRef = useRef(COLLAPSED_HEIGHT);
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
+  const dragFrameRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
+  const visualizerLocationRef = useRef<string | null>(null);
+  const visualizerRelocationFrameRef = useRef<number | null>(null);
+  const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
+  const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
+  const showSyncedLyricCaption = Boolean(showLyrics && showSyncedLyrics && hasSyncedLyrics);
+  const showPlainLyricsPanel = Boolean(
+    showLyrics && track?.lyrics?.trim() && (!hasSyncedLyrics || !showSyncedLyrics),
+  );
+  const plainLyricsFontSize = `${0.95 + plainLyricsFontStep * 0.15}rem`;
+  const visualizerLocation = showSyncedLyricCaption || showPlainLyricsPanel
+    ? 'below-art'
+    : hasSyncedLyrics ? 'default' : 'lyrics-slot';
 
-  const getExpandedHeight = () => {
-    return Math.max(COLLAPSED_HEIGHT, window.innerHeight);
-  };
+  useEffect(() => {
+    if (!lyricsEnabled) {
+      setShowLyrics(false);
+      setShowLyricsHint(false);
+    }
+  }, [lyricsEnabled]);
+
+  useLayoutEffect(() => {
+    if (visualizerLocationRef.current === null) {
+      visualizerLocationRef.current = visualizerLocation;
+      return;
+    }
+    if (visualizerLocationRef.current === visualizerLocation) return;
+
+    visualizerLocationRef.current = visualizerLocation;
+    setIsVisualizerRelocating(true);
+    if (visualizerRelocationFrameRef.current !== null) {
+      window.cancelAnimationFrame(visualizerRelocationFrameRef.current);
+    }
+    visualizerRelocationFrameRef.current = window.requestAnimationFrame(() => {
+      setIsVisualizerRelocating(false);
+      visualizerRelocationFrameRef.current = null;
+    });
+  }, [visualizerLocation]);
+
+  useEffect(() => () => {
+    if (visualizerRelocationFrameRef.current !== null) {
+      window.cancelAnimationFrame(visualizerRelocationFrameRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     setShowLyrics(false);
     setShowLyricsHint(false);
     setShowTrackMenu(false);
-    setCurrentSyncedLyricIndex(0);
     setShowSyncedLyrics(Boolean(track?.syncedLyrics && track.syncedLyrics.length > 0));
   }, [track?.id, track?.syncedLyrics]);
 
@@ -135,19 +349,47 @@ const PlayBar: React.FC<PlayBarProps> = ({
     return () => window.clearTimeout(timeout);
   }, [track?.id, track?.lyrics]);
 
-  useEffect(() => {
-    if (!track?.syncedLyrics || track.syncedLyrics.length === 0) return;
-
+  const currentSyncedLyricIndex = useMemo(() => {
+    const lines = track?.syncedLyrics;
+    if (!lines?.length) return 0;
+    let low = 0;
+    let high = lines.length - 1;
     let currentIndex = 0;
-    for (let index = track.syncedLyrics.length - 1; index >= 0; index -= 1) {
-      if (track.syncedLyrics[index].time <= currentTime) {
-        currentIndex = index;
-        break;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (lines[middle].time <= currentTime) {
+        currentIndex = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
       }
     }
 
-    setCurrentSyncedLyricIndex(currentIndex);
+    const currentTimestamp = lines[currentIndex].time;
+    while (
+      currentIndex > 0
+      && Math.abs(lines[currentIndex - 1].time - currentTimestamp) < 0.001
+    ) {
+      currentIndex -= 1;
+    }
+    return currentIndex;
   }, [currentTime, track?.syncedLyrics]);
+
+  const currentSyncedLyric = track?.syncedLyrics?.[currentSyncedLyricIndex];
+  const currentSyncedLyricText = useMemo(() => {
+    const lines = track?.syncedLyrics;
+    const currentLine = lines?.[currentSyncedLyricIndex];
+    if (!currentLine || !lines) return '';
+
+    const texts: string[] = [];
+    for (let index = currentSyncedLyricIndex; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (Math.abs(line.time - currentLine.time) >= 0.001) break;
+      if (line.text) texts.push(line.text);
+    }
+    return texts.join('\n');
+  }, [currentSyncedLyricIndex, track?.syncedLyrics]);
+  const currentSyncedLyricKey = `${currentSyncedLyric?.time ?? ''}:${currentSyncedLyricText}`;
 
   const visibleLyrics = () => {
     if (!track) return '';
@@ -160,10 +402,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   useEffect(() => {
+    if (isDragging) return;
     const nextHeight = state === 'expanded' ? getExpandedHeight() : COLLAPSED_HEIGHT;
     currentHeightRef.current = nextHeight;
     setHeight(nextHeight);
-  }, [state]);
+  }, [isDragging, state]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -188,15 +431,31 @@ const PlayBar: React.FC<PlayBarProps> = ({
         Math.min(getExpandedHeight(), dragStartHeightRef.current + deltaY),
       );
       currentHeightRef.current = nextHeight;
-      setHeight(nextHeight);
+      if (dragFrameRef.current === null) {
+        dragFrameRef.current = window.requestAnimationFrame(() => {
+          dragFrameRef.current = null;
+          if (playBarRef.current) {
+            playBarRef.current.style.height = `${currentHeightRef.current}px`;
+            playBarRef.current.style.setProperty(
+              '--expand-progress',
+              String(getExpandProgress(currentHeightRef.current)),
+            );
+          }
+        });
+      }
     };
 
     const handlePointerEnd = () => {
       if (dragStartYRef.current === null) return;
       dragStartYRef.current = null;
-      setIsDragging(false);
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
       const shouldExpand = currentHeightRef.current > (COLLAPSED_HEIGHT + getExpandedHeight()) / 2;
       setState(shouldExpand ? 'expanded' : 'collapsed');
+      setHeight(currentHeightRef.current);
+      setIsDragging(false);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -211,10 +470,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest('button, input, select, textarea, a, .progress-bar, .lyrics-panel')) return;
+    if (target.closest('button, input, select, textarea, a, .album-art-mini, .progress-bar, .lyrics-panel')) return;
     dragStartYRef.current = event.clientY;
     dragStartHeightRef.current = currentHeightRef.current;
     didDragRef.current = false;
+    if (state === 'collapsed') setState('expanded');
     setIsDragging(true);
   };
 
@@ -227,7 +487,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   const handleLyricsToggle = () => {
-    if (track?.lyrics?.trim()) {
+    if (lyricsEnabled && track?.lyrics?.trim()) {
       setShowLyrics((current) => !current);
       setShowLyricsHint(false);
     }
@@ -240,11 +500,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
     handleLyricsToggle();
   };
 
-  const handleCollapse = () => setState('collapsed');
+  const handleCollapse = () => {
+    currentHeightRef.current = getExpandedHeight();
+    setState('collapsed');
+    setIsDragging(false);
+  };
 
   const isLongTrackTitle = (track?.name?.length ?? 0) > 28;
 
-  const handleTrackMenuAction = (action: 'delete' | 'playlist' | 'album' | 'love' | 'less') => {
+  const handleTrackMenuAction = (action: 'delete' | 'playlist' | 'album' | 'love' | 'less' | 'queue' | 'next') => {
     if (!track) return;
     setShowTrackMenu(false);
     switch (action) {
@@ -263,6 +527,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
       case 'less':
         onSuggestTrackLess?.(track);
         break;
+      case 'queue':
+        onQueueTracks([track], false);
+        break;
+      case 'next':
+        onQueueTracks([track], true);
+        break;
       default:
         break;
     }
@@ -271,6 +541,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const trackMenuItems = [
     { label: 'Delete from library', icon: 'delete_forever', action: 'delete' },
     { label: 'Add to playlist', icon: 'playlist_add', action: 'playlist' },
+    { label: 'Add to play queue', icon: 'queue_music', action: 'queue' },
+    { label: 'Play next', icon: 'next_plan', action: 'next' },
     { label: 'Show Album', icon: 'album', action: 'album' },
     { label: isLoved ? 'Loved' : 'Love', icon: isLoved ? 'favorite' : 'favorite_border', action: 'love' },
     { label: 'Suggest the track less', icon: 'thumb_down', action: 'less' },
@@ -286,6 +558,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   // Calculate progress percentage
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const volumeSliderStyle: React.CSSProperties & { '--volume-level': string } = {
+    '--volume-level': `${volume * 100}%`,
+  };
 
   // Handle shuffle toggle
   const handleShuffle = () => {
@@ -311,11 +586,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }
   };
 
+  const expandProgress = isDragging
+    ? getExpandProgress(currentHeightRef.current)
+    : state === 'expanded' ? 1 : 0;
+  const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
+    height: `${height}px`,
+    '--expand-progress': expandProgress,
+  };
+
   return (
     <div
       ref={playBarRef}
       className={`play-bar ${state} ${isDragging ? 'dragging' : ''}`}
-      style={{ height: `${height}px` }}
+      style={playBarStyle}
     >
       {/* Drag handle */}
       <div className="drag-handle" onPointerDown={handleDragStart}>
@@ -324,26 +607,50 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
       {/* Expanded View - Now Playing */}
       <div
-        className={`now-playing ${state === 'expanded' ? 'visible' : 'hidden'}`}
+        className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}`}
         onPointerDown={handleDragStart}
       >
+        {artistBackgroundImage && (
+          <div className="now-playing-artist-background" aria-hidden="true">
+            <img src={artistBackgroundImage} alt="" />
+            <div className="now-playing-artist-background-overlay" />
+          </div>
+        )}
         <div className="now-playing-header">
           <button type="button" className="now-playing-close" aria-label="Close Now Playing" onClick={handleCollapse}>
             <span className="material-symbols-outlined" aria-hidden="true">keyboard_arrow_down</span>
           </button>
           <span>Now Playing</span>
+          <button
+            type="button"
+            className={`now-playing-queue-toggle ${showPlayQueue ? 'active' : ''}`}
+            aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
+            aria-expanded={showPlayQueue}
+            onClick={() => setShowPlayQueue((visible) => !visible)}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+          </button>
         </div>
-        <div className="now-playing-container">
+        <div
+          className={[
+            'now-playing-container',
+            showSyncedLyricCaption ? 'has-synced-lyric' : '',
+            hasSyncedLyrics ? 'has-synced-lyrics' : '',
+            showVisualizer && !hasSyncedLyrics ? 'visualizer-in-lyrics-slot' : '',
+            showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
+          ].filter(Boolean).join(' ')}
+          data-playback-state={isPlaying ? 'playing' : 'paused'}
+        >
           {/* Album Art */}
           <div
             className="album-art"
             onDoubleClick={(event) => {
-              if (track?.lyrics?.trim()) {
+              if (lyricsEnabled && track?.lyrics?.trim()) {
                 handleLyricsToggleFromArtwork(event);
               }
             }}
             onMouseEnter={() => {
-              if (track?.lyrics?.trim()) {
+              if (lyricsEnabled && track?.lyrics?.trim()) {
                 setShowLyricsHint(true);
               }
             }}
@@ -353,7 +660,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               }
             }}
           >
-            {track?.lyrics?.trim() && showLyricsHint && !showLyrics && (
+            {lyricsEnabled && track?.lyrics?.trim() && showLyricsHint && !showLyrics && (
               <button
                 type="button"
                 className="lyrics-hint"
@@ -373,13 +680,24 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
           
+          {showVisualizer && (
+            <AudioVisualizer
+              analyser={visualizerAnalyser}
+              isPlaying={isPlaying}
+              isVisible={state === 'expanded'}
+              volume={volume}
+              style={visualizerStyle}
+              className={isVisualizerRelocating ? 'relocating' : ''}
+            />
+          )}
+
           {/* Track Info */}
           <div className="track-info">
             <div className="track-title-row">
               <h2
                 className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
                 onDoubleClick={() => {
-                  if (track?.lyrics?.trim()) {
+                  if (lyricsEnabled && track?.lyrics?.trim()) {
                     setShowLyrics((current) => !current);
                   }
                 }}
@@ -404,7 +722,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                           type="button"
                           className="track-menu-item"
                           role="menuitem"
-                          onClick={() => handleTrackMenuAction(item.action as 'delete' | 'playlist' | 'album' | 'love' | 'less')}
+                          onClick={() => handleTrackMenuAction(item.action as 'delete' | 'playlist' | 'album' | 'love' | 'less' | 'queue' | 'next')}
                         >
                           <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>
                           <span>{item.label}</span>
@@ -417,7 +735,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             </div>
             <p className="artist-name">{track?.artist || 'Unknown Artist'}</p>
             <p className="album-name">{track?.album || 'Unknown Album'}</p>
-            {track?.lyrics?.trim() && (
+            {lyricsEnabled && track?.lyrics?.trim() && (
               <div className="lyrics-actions">
                 <button
                   type="button"
@@ -441,23 +759,57 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
 
-          {showLyrics && track?.lyrics?.trim() && (
-            <section className="lyrics-panel" aria-label={`Lyrics for ${track.name}`}>
+          {track?.lyrics?.trim() && (
+            <section
+              className={`lyrics-panel ${showPlainLyricsPanel ? 'is-visible' : 'is-hidden'}`}
+              aria-label={`Lyrics for ${track.name}`}
+              aria-hidden={!showPlainLyricsPanel}
+            >
               <div className="lyrics-panel-header">
                 <div>
                   <h2>Lyrics</h2>
                   <p>{track.name} · {track.artist}</p>
                 </div>
-                <button
-                  type="button"
-                  className="lyrics-close"
-                  aria-label="Close lyrics"
-                  onClick={() => setShowLyrics(false)}
-                >
-                  <span className="material-symbols-outlined" aria-hidden="true">close</span>
-                </button>
+                <div className="lyrics-panel-actions">
+                  <div className="lyrics-font-controls" aria-label="Lyrics font size">
+                    <button
+                      type="button"
+                      className="lyrics-font-button"
+                      aria-label="Decrease lyrics font size"
+                      title="Decrease lyrics font size"
+                      disabled={plainLyricsFontStep <= -3}
+                      tabIndex={showPlainLyricsPanel ? 0 : -1}
+                      onClick={() => setPlainLyricsFontStep((step) => Math.max(-3, step - 1))}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">text_decrease</span>
+                    </button>
+                    <span className="lyrics-font-size" aria-live="polite">
+                      {Math.round((1 + plainLyricsFontStep * 0.15 / 0.95) * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      className="lyrics-font-button"
+                      aria-label="Increase lyrics font size"
+                      title="Increase lyrics font size"
+                      disabled={plainLyricsFontStep >= 3}
+                      tabIndex={showPlainLyricsPanel ? 0 : -1}
+                      onClick={() => setPlainLyricsFontStep((step) => Math.min(3, step + 1))}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">text_increase</span>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="lyrics-close"
+                    aria-label="Close lyrics"
+                    tabIndex={showPlainLyricsPanel ? 0 : -1}
+                    onClick={() => setShowLyrics(false)}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                  </button>
+                </div>
               </div>
-              <p className="lyrics-text" dir="auto">
+              <p className="lyrics-text" dir="auto" style={{ fontSize: plainLyricsFontSize }}>
                 {track.syncedLyrics && track.syncedLyrics.length > 0 && showSyncedLyrics ? (
                   <span className="synced-lyrics-line" dir="auto">
                     {visibleLyrics()}
@@ -468,12 +820,66 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </p>
             </section>
           )}
+
+          <section
+            className={`play-queue-panel ${showPlayQueue ? 'is-visible' : 'is-hidden'}`}
+            aria-label="Play queue"
+            aria-hidden={!showPlayQueue}
+          >
+            <header className="play-queue-header">
+              <div>
+                <h2>Play queue</h2>
+                <p>{playQueue.length} tracks</p>
+              </div>
+              <button
+                type="button"
+                className="lyrics-close"
+                aria-label="Close play queue"
+                onClick={() => setShowPlayQueue(false)}
+                tabIndex={showPlayQueue ? 0 : -1}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
+            </header>
+            <ol className="play-queue-list">
+              {playQueue.map((queuedTrack, index) => (
+                <li key={`${queuedTrack.id}-${index}`}>
+                  <button
+                    type="button"
+                    className={`play-queue-item ${index === playQueueIndex ? 'current' : ''}`}
+                    aria-current={index === playQueueIndex ? 'true' : undefined}
+                    tabIndex={showPlayQueue ? 0 : -1}
+                    onClick={() => onQueueSelect(index)}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">
+                      {index === playQueueIndex ? 'equalizer' : 'music_note'}
+                    </span>
+                    <span className="play-queue-track-copy">
+                      <strong>{queuedTrack.name}</strong>
+                      <small>{queuedTrack.artist}</small>
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {playQueue.length === 0 && <li className="play-queue-empty">Play a track to start a queue.</li>}
+            </ol>
+          </section>
           
           {/* Progress Bar */}
+          {hasSyncedLyrics && track?.syncedLyrics && (
+            <SyncedLyricCaption
+              lineKey={currentSyncedLyricKey}
+              text={currentSyncedLyricText}
+              lines={track.syncedLyrics}
+              currentIndex={currentSyncedLyricIndex}
+              onSeek={onSeek}
+              isVisible={showSyncedLyricCaption}
+            />
+          )}
           <div className="progress-bar-container">
             <div className="progress-bar" aria-disabled={!track} onClick={(e) => {
               if (!track) return;
-              const rect = (e.target as HTMLDivElement).getBoundingClientRect();
+              const rect = e.currentTarget.getBoundingClientRect();
               const percent = (e.clientX - rect.left) / rect.width;
               onSeek(percent * duration);
             }}>
@@ -487,7 +893,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
           
           {/* Controls */}
           <div className="controls expanded-controls">
-            <button className={`control-btn ${isShuffled ? 'active' : ''}`} onClick={handleShuffle} disabled={!track}>
+            <button className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`} onClick={handleShuffle} disabled={!track}>
               <TransportIcon name="shuffle" />
             </button>
             
@@ -498,8 +904,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
             <button className="control-btn play-pause" onClick={onPlayPause} disabled={!track}>
               <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
                 {isPlaying
-                  ? <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-                  : <path d="M7 4.5v15l12-7.5z" />}
+                  ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
+                  : <>
+                    <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
+                    <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
+                  </>}
               </svg>
             </button>
             
@@ -507,7 +916,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <TransportIcon name="next" />
             </button>
             
-            <button className={`control-btn ${repeatMode !== 'off' ? 'active' : ''}`} onClick={handleRepeat} disabled={!track}>
+            <button className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`} onClick={handleRepeat} disabled={!track}>
               <TransportIcon name={getRepeatIcon()} />
             </button>
           </div>
@@ -515,7 +924,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
       </div>
 
       {/* Collapsed View - Mini Player */}
-      <div className="mini-player" onPointerDown={handleDragStart} aria-hidden={state === 'expanded'}>
+      <div
+        className="mini-player"
+        onPointerDown={handleDragStart}
+        aria-hidden={state === 'expanded'}
+        data-playback-state={isPlaying ? 'playing' : 'paused'}
+      >
         <div className="track-info-mini" onClick={handleAlbumArtClick}>
           <div className="album-art-mini">
             {track?.albumArt ? (
@@ -533,34 +947,60 @@ const PlayBar: React.FC<PlayBarProps> = ({
         {/* Mini Progress Bar */}
         <div className="mini-progress-container">
           <span className="mini-time">{formatTime(currentTime)}</span>
-          <input
-            aria-label="Track progress"
-            className="mini-progress-bar"
-            type="range"
-            min={0}
-            max={duration || 0}
-            step={0.1}
-            value={Math.min(currentTime, duration)}
-            onChange={(e) => onSeek(e.currentTarget.valueAsNumber)}
-            disabled={!track}
-          />
+          <div className="mini-progress-input-wrap">
+            <div className="mini-progress-track" aria-hidden="true">
+              <div className="mini-progress-track-fill" style={{ width: `${progressPercent}%` }} />
+            </div>
+            <input
+              aria-label="Track progress"
+              className="mini-progress-bar"
+              type="range"
+              min={0}
+              max={duration || 0}
+              step={0.1}
+              value={Math.min(currentTime, duration)}
+              onChange={(e) => onSeek(e.currentTarget.valueAsNumber)}
+              disabled={!track}
+            />
+          </div>
           <span className="mini-time">{formatTime(duration)}</span>
         </div>
         
         {/* Controls */}
         <div className="controls">
+          <button
+            aria-label="Shuffle"
+            aria-pressed={isShuffled}
+            className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
+            onClick={handleShuffle}
+            disabled={!track}
+          >
+            <TransportIcon name="shuffle" />
+          </button>
           <button className="control-btn" onClick={onPrevious} disabled={!track}>
             <TransportIcon name="previous" />
           </button>
           <button className="control-btn play-pause" onClick={onPlayPause} disabled={!track}>
             <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
               {isPlaying
-                ? <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-                : <path d="M7 4.5v15l12-7.5z" />}
+                ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
+                : <>
+                  <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
+                  <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
+                </>}
             </svg>
           </button>
           <button className="control-btn" onClick={onNext} disabled={!track}>
             <TransportIcon name="next" />
+          </button>
+          <button
+            aria-label={`Repeat ${repeatMode === 'off' ? 'off' : repeatMode === 'one' ? 'one' : 'all'}`}
+            aria-pressed={repeatMode !== 'off'}
+            className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
+            onClick={handleRepeat}
+            disabled={!track}
+          >
+            <TransportIcon name={getRepeatIcon()} />
           </button>
         </div>
 
@@ -577,6 +1017,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   value={volume}
                   onChange={(e) => onVolumeChange(e.currentTarget.valueAsNumber)}
                   className="volume-slider"
+                  style={volumeSliderStyle}
                 />
               </div>
             )}
@@ -589,6 +1030,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 setShowOptionsMenu(false);
               }}
             >
+              <svg className="apple-volume-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path className="volume-speaker" d="M3 9v6h4l5 4V5L7 9H3Z" />
+                {volume === 0 ? (
+                  <path className="volume-mute-mark" d="m16 9 5 6m0-6-5 6" />
+                ) : volume < 0.5 ? (
+                  <path className="volume-wave" d="M15.5 9.5a4 4 0 0 1 0 5" />
+                ) : (
+                  <>
+                    <path className="volume-wave" d="M15.5 9.5a4 4 0 0 1 0 5" />
+                    <path className="volume-wave" d="M18.5 6.5a8 8 0 0 1 0 11" />
+                  </>
+                )}
+              </svg>
               <span className="material-symbols-outlined">
                 {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
               </span>
@@ -614,7 +1068,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   className="more-options-item"
                   onClick={handleShuffle}
                 >
-                  <span className="material-symbols-outlined">shuffle</span>
+                  <TransportIcon name="shuffle" />
                   <span>Shuffle</span>
                 </button>
                 <button
@@ -622,7 +1076,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   className="more-options-item"
                   onClick={handleRepeat}
                 >
-                  <span className="material-symbols-outlined">{getRepeatIcon()}</span>
+                  <TransportIcon name={getRepeatIcon()} />
                   <span>Repeat: {repeatMode === 'off' ? 'Off' : repeatMode === 'one' ? 'One' : 'All'}</span>
                 </button>
               </div>

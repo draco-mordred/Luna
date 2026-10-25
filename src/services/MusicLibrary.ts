@@ -1,6 +1,16 @@
+import { splitArtistCredits } from '../utils/artistCredits';
+
 export interface SyncedLyricLine {
   time: number;
   text: string;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  trackIds: string[];
+  coverTrackIds?: string[];
+  createdAt: number;
 }
 
 export interface Track {
@@ -11,13 +21,16 @@ export interface Track {
   name: string;
   artist: string;
   album: string;
+  albumArtist?: string;
   albumArt?: string;
   metadataVersion?: number;
   duration: number;
   trackNumber?: number;
+  discNumber?: number;
   year?: number;
   genre?: string;
   composer?: string;
+  comment?: string;
   lyrics?: string;
   syncedLyrics?: SyncedLyricLine[];
   bitrate?: number;
@@ -165,23 +178,27 @@ export class MusicLibraryService {
         };
         albumsById.set(albumId, album);
       }
+      const albumForArtist = album;
+      if (!albumForArtist) continue;
       album.tracks.push(track);
 
-      const artistId = track.artist.toLocaleLowerCase();
-      let artist = artistsByName.get(artistId);
-      if (!artist) {
-        artist = {
-          id: this.generateId(artistId),
-          name: track.artist,
-          albums: [],
-          tracks: [],
-        };
-        artistsByName.set(artistId, artist);
-      }
-      if (!artist.albums.some((artistAlbum) => artistAlbum.id === album?.id)) {
-        artist.albums.push(album);
-      }
-      artist.tracks.push(track);
+      splitArtistCredits(track.artist).forEach((artistName) => {
+        const artistId = artistName.toLocaleLowerCase();
+        let artist = artistsByName.get(artistId);
+        if (!artist) {
+          artist = {
+            id: this.generateId(artistId),
+            name: artistName,
+            albums: [],
+            tracks: [],
+          };
+          artistsByName.set(artistId, artist);
+        }
+        if (!artist.albums.some((artistAlbum) => artistAlbum.id === albumForArtist.id)) {
+          artist.albums.push(albumForArtist);
+        }
+        artist.tracks.push(track);
+      });
     }
 
     this.library.albums = [...albumsById.values()];

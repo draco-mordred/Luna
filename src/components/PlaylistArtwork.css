@@ -1,0 +1,94 @@
+.playlist-artwork {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  isolation: isolate;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 2px, rgba(255, 255, 255, 0.045) 3px 4px),
+    linear-gradient(145deg, #292929, #090909);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+}
+
+.playlist-artwork-small {
+  width: 34px;
+  height: 34px;
+  padding: 4px;
+}
+
+.playlist-artwork-large {
+  width: min(100%, 154px);
+  aspect-ratio: 1;
+  padding: 11px;
+  margin-bottom: 2px;
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease;
+}
+
+.playlist-artwork-disc {
+  position: absolute;
+  inset: 28%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 2px, rgba(255, 255, 255, 0.06) 3px 4px);
+}
+
+.playlist-artwork-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  background: #111;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.playlist-artwork-small .playlist-artwork-grid {
+  gap: 1px;
+  border-radius: 3px;
+}
+
+.playlist-artwork-tile {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--system-accent) 35%, #454545), #161616);
+}
+
+.playlist-artwork-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playlist-artwork-tile.is-placeholder .material-symbols-outlined {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.75rem;
+}
+
+.playlist-artwork-large .playlist-artwork-tile.is-placeholder .material-symbols-outlined {
+  font-size: 1.4rem;
+}
+
+.playlist-card:hover .playlist-artwork-large {
+  transform: rotate(-7deg);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.38);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playlist-artwork-large {
+    transition: none;
+  }
+
+  .playlist-card:hover .playlist-artwork-large {
+    transform: none;
+  }
+}

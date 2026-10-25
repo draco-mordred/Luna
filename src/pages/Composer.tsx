@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import type { Track } from '../services/MusicLibrary';
+import QueueContextMenu from '../components/QueueContextMenu';
+import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import './Composer.css';
 
 interface ComposerPageProps {
   tracks: Track[];
-  onPlayTrack: (track: Track) => void;
+  onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-const ComposerPage = ({ tracks, onPlayTrack }: ComposerPageProps) => {
+const ComposerPage = ({ tracks, onPlayTrack, onQueueTracks }: ComposerPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'works' | 'genre'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -26,7 +29,10 @@ const ComposerPage = ({ tracks, onPlayTrack }: ComposerPageProps) => {
       if (track.genre) composer.genres.add(track.genre);
       composersByName.set(id, composer);
     });
-    return Array.from(composersByName.values());
+    return Array.from(composersByName.values()).map((composer) => ({
+      ...composer,
+      tracks: sortCollectionTracks(composer.tracks),
+    }));
   }, [tracks]);
 
   const sortedComposers = [...composers].sort((a, b) => {
@@ -65,11 +71,12 @@ const ComposerPage = ({ tracks, onPlayTrack }: ComposerPageProps) => {
       ) : (
         <div className='composers-grid'>
           {sortedComposers.map((composer) => (
-            <div key={composer.id} className='composer-card'>
+            <QueueContextMenu key={composer.id} tracks={composer.tracks} onQueueTracks={onQueueTracks}>
+            <div className='composer-card'>
               <div className='composer-image composer-image-placeholder'>
                 <span className='material-symbols-outlined' aria-hidden='true'>edit_note</span>
                 <div className='composer-badge'>{[...composer.genres].join(', ') || 'Composer'}</div>
-                <button className='play-button' type='button' aria-label={`Play ${composer.name}`} onClick={() => onPlayTrack(composer.tracks[0])}>
+                <button className='play-button' type='button' aria-label={`Play ${composer.name}`} onClick={() => onPlayTrack(composer.tracks[0], composer.tracks)}>
                   <span className='material-symbols-outlined'>play_arrow</span>
                 </button>
               </div>
@@ -78,13 +85,14 @@ const ComposerPage = ({ tracks, onPlayTrack }: ComposerPageProps) => {
                 <p className='composer-stats'>{composer.tracks.length} works</p>
                 <div className='composer-works'>
                   {composer.tracks.slice(0, 3).map((track) => (
-                    <button key={track.id} type='button' className='composer-track-button' onClick={() => onPlayTrack(track)}>
+                    <button key={track.id} type='button' className='composer-track-button' onClick={() => onPlayTrack(track, composer.tracks)}>
                       {track.name}
                     </button>
                   ))}
                 </div>
               </div>
             </div>
+            </QueueContextMenu>
           ))}
         </div>
       )}

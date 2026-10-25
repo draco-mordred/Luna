@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { Playlist, Track } from '../services/MusicLibrary';
 import PlaylistArtwork from '../components/PlaylistArtwork';
@@ -290,4 +290,4 @@ const PlaylistsPage = ({
   );
 };
 
-export default PlaylistsPage;
+export default memo(PlaylistsPage);

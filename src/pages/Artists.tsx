@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
@@ -6,6 +6,7 @@ import QueueContextMenu from '../components/QueueContextMenu';
 import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { splitArtistCredits } from '../utils/artistCredits';
+import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import { useArtistImage } from '../services/artistImages';
 import './Artists.css';
 
@@ -16,16 +17,18 @@ interface ArtistCardProps {
     albums: Set<string>;
     tracks: Track[];
   };
-  loadImage: boolean;
+  allowImageDownload: boolean;
   onOpen: () => void;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
 }
 
-const ArtistCard = ({ artist, loadImage, onOpen, onPlayTrack }: ArtistCardProps) => {
+const ArtistCard = ({ artist, allowImageDownload, onOpen, onPlayTrack }: ArtistCardProps) => {
   const { elementRef, imageUrl } = useArtistImage(artist.name, {
-    enabled: loadImage,
+    allowDownload: allowImageDownload,
     loadWhenVisible: true,
   });
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const hasImage = Boolean(imageUrl && imageUrl !== failedImageUrl);
 
   return (
     <div
@@ -45,9 +48,15 @@ const ArtistCard = ({ artist, loadImage, onOpen, onPlayTrack }: ArtistCardProps)
         onOpen();
       }}
     >
-      <div className={`artist-image ${imageUrl ? '' : 'artist-image-placeholder'}`}>
-        {imageUrl ? (
-          <img src={imageUrl} alt={`${artist.name}`} loading='lazy' decoding='async' />
+      <div className={`artist-image ${hasImage ? '' : 'artist-image-placeholder'}`}>
+        {hasImage ? (
+          <img
+            src={imageUrl ?? undefined}
+            alt={`${artist.name}`}
+            loading='lazy'
+            decoding='async'
+            onError={() => setFailedImageUrl(imageUrl)}
+          />
         ) : (
           <span className='material-symbols-outlined' aria-hidden='true'>person</span>
         )}
@@ -117,10 +126,7 @@ const ArtistsPage = ({
       [...artists].sort((a, b) => {
         const aValue = sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
         const bValue = sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
-        const comparison = typeof aValue === 'number' && typeof bValue === 'number'
-          ? aValue - bValue
-          : String(aValue).localeCompare(String(bValue));
-        return sortDirection === 'asc' ? comparison : -comparison;
+        return compareAlphaNumericFirst(aValue, bValue, sortDirection);
       }),
     [artists, sortBy, sortDirection]
   );
@@ -176,7 +182,7 @@ const ArtistsPage = ({
               <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
                 <ArtistCard
                   artist={artist}
-                  loadImage={autoDownloadArtistImages}
+                  allowImageDownload={autoDownloadArtistImages}
                   onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
                   onPlayTrack={onPlayTrack}
                 />
@@ -194,4 +200,4 @@ const ArtistsPage = ({
   );
 };
 
-export default ArtistsPage;
+export default memo(ArtistsPage);

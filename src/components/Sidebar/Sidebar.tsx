@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { Playlist } from '../../services/MusicLibrary';
 import type { Track } from '../../services/MusicLibrary';
@@ -23,7 +24,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   showRadioSection,
   showSpotifySection,
 }) => {
-  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const location = useLocation();
   const path = location.pathname.split('/')[1] || '';
   const activeSection = ['tracks', 'albums', 'artists', 'composer', 'genres'].includes(path)
@@ -167,4 +168,4 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-export default Sidebar;
+export default memo(Sidebar);

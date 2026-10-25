@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { MusicLibraryResponse } from '../../types/electron';
 import type { Track } from '../../services/MusicLibrary';
@@ -299,4 +299,4 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
   );
 };
 
-export default TopNavbar;
+export default memo(TopNavbar);

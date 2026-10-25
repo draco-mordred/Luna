@@ -1,7 +1,18 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol, nativeTheme } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  protocol,
+  nativeTheme,
+  nativeImage,
+  shell,
+  safeStorage,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const http = require('http');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
 const { parseFile, selectCover } = require('music-metadata');
@@ -16,6 +27,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow;
+let spotifyAuthorizationServer = null;
+let spotifyAuthorizationTimeout = null;
+const SPOTIFY_CALLBACK_PORT = 43821;
 let indexedAudioPaths = new Set();
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -73,6 +87,7 @@ const EDITABLE_ARTWORK_MIME_TYPES = new Set([
 const getLibraryPath = () => path.join(app.getPath('userData'), 'music-library.json');
 const getPlaylistsPath = () => path.join(app.getPath('userData'), 'playlists.json');
 const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.ini');
+const getSpotifySessionPath = () => path.join(app.getPath('userData'), 'spotify-session.bin');
 const getLegacySettingsPath = () => path.join(app.getPath('userData'), 'app-settings.json');
 const getArtworkPath = (fileName) => path.join(app.getPath('userData'), 'artwork', fileName);
 const DEFAULT_SETTINGS = {
@@ -302,8 +317,7 @@ const readAppSettings = async () => {
         : DEFAULT_SETTINGS.showVisualizer,
     autoDownloadArtistImages,
     showArtistImageBackground:
-      autoDownloadArtistImages &&
-      typeof saved.showArtistImageBackground === 'boolean'
+      autoDownloadArtistImages && typeof saved.showArtistImageBackground === 'boolean'
         ? saved.showArtistImageBackground
         : false,
     showLyrics:
@@ -903,6 +917,181 @@ ipcMain.handle('close-window', () => {
   if (mainWindow) mainWindow.close();
 });
 
+const taskbarIconDirectory = app.isPackaged
+  ? path.join(process.resourcesPath, 'public')
+  : __dirname;
+const taskbarIcons = {
+  previous: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-previous.png')),
+  play: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-play.png')),
+  pause: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-pause.png')),
+  next: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-next.png')),
+};
+
+const setTaskbarPlaybackState = (isPlaying) => {
+  if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setThumbarButtons([
+    {
+      tooltip: 'Previous track',
+      icon: taskbarIcons.previous,
+      click: () => mainWindow?.webContents.send('taskbar-previous'),
+    },
+    {
+      tooltip: isPlaying ? 'Pause' : 'Play',
+      icon: isPlaying ? taskbarIcons.pause : taskbarIcons.play,
+      click: () => mainWindow?.webContents.send('taskbar-play-pause'),
+    },
+    {
+      tooltip: 'Next track',
+      icon: taskbarIcons.next,
+      click: () => mainWindow?.webContents.send('taskbar-next'),
+    },
+  ]);
+};
+
+ipcMain.on('taskbar-playback-state', (_event, isPlaying) => {
+  if (typeof isPlaying === 'boolean') setTaskbarPlaybackState(isPlaying);
+});
+
+const closeSpotifyAuthorizationServer = () => {
+  if (spotifyAuthorizationTimeout) clearTimeout(spotifyAuthorizationTimeout);
+  spotifyAuthorizationTimeout = null;
+  if (spotifyAuthorizationServer) spotifyAuthorizationServer.close();
+  spotifyAuthorizationServer = null;
+};
+
+ipcMain.handle('spotify-auth-start', (event, state) => {
+  if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{43,128}$/.test(state)) {
+    throw new Error('Invalid Spotify authorization state.');
+  }
+  closeSpotifyAuthorizationServer();
+  const authWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!authWindow) throw new Error('Could not find the Luna window for Spotify sign-in.');
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((request, response) => {
+      const callbackUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+      if (request.method !== 'GET' || callbackUrl.pathname !== '/callback') {
+        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('Not found.');
+        return;
+      }
+
+      const returnedState = callbackUrl.searchParams.get('state');
+      if (!returnedState || returnedState !== state) {
+        response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('Spotify sign-in could not be verified. Return to Luna and try again.');
+        return;
+      }
+
+      const result = {
+        code: callbackUrl.searchParams.get('code'),
+        state: returnedState,
+        error: callbackUrl.searchParams.get('error'),
+      };
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end(
+        '<!doctype html><html><head><meta charset="utf-8"><title>Luna Spotify sign-in</title></head><body><p>Spotify sign-in is complete. You can return to Luna.</p></body></html>'
+      );
+      closeSpotifyAuthorizationServer();
+      if (!authWindow.isDestroyed()) {
+        authWindow.webContents.send('spotify-auth-result', result);
+      }
+    });
+    spotifyAuthorizationServer = server;
+    server.once('error', (error) => {
+      closeSpotifyAuthorizationServer();
+      reject(
+        error.code === 'EADDRINUSE'
+          ? new Error(
+              `Spotify sign-in could not use port ${SPOTIFY_CALLBACK_PORT}. Close another Luna window and try again.`
+            )
+          : error
+      );
+    });
+    server.listen(SPOTIFY_CALLBACK_PORT, '127.0.0.1', () => {
+      spotifyAuthorizationTimeout = setTimeout(
+        () => {
+          closeSpotifyAuthorizationServer();
+          if (!authWindow.isDestroyed()) {
+            authWindow.webContents.send('spotify-auth-result', {
+              code: null,
+              state,
+              error: 'timeout',
+            });
+          }
+        },
+        5 * 60 * 1000
+      );
+      resolve({ redirectUri: `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback` });
+    });
+  });
+});
+
+ipcMain.handle('spotify-auth-open', async (_event, value) => {
+  let authorizationUrl;
+  try {
+    authorizationUrl = new URL(value);
+  } catch {
+    throw new Error('Invalid Spotify authorization URL.');
+  }
+  if (
+    authorizationUrl.protocol !== 'https:' ||
+    authorizationUrl.hostname !== 'accounts.spotify.com' ||
+    authorizationUrl.pathname !== '/authorize'
+  ) {
+    throw new Error('Only Spotify account sign-in URLs can be opened.');
+  }
+  await shell.openExternal(authorizationUrl.toString());
+});
+
+ipcMain.handle('spotify-dashboard-open', async () => {
+  await shell.openExternal('https://developer.spotify.com/dashboard');
+});
+
+ipcMain.handle('spotify-session-load', async () => {
+  try {
+    const encryptedSession = await fs.promises.readFile(getSpotifySessionPath());
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Secure storage is unavailable; Spotify sign-in cannot be restored.');
+    }
+    return safeStorage.decryptString(encryptedSession);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+});
+
+ipcMain.handle('spotify-session-save', async (_event, session) => {
+  if (typeof session !== 'string' || session.length > 16_384) {
+    throw new Error('Invalid Spotify session data.');
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is unavailable; Spotify session was not saved.');
+  }
+  const parsedSession = JSON.parse(session);
+  if (
+    typeof parsedSession.access_token !== 'string' ||
+    typeof parsedSession.expires_at !== 'number' ||
+    (parsedSession.refresh_token !== undefined && typeof parsedSession.refresh_token !== 'string')
+  ) {
+    throw new Error('Invalid Spotify session data.');
+  }
+
+  const sessionPath = getSpotifySessionPath();
+  await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
+  const temporaryPath = `${sessionPath}.tmp`;
+  await fs.promises.writeFile(temporaryPath, safeStorage.encryptString(session));
+  await fs.promises.rename(temporaryPath, sessionPath);
+});
+
+ipcMain.handle('spotify-session-clear', async () => {
+  try {
+    await fs.promises.unlink(getSpotifySessionPath());
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: 'Luna Music',
@@ -930,6 +1119,7 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+  if (process.platform === 'win32') setTaskbarPlaybackState(false);
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window-state-changed', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window-state-changed', false));
 }
@@ -1041,6 +1231,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', (event) => {
+  closeSpotifyAuthorizationServer();
   if (allowQuitAfterSettingsFlush) return;
   event.preventDefault();
   if (settingsFlushInProgress) return;

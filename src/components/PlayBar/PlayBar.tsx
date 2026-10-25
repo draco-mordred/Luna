@@ -18,6 +18,7 @@ const getExpandProgress = (currentHeight: number) => (
 
 interface PlayBarProps {
   track?: Track | null;
+  activeAudio: HTMLAudioElement | null;
   isPlaying: boolean;
   isLoved?: boolean;
   onPlayPause: () => void;
@@ -30,8 +31,6 @@ interface PlayBarProps {
   onSuggestTrackLess?: (track: { id: string; name: string; artist: string; album: string; path?: string } | null) => void;
   volume: number;
   onVolumeChange: (volume: number) => void;
-  currentTime: number;
-  duration: number;
   onSeek: (time: number) => void;
   isShuffled: boolean;
   onToggleShuffle: () => void;
@@ -239,6 +238,7 @@ const SyncedLyricCaption = memo<SyncedLyricCaptionProps>(({
 
 const PlayBar: React.FC<PlayBarProps> = ({
   track,
+  activeAudio,
   isPlaying,
   isLoved = false,
   onPlayPause,
@@ -251,8 +251,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onSuggestTrackLess,
   volume,
   onVolumeChange,
-  currentTime,
-  duration,
   onSeek,
   isShuffled = false,
   onToggleShuffle,
@@ -283,6 +281,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
   const [showLyricsHint, setShowLyricsHint] = useState(false);
   const [showSyncedLyrics, setShowSyncedLyrics] = useState(true);
+  const [playbackPosition, setPlaybackPosition] = useState({ currentTime: 0, duration: 0 });
+  const currentTime = playbackPosition.currentTime;
+  const duration = playbackPosition.duration || track?.duration || 0;
   const playBarRef = useRef<HTMLDivElement>(null);
   const dragStartYRef = useRef<number | null>(null);
   const dragStartHeightRef = useRef(COLLAPSED_HEIGHT);
@@ -310,6 +311,45 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const visualizerLocation = showSyncedLyricCaption || showPlainLyricsPanel
     ? 'below-art'
     : hasSyncedLyrics ? 'default' : 'lyrics-slot';
+
+  useEffect(() => {
+    const syncPlaybackPosition = () => {
+      setPlaybackPosition({
+        currentTime: activeAudio?.currentTime ?? 0,
+        duration: activeAudio && Number.isFinite(activeAudio.duration)
+          ? activeAudio.duration
+          : track?.duration ?? 0,
+      });
+    };
+    const initialSyncFrame = window.requestAnimationFrame(syncPlaybackPosition);
+    if (!activeAudio) {
+      return () => window.cancelAnimationFrame(initialSyncFrame);
+    }
+    activeAudio.addEventListener('timeupdate', syncPlaybackPosition);
+    activeAudio.addEventListener('durationchange', syncPlaybackPosition);
+    activeAudio.addEventListener('loadedmetadata', syncPlaybackPosition);
+    activeAudio.addEventListener('seeking', syncPlaybackPosition);
+    activeAudio.addEventListener('seeked', syncPlaybackPosition);
+    activeAudio.addEventListener('emptied', syncPlaybackPosition);
+
+    return () => {
+      window.cancelAnimationFrame(initialSyncFrame);
+      activeAudio.removeEventListener('timeupdate', syncPlaybackPosition);
+      activeAudio.removeEventListener('durationchange', syncPlaybackPosition);
+      activeAudio.removeEventListener('loadedmetadata', syncPlaybackPosition);
+      activeAudio.removeEventListener('seeking', syncPlaybackPosition);
+      activeAudio.removeEventListener('seeked', syncPlaybackPosition);
+      activeAudio.removeEventListener('emptied', syncPlaybackPosition);
+    };
+  }, [activeAudio, track?.duration, track?.id]);
+
+  const seekTo = (time: number) => {
+    onSeek(time);
+    setPlaybackPosition((position) => ({
+      ...position,
+      currentTime: Math.max(0, Math.min(duration, time)),
+    }));
+  };
 
   useEffect(() => {
     if (!lyricsEnabled) {
@@ -894,7 +934,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               text={currentSyncedLyricText}
               lines={track.syncedLyrics}
               currentIndex={currentSyncedLyricIndex}
-              onSeek={onSeek}
+              onSeek={seekTo}
               isVisible={showSyncedLyricCaption}
             />
           )}
@@ -903,7 +943,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               if (!track) return;
               const rect = e.currentTarget.getBoundingClientRect();
               const percent = (e.clientX - rect.left) / rect.width;
-              onSeek(percent * duration);
+              seekTo(percent * duration);
             }}>
               <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
             </div>
@@ -981,7 +1021,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               max={duration || 0}
               step={0.1}
               value={Math.min(currentTime, duration)}
-              onChange={(e) => onSeek(e.currentTarget.valueAsNumber)}
+              onChange={(e) => seekTo(e.currentTarget.valueAsNumber)}
               disabled={!track}
             />
           </div>

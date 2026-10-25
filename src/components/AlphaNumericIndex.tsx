@@ -7,12 +7,12 @@ export interface AlphaNumericIndexEntry {
 }
 
 export const getAlphaNumericLabel = (value: string | number | undefined) => {
-  const firstCharacter = String(value ?? '')
+  const firstCharacter = Array.from(String(value ?? '')
     .trim()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .charAt(0);
-  return /^[a-z0-9]$/i.test(firstCharacter) ? firstCharacter.toLocaleUpperCase() : '#';
+    .replace(/\p{M}/gu, ''))[0] ?? '';
+  if (/^[\p{L}\p{N}]$/u.test(firstCharacter)) return firstCharacter.toLocaleUpperCase();
+  return /^\p{S}$/u.test(firstCharacter) ? '#' : '…';
 };
 
 export const buildAlphaNumericIndex = <T,>(
@@ -124,7 +124,7 @@ const AlphaNumericIndex = ({
           key={`${entry.label}-${entry.targetId}`}
           className={`alpha-numeric-index-button ${activeTargetId === entry.targetId ? 'active' : ''}`}
           type='button'
-          aria-label={`Jump to ${entry.label}${entry.label === '#' ? ' and other items' : ''}`}
+          aria-label={`Jump to ${entry.label}${entry.label === '#' ? ' symbols' : entry.label === '…' ? ' other characters' : ''}`}
           aria-current={activeTargetId === entry.targetId ? 'location' : undefined}
           onClick={() => scrollToEntry(entry)}
         >

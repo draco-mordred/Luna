@@ -5,6 +5,7 @@ import TrackQueueContextMenu from '../components/TrackQueueContextMenu';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import { splitArtistCredits } from '../utils/artistCredits';
 import { getLibraryItemHash } from '../utils/libraryNavigation';
+import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import './Tracks.css';
 
 type SortField = 'name' | 'artist' | 'album' | 'genre' | 'year' | 'duration';
@@ -142,11 +143,7 @@ const TracksPage = ({
   const sortedTracks = useMemo(() => [...tracks].sort((a, b) => {
     const aValue = a[sortBy] ?? '';
     const bValue = b[sortBy] ?? '';
-    const comparison = typeof aValue === 'number' && typeof bValue === 'number'
-      ? aValue - bValue
-      : String(aValue).localeCompare(String(bValue));
-
-    return sortDirection === 'asc' ? comparison : -comparison;
+    return compareAlphaNumericFirst(aValue, bValue, sortDirection);
   }), [sortBy, sortDirection, tracks]);
 
   const trackIndexEntries = useMemo(() => {
@@ -269,4 +266,4 @@ const TracksPage = ({
   );
 };
 
-export default TracksPage;
+export default memo(TracksPage);

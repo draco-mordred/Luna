@@ -5,6 +5,7 @@ import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNu
 import QueueContextMenu from '../components/QueueContextMenu';
 import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
+import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import './Albums.css';
 
 interface AlbumSummary {
@@ -204,11 +205,7 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
       [...albums].sort((a, b) => {
         const aValue = sortBy === 'tracks' ? a.trackCount : (a[sortBy] ?? '');
         const bValue = sortBy === 'tracks' ? b.trackCount : (b[sortBy] ?? '');
-        const comparison =
-          typeof aValue === 'number' && typeof bValue === 'number'
-            ? aValue - bValue
-            : String(aValue).localeCompare(String(bValue));
-        return sortDirection === 'asc' ? comparison : -comparison;
+        return compareAlphaNumericFirst(aValue, bValue, sortDirection);
       }),
     [albums, sortBy, sortDirection]
   );
@@ -326,4 +323,4 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
   );
 };
 
-export default AlbumsPage;
+export default memo(AlbumsPage);

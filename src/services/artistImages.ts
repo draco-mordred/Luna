@@ -43,6 +43,18 @@ let imageDatabasePromise: Promise<IDBDatabase> | null = null;
 
 const normalizeArtistName = (artist: string) => artist.trim().toLocaleLowerCase();
 
+const requestPersistentImageStorage = () => {
+  if (!navigator.storage?.persist) return;
+  void navigator.storage
+    .persist()
+    .then((persisted) => {
+      if (!persisted) console.warn('Persistent storage was not granted for the artist image cache.');
+    })
+    .catch((error: unknown) => {
+      console.warn('Could not request persistent storage for the artist image cache:', error);
+    });
+};
+
 const isWikimediaImageUrl = (value: string | undefined): value is string => {
   if (!value) return false;
   try {
@@ -187,8 +199,8 @@ export const getArtistInfo = (artist: string): Promise<ArtistWebInfo> => {
   return request;
 };
 
-export const getArtistImage = (artist: string): Promise<string | null> =>
-  getDownloadedArtistImage(artist);
+export const getArtistImage = (artist: string, allowDownload = true): Promise<string | null> =>
+  getDownloadedArtistImage(artist, allowDownload);
 
 const openArtistImageDatabase = (): Promise<IDBDatabase> => {
   if (imageDatabasePromise) return imageDatabasePromise;
@@ -200,7 +212,10 @@ const openArtistImageDatabase = (): Promise<IDBDatabase> => {
         database.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'artist' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      requestPersistentImageStorage();
+      resolve(request.result);
+    };
     request.onerror = () => reject(request.error ?? new Error('Could not open artist image cache.'));
     request.onblocked = () => reject(new Error('Artist image cache upgrade is blocked.'));
   }).catch((error: unknown) => {
@@ -266,7 +281,10 @@ const cacheArtistImageBlob = async (
   });
 };
 
-const getDownloadedArtistImage = async (artistName: string): Promise<string | null> => {
+const getDownloadedArtistImage = async (
+  artistName: string,
+  allowDownload: boolean
+): Promise<string | null> => {
   const artist = normalizeArtistName(artistName);
   if (!artist) return null;
   const cachedObjectUrl = downloadedImageUrls.get(artist);
@@ -275,16 +293,17 @@ const getDownloadedArtistImage = async (artistName: string): Promise<string | nu
   if (pendingDownload) return pendingDownload;
 
   const download = (async () => {
+    const cachedObjectUrl = await getCachedArtistImageUrl(artist);
+    if (cachedObjectUrl) return cachedObjectUrl;
+
+    if (!allowDownload) return null;
     if (!navigator.onLine) {
-      return getCachedArtistImageUrl(artist);
+      return null;
     }
 
     const { imageUrl } = await getArtistInfo(artistName);
-    if (!imageUrl) return getCachedArtistImageUrl(artist);
+    if (!imageUrl) return null;
     try {
-      const cachedObjectUrl = await getCachedArtistImageUrl(artist, imageUrl);
-      if (cachedObjectUrl) return cachedObjectUrl;
-
       const response = await fetch(imageUrl);
       if (!response.ok) {
         throw new Error(`Artist image download failed (HTTP ${response.status}).`);
@@ -297,13 +316,20 @@ const getDownloadedArtistImage = async (artistName: string): Promise<string | nu
       if (!image.type.startsWith('image/') || image.size > MAX_ARTIST_IMAGE_SIZE) {
         throw new Error('Artist image is not a supported image or exceeds the 12 MB cache limit.');
       }
-      await cacheArtistImageBlob(artist, imageUrl, image);
+      try {
+        await cacheArtistImageBlob(artist, imageUrl, image);
+      } catch (error) {
+        console.warn(`Could not persist artist image for "${artistName}"; using it for this session:`, error);
+      }
       const objectUrl = URL.createObjectURL(image);
       downloadedImageUrls.set(artist, objectUrl);
       return objectUrl;
     } catch (error) {
       console.warn(`Could not download or cache artist image for "${artistName}":`, error);
-      return getCachedArtistImageUrl(artist);
+      const cachedFallback = await getCachedArtistImageUrl(artist);
+      if (cachedFallback) return cachedFallback;
+      downloadedImageUrls.set(artist, imageUrl);
+      return imageUrl;
     }
   })();
 
@@ -314,12 +340,13 @@ const getDownloadedArtistImage = async (artistName: string): Promise<string | nu
 
 interface UseArtistImageOptions {
   enabled?: boolean;
+  allowDownload?: boolean;
   loadWhenVisible?: boolean;
 }
 
 export const useArtistImage = (
   artist: string,
-  { enabled = true, loadWhenVisible = false }: UseArtistImageOptions = {}
+  { enabled = true, allowDownload = true, loadWhenVisible = false }: UseArtistImageOptions = {}
 ) => {
   const elementRef = useRef<HTMLDivElement>(null);
   const [result, setResult] = useState<{ artist: string; imageUrl: string | null } | null>(null);
@@ -329,7 +356,7 @@ export const useArtistImage = (
     if (!enabled || !normalizedArtist) return;
     let isMounted = true;
     const load = () => {
-      void getArtistImage(artist).then((imageUrl) => {
+      void getArtistImage(artist, allowDownload).then((imageUrl) => {
         if (isMounted) setResult({ artist: normalizedArtist, imageUrl });
       });
     };
@@ -355,7 +382,7 @@ export const useArtistImage = (
       isMounted = false;
       observer.disconnect();
     };
-  }, [artist, enabled, loadWhenVisible, normalizedArtist]);
+  }, [allowDownload, artist, enabled, loadWhenVisible, normalizedArtist]);
 
   return {
     elementRef,

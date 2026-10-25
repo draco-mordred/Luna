@@ -3,6 +3,13 @@
   "version": "1.0.1",
   "private": true,
   "main": "public/electron.js",
+  "description": "A music player built with React, Electron, and Capacitor.",
+  "author": "Israel Oladele",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/draco-mordred/Luna.git"
+  },
   "homepage": ".",
   "dependencies": {
     "@fontsource/material-symbols-outlined": "^5.3.9",

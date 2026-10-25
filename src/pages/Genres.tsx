@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import QueueContextMenu from '../components/QueueContextMenu';
@@ -93,4 +93,4 @@ const GenresPage = ({ tracks, onPlayTrack, onQueueTracks }: GenresPageProps) => 
   );
 };
 
-export default GenresPage;
+export default memo(GenresPage);

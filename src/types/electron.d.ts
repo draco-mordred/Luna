@@ -24,6 +24,12 @@ export interface TrackMetadataUpdate {
   albumArtMimeType?: string;
 }
 
+export interface SpotifyAuthorizationResult {
+  code: string | null;
+  state: string | null;
+  error: string | null;
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
 export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
@@ -104,6 +110,19 @@ declare global {
       ) => Promise<MusicLibraryResponse>;
       onWindowStateChanged: (callback: (isMaximized: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
+      setTaskbarPlaybackState: (isPlaying: boolean) => void;
+      onTaskbarPrevious: (callback: () => void) => () => void;
+      onTaskbarPlayPause: (callback: () => void) => () => void;
+      onTaskbarNext: (callback: () => void) => () => void;
+      startSpotifyAuthorization: (state: string) => Promise<{ redirectUri: string }>;
+      openSpotifyAuthorization: (url: string) => Promise<void>;
+      openSpotifyDashboard: () => Promise<void>;
+      loadSpotifySession: () => Promise<string | null>;
+      saveSpotifySession: (session: string) => Promise<void>;
+      clearSpotifySession: () => Promise<void>;
+      onSpotifyAuthorizationResult: (
+        callback: (result: SpotifyAuthorizationResult) => void
+      ) => () => void;
     };
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { IconStyle, SeekbarStyle, VisualizerStyle } from '../types/electron';
 import packageMetadata from '../../package.json';
@@ -606,4 +606,4 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   );
 };
 
-export default SettingsPage;
+export default memo(SettingsPage);

@@ -1,6 +1,6 @@
 {
-  "appId": "com.luna.music",
-  "productName": "Luna Music",
+  "appId": "com.avalon.luna",
+  "productName": "Luna",
   "directories": {
     "buildResources": "public"
   },

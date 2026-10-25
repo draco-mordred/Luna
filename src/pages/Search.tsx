@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import { buildSearchGroups } from '../services/search';
@@ -121,4 +121,4 @@ const SearchPage = ({ tracks, onPlayTrack, onQueueTracks }: SearchPageProps) => 
   );
 };
 
-export default SearchPage;
+export default memo(SearchPage);

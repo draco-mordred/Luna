@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { Track } from '../services/MusicLibrary';
 import QueueContextMenu from '../components/QueueContextMenu';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
@@ -100,4 +100,4 @@ const ComposerPage = ({ tracks, onPlayTrack, onQueueTracks }: ComposerPageProps)
   );
 };
 
-export default ComposerPage;
+export default memo(ComposerPage);

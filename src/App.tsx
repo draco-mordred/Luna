@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import PlayBar from './components/PlayBar';
 import Sidebar from './components/Sidebar';
@@ -8,17 +8,6 @@ import type { PlaylistDialogState } from './components/PlaylistDialog';
 import TrackMetadataEditor from './components/TrackMetadataEditor';
 import TopNavbar from './components/TopNavbar';
 import WindowTitleBar from './components/WindowTitleBar/WindowTitleBar';
-import {
-  Tracks,
-  Albums,
-  Artists,
-  Composer,
-  Genres,
-  Settings,
-  Search,
-  CollectionDetails,
-} from './pages';
-import PlaylistsPage from './pages/Playlists';
 import type { Playlist, Track } from './services/MusicLibrary';
 import type {
   AppSettings,
@@ -30,6 +19,17 @@ import type {
   VisualizerStyle,
 } from './types/electron';
 import './App.css';
+
+const Tracks = lazy(() => import('./pages/Tracks'));
+const Albums = lazy(() => import('./pages/Albums'));
+const Artists = lazy(() => import('./pages/Artists'));
+const Composer = lazy(() => import('./pages/Composer'));
+const Genres = lazy(() => import('./pages/Genres'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Search = lazy(() => import('./pages/Search'));
+const CollectionDetails = lazy(() => import('./pages/CollectionDetails'));
+const PlaylistsPage = lazy(() => import('./pages/Playlists'));
+const SpotifyPage = lazy(() => import('./pages/Spotify'));
 
 const SectionPlaceholder = ({ title }: { title: string }) => (
   <section className='section-placeholder'>
@@ -276,8 +276,6 @@ const App = () => {
   const [trackAccentColor, setTrackAccentColor] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.7);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const screenWidth = window.screen?.width ?? window.innerWidth;
@@ -512,8 +510,6 @@ const App = () => {
     const restoredTrack = libraryTracks.find((track) => track.path === lastPlayedTrackPath);
     if (restoredTrack) {
       setCurrentTrack(restoredTrack);
-      setCurrentTime(0);
-      setDuration(restoredTrack.duration || 0);
       return;
     }
     if (libraryReconciled) {
@@ -616,7 +612,7 @@ const App = () => {
     if (inactiveAudio) inactiveAudio.volume = 0;
   }, [volume]);
 
-  const handleSelectMusicFolders = async () => {
+  const handleSelectMusicFolders = useCallback(async () => {
     if (!window.electronAPI) {
       setLibraryError('Folder selection is available in the Luna desktop app.');
       return null;
@@ -637,9 +633,9 @@ const App = () => {
     } finally {
       setIsLibraryLoading(false);
     }
-  };
+  }, [applyLibraryResponse]);
 
-  const handleRescanMusicLibrary = async () => {
+  const handleRescanMusicLibrary = useCallback(async () => {
     if (!window.electronAPI) {
       setLibraryError('Library scanning is available in the Luna desktop app.');
       return { folders: [], tracks: [], errors: [] };
@@ -658,9 +654,9 @@ const App = () => {
     } finally {
       setIsLibraryLoading(false);
     }
-  };
+  }, [applyLibraryResponse]);
 
-  const handleRemoveMusicFolder = async (folder: string) => {
+  const handleRemoveMusicFolder = useCallback(async (folder: string) => {
     if (!window.electronAPI) return;
     try {
       setIsLibraryLoading(true);
@@ -674,7 +670,12 @@ const App = () => {
     } finally {
       setIsLibraryLoading(false);
     }
-  };
+  }, [applyLibraryResponse]);
+
+  const handleAutoDownloadArtistImagesChange = useCallback((enabled: boolean) => {
+    setAutoDownloadArtistImages(enabled);
+    if (!enabled) setShowArtistImageBackground(false);
+  }, []);
 
   const cancelCrossfade = useCallback(() => {
     crossfadeRequestIdRef.current += 1;
@@ -710,8 +711,6 @@ const App = () => {
       audio.volume = volumeRef.current;
       setCurrentTrack(track);
       setLastPlayedTrackPath(track.path);
-      setCurrentTime(0);
-      setDuration(track.duration || 0);
       setLibraryError(null);
       audio.src = track.src;
       prepareVisualizerAudio(audio);
@@ -807,7 +806,7 @@ const App = () => {
     [playQueue, playQueueIndex]
   );
 
-  const handlePlayPause = () => {
+  const handlePlayPause = useCallback(() => {
     const audio = activeAudioRef.current ?? audioARef.current;
     if (!audio || !currentTrack?.src) return;
     activeAudioRef.current = audio;
@@ -831,27 +830,47 @@ const App = () => {
       otherAudio?.pause();
       setIsPlaying(false);
     }
-  };
+  }, [cancelCrossfade, currentTrack, prepareVisualizerAudio]);
   const handlePrevious = useCallback(() => {
     const audio = activeAudioRef.current;
-    const playhead = audio?.currentTime ?? currentTime;
+    const playhead = audio?.currentTime ?? 0;
     if (currentTrack && playhead > 6) {
       if (audio) audio.currentTime = 0;
-      setCurrentTime(0);
       return;
     }
     playRelativeTrack(-1);
-  }, [currentTime, currentTrack, playRelativeTrack]);
+  }, [currentTrack, playRelativeTrack]);
   const handleNext = useCallback(() => playRelativeTrack(1), [playRelativeTrack]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (api?.platform !== 'win32') return;
+
+    const unsubscribe = [
+      api.onTaskbarPrevious(handlePrevious),
+      api.onTaskbarPlayPause(handlePlayPause),
+      api.onTaskbarNext(handleNext),
+    ];
+    return () => unsubscribe.forEach((removeListener) => removeListener());
+  }, [handleNext, handlePlayPause, handlePrevious]);
+
+  useEffect(() => {
+    if (window.electronAPI?.platform === 'win32') {
+      window.electronAPI.setTaskbarPlaybackState(isPlaying);
+    }
+  }, [isPlaying]);
+
   const handleVolumeChange = (newVolume: number) => setVolume(newVolume);
   const handleSeek = useCallback(
     (time: number) => {
       if (!Number.isFinite(time)) return;
-      const seekTime = Math.max(0, Math.min(duration, time));
-      if (activeAudioRef.current) activeAudioRef.current.currentTime = seekTime;
-      setCurrentTime(seekTime);
+      const audio = activeAudioRef.current;
+      const duration = audio && Number.isFinite(audio.duration)
+        ? audio.duration
+        : currentTrack?.duration ?? 0;
+      if (audio) audio.currentTime = Math.max(0, Math.min(duration, time));
     },
-    [duration]
+    [currentTrack?.duration]
   );
 
   const beginCrossfade = useCallback(
@@ -898,8 +917,6 @@ const App = () => {
       );
       setCurrentTrack(nextTrack);
       setLastPlayedTrackPath(nextTrack.path);
-      setCurrentTime(0);
-      setDuration(Number.isFinite(incoming.duration) ? incoming.duration : nextTrack.duration || 0);
       setLibraryError(null);
 
       const startedAt = performance.now();
@@ -930,7 +947,6 @@ const App = () => {
   const handleAudioTimeUpdate = useCallback(
     (audio: HTMLAudioElement) => {
       if (audio !== activeAudioRef.current) return;
-      setCurrentTime(audio.currentTime);
       if (repeatMode !== 'all' || crossfadeSeconds <= 0 || !Number.isFinite(audio.duration)) return;
       const nextTrack =
         playQueue[playQueueIndex + 1] ?? (repeatMode === 'all' ? playQueue[0] : null);
@@ -1308,7 +1324,10 @@ const App = () => {
   ]);
 
   // Toggle sidebar
-  const toggleSidebar = () => setSidebarCollapsed(!sidebarCollapsed);
+  const toggleSidebar = useCallback(
+    () => setSidebarCollapsed((collapsed) => !collapsed),
+    []
+  );
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -1337,7 +1356,8 @@ const App = () => {
           {/* Page Content */}
           <main className='page-content'>
             <div key={location.pathname} className='page-transition'>
-              <Routes>
+              <Suspense fallback={<div className='page-loading' role='status'>Loading page…</div>}>
+                <Routes>
                 <Route
                   path='/'
                   element={
@@ -1354,9 +1374,7 @@ const App = () => {
                       playlists={playlists}
                       onAddTracksToPlaylist={handleAddTracksToPlaylist}
                       onEditTrack={handleOpenTrackMetadata}
-                      onAddMusicFolder={() => {
-                        void handleSelectMusicFolders();
-                      }}
+                      onAddMusicFolder={handleSelectMusicFolders}
                     />
                   }
                 />
@@ -1376,9 +1394,7 @@ const App = () => {
                       playlists={playlists}
                       onAddTracksToPlaylist={handleAddTracksToPlaylist}
                       onEditTrack={handleOpenTrackMetadata}
-                      onAddMusicFolder={() => {
-                        void handleSelectMusicFolders();
-                      }}
+                      onAddMusicFolder={handleSelectMusicFolders}
                     />
                   }
                 />
@@ -1477,7 +1493,8 @@ const App = () => {
                 />
                 <Route path='/browse' element={<SectionPlaceholder title='Browse' />} />
                 <Route path='/radio' element={<SectionPlaceholder title='Radio' />} />
-                <Route path='/spotify' element={<SectionPlaceholder title='Spotify' />} />
+                <Route path='/spotify' element={<SpotifyPage />} />
+                <Route path='/spotify/callback' element={<SpotifyPage />} />
                 <Route
                   path='/search'
                   element={
@@ -1507,10 +1524,7 @@ const App = () => {
                       showArtistImageBackground={showArtistImageBackground}
                       onShowArtistImageBackgroundChange={setShowArtistImageBackground}
                       autoDownloadArtistImages={autoDownloadArtistImages}
-                      onAutoDownloadArtistImagesChange={(enabled) => {
-                        setAutoDownloadArtistImages(enabled);
-                        if (!enabled) setShowArtistImageBackground(false);
-                      }}
+                      onAutoDownloadArtistImagesChange={handleAutoDownloadArtistImagesChange}
                       showLyrics={showLyrics}
                       onShowLyricsChange={setShowLyrics}
                       crossfadeSeconds={crossfadeSeconds}
@@ -1522,12 +1536,8 @@ const App = () => {
                       onAddMusicFolder={() => {
                         void handleSelectMusicFolders();
                       }}
-                      onRescanMusicLibrary={() => {
-                        void handleRescanMusicLibrary();
-                      }}
-                      onRemoveMusicFolder={(folder) => {
-                        void handleRemoveMusicFolder(folder);
-                      }}
+                      onRescanMusicLibrary={handleRescanMusicLibrary}
+                      onRemoveMusicFolder={handleRemoveMusicFolder}
                       showBrowseSection={showBrowseSection}
                       onShowBrowseSectionChange={setShowBrowseSection}
                       showRadioSection={showRadioSection}
@@ -1586,7 +1596,8 @@ const App = () => {
                     />
                   }
                 />
-              </Routes>
+                </Routes>
+              </Suspense>
             </div>
           </main>
         </div>
@@ -1596,10 +1607,6 @@ const App = () => {
       <audio
         ref={audioARef}
         onTimeUpdate={(event) => handleAudioTimeUpdate(event.currentTarget)}
-        onLoadedMetadata={(event) => {
-          if (event.currentTarget === activeAudioRef.current)
-            setDuration(event.currentTarget.duration);
-        }}
         onEnded={(event) => handleAudioEnded(event.currentTarget)}
         onPause={(event) => {
           if (event.currentTarget === activeAudioRef.current) setIsPlaying(false);
@@ -1620,10 +1627,6 @@ const App = () => {
       <audio
         ref={audioBRef}
         onTimeUpdate={(event) => handleAudioTimeUpdate(event.currentTarget)}
-        onLoadedMetadata={(event) => {
-          if (event.currentTarget === activeAudioRef.current)
-            setDuration(event.currentTarget.duration);
-        }}
         onEnded={(event) => handleAudioEnded(event.currentTarget)}
         onPause={(event) => {
           if (event.currentTarget === activeAudioRef.current) setIsPlaying(false);
@@ -1643,6 +1646,7 @@ const App = () => {
       />
       <PlayBar
         track={currentTrack}
+        activeAudio={activeAudioRef.current}
         isPlaying={isPlaying}
         isLoved={currentTrack ? lovedTrackIds.includes(currentTrack.id) : false}
         onPlayPause={handlePlayPause}
@@ -1655,8 +1659,6 @@ const App = () => {
         onSuggestTrackLess={handleSuggestTrackLess}
         volume={volume}
         onVolumeChange={handleVolumeChange}
-        currentTime={currentTime}
-        duration={duration}
         onSeek={handleSeek}
         isShuffled={isShuffled}
         onToggleShuffle={handleToggleShuffle}

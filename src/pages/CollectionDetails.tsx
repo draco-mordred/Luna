@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import LibraryTrackList from '../components/LibraryTrackList';
 import QueueContextMenu from '../components/QueueContextMenu';
@@ -228,4 +228,4 @@ const CollectionDetails = ({ type, tracks, onPlayTrack, onQueueTracks }: Collect
   );
 };
 
-export default CollectionDetails;
+export default memo(CollectionDetails);

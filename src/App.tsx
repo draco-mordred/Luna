@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import PlayBar from './components/PlayBar';
+import StreamingPlayBar from './components/StreamingPlayBar';
 import Sidebar from './components/Sidebar';
 import type { PlaylistAction } from './components/PlaylistOptionsMenu';
 import PlaylistDialog from './components/PlaylistDialog';
@@ -9,6 +10,7 @@ import TrackMetadataEditor from './components/TrackMetadataEditor';
 import TopNavbar from './components/TopNavbar';
 import WindowTitleBar from './components/WindowTitleBar/WindowTitleBar';
 import type { Playlist, Track } from './services/MusicLibrary';
+import { getAudiomackPlaybackUrl } from './services/audiomack';
 import type {
   AppSettings,
   IconStyle,
@@ -29,7 +31,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Search = lazy(() => import('./pages/Search'));
 const CollectionDetails = lazy(() => import('./pages/CollectionDetails'));
 const PlaylistsPage = lazy(() => import('./pages/Playlists'));
-const SpotifyPage = lazy(() => import('./pages/Spotify'));
+const RadioPage = lazy(() => import('./pages/Radio'));
 
 const SectionPlaceholder = ({ title }: { title: string }) => (
   <section className='section-placeholder'>
@@ -250,9 +252,6 @@ const App = () => {
   const [showRadioSection, setShowRadioSection] = useState(
     () => window.localStorage.getItem('luna-show-radio') !== 'false'
   );
-  const [showSpotifySection, setShowSpotifySection] = useState(
-    () => window.localStorage.getItem('luna-show-spotify') !== 'false'
-  );
   const [settingsLoaded, setSettingsLoaded] = useState(!window.electronAPI);
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
@@ -295,6 +294,7 @@ const App = () => {
   const [lovedTrackIds, setLovedTrackIds] = useState<string[]>([]);
   const audioARef = useRef<HTMLAudioElement>(null);
   const audioBRef = useRef<HTMLAudioElement>(null);
+  const audiomackAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceNodesRef = useRef(new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>());
@@ -442,10 +442,6 @@ const App = () => {
         setShowRadioSection(
           settings.showRadioSection ?? window.localStorage.getItem('luna-show-radio') !== 'false'
         );
-        setShowSpotifySection(
-          settings.showSpotifySection ??
-            window.localStorage.getItem('luna-show-spotify') !== 'false'
-        );
       })
       .catch((error: unknown) => {
         console.error('Could not load app settings:', error);
@@ -543,7 +539,6 @@ const App = () => {
     window.localStorage.setItem('luna-repeat-mode', repeatMode);
     window.localStorage.setItem('luna-show-browse', String(showBrowseSection));
     window.localStorage.setItem('luna-show-radio', String(showRadioSection));
-    window.localStorage.setItem('luna-show-spotify', String(showSpotifySection));
     if (window.electronAPI) {
       window.electronAPI
         .saveAppSettings({
@@ -562,7 +557,6 @@ const App = () => {
           repeatMode,
           showBrowseSection,
           showRadioSection,
-          showSpotifySection,
         })
         .catch((error: unknown) => {
           console.error('Could not save app settings:', error);
@@ -580,7 +574,6 @@ const App = () => {
     settingsLoaded,
     showBrowseSection,
     showRadioSection,
-    showSpotifySection,
     showLyrics,
     showVisualizer,
     autoDownloadArtistImages,
@@ -606,10 +599,9 @@ const App = () => {
   useEffect(() => {
     volumeRef.current = clampVolume(volume);
     if (crossfadeFrameRef.current !== null) return;
-    if (activeAudioRef.current) activeAudioRef.current.volume = volume;
-    const inactiveAudio =
-      activeAudioRef.current === audioARef.current ? audioBRef.current : audioARef.current;
-    if (inactiveAudio) inactiveAudio.volume = 0;
+    [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((audio) => {
+      if (audio) audio.volume = audio === activeAudioRef.current ? volume : 0;
+    });
   }, [volume]);
 
   const handleSelectMusicFolders = useCallback(async () => {
@@ -694,26 +686,49 @@ const App = () => {
 
   const playAudioTrack = useCallback(
     async (track: Track) => {
-      const audio = activeAudioRef.current ?? audioARef.current ?? audioBRef.current;
-      if (!audio || !track.src) {
+      const audio =
+        track.streamingProvider === 'audiomack'
+          ? audiomackAudioRef.current
+          : activeAudioRef.current !== audiomackAudioRef.current
+            ? activeAudioRef.current ?? audioARef.current ?? audioBRef.current
+            : audioARef.current ?? audioBRef.current;
+      if (!audio) {
+        setLibraryError('Could not start playback because the audio player is unavailable.');
+        return;
+      }
+      let source = track.src;
+      try {
+        if (track.streamingProvider === 'audiomack') {
+          if (!track.streamingId) throw new Error('This Audiomack track is missing its music ID.');
+          source = await getAudiomackPlaybackUrl(track.streamingId);
+        }
+      } catch (error) {
+        console.error(`Could not prepare "${track.name}" for playback:`, error);
+        setLibraryError(
+          error instanceof Error ? error.message : `Could not prepare "${track.name}" for playback.`
+        );
+        return;
+      }
+      if (!source) {
         setLibraryError('This track is missing a playable audio file.');
         return;
       }
       cancelCrossfade();
-      const otherAudio = audio === audioARef.current ? audioBRef.current : audioARef.current;
-      otherAudio?.pause();
-      if (otherAudio) {
+      [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((otherAudio) => {
+        if (!otherAudio || otherAudio === audio) return;
+        otherAudio.pause();
         otherAudio.removeAttribute('src');
         otherAudio.load();
         otherAudio.volume = 0;
-      }
+      });
       activeAudioRef.current = audio;
       audio.volume = volumeRef.current;
-      setCurrentTrack(track);
-      setLastPlayedTrackPath(track.path);
+      const playableTrack = { ...track, src: source };
+      setCurrentTrack(playableTrack);
+      setLastPlayedTrackPath(track.streamingProvider ? null : track.path);
       setLibraryError(null);
-      audio.src = track.src;
-      prepareVisualizerAudio(audio);
+      audio.src = source;
+      if (track.streamingProvider !== 'audiomack') prepareVisualizerAudio(audio);
       try {
         await audio.play();
         setIsPlaying(true);
@@ -721,7 +736,11 @@ const App = () => {
         console.error(`Could not play "${track.name}":`, error);
         setIsPlaying(false);
         setLibraryError(
-          `Could not play "${track.name}". The file may be unavailable or use an unsupported format.`
+          track.streamingProvider === 'audiomack'
+            ? `Could not play "${track.name}" from Audiomack. The stream may be unavailable.`
+            : track.streamingProvider === 'jamendo'
+              ? `Could not play "${track.name}" from Jamendo. The stream may be unavailable.`
+              : `Could not play "${track.name}". The file may be unavailable or use an unsupported format.`
         );
       }
     },
@@ -808,10 +827,16 @@ const App = () => {
 
   const handlePlayPause = useCallback(() => {
     const audio = activeAudioRef.current ?? audioARef.current;
-    if (!audio || !currentTrack?.src) return;
+    if (!audio || !currentTrack) return;
     activeAudioRef.current = audio;
     if (audio.paused) {
-      if (audio.getAttribute('src') !== currentTrack.src) audio.src = currentTrack.src;
+      if (currentTrack.streamingProvider === 'audiomack') {
+        void playAudioTrack(currentTrack);
+        return;
+      }
+      const source = currentTrack.src;
+      if (!source) return;
+      if (audio.getAttribute('src') !== source) audio.src = source;
       audio.volume = volumeRef.current;
       prepareVisualizerAudio(audio);
       audio
@@ -820,7 +845,11 @@ const App = () => {
         .catch((error: unknown) => {
           console.error('Could not resume audio playback:', error);
           setIsPlaying(false);
-          setLibraryError('Could not resume playback. The audio file may no longer be available.');
+          setLibraryError(
+            currentTrack.streamingProvider === 'jamendo'
+              ? `Could not resume "${currentTrack.name}" from Jamendo. The stream may no longer be available.`
+              : 'Could not resume playback. The audio file may no longer be available.'
+          );
         });
     } else {
       cancelCrossfade();
@@ -830,7 +859,7 @@ const App = () => {
       otherAudio?.pause();
       setIsPlaying(false);
     }
-  }, [cancelCrossfade, currentTrack, prepareVisualizerAudio]);
+  }, [cancelCrossfade, currentTrack, playAudioTrack, prepareVisualizerAudio]);
   const handlePrevious = useCallback(() => {
     const audio = activeAudioRef.current;
     const playhead = audio?.currentTime ?? 0;
@@ -916,7 +945,7 @@ const App = () => {
         playQueue[currentIndex + 1] === nextTrack ? currentIndex + 1 : 0
       );
       setCurrentTrack(nextTrack);
-      setLastPlayedTrackPath(nextTrack.path);
+      setLastPlayedTrackPath(nextTrack.streamingProvider ? null : nextTrack.path);
       setLibraryError(null);
 
       const startedAt = performance.now();
@@ -953,6 +982,8 @@ const App = () => {
       const fadeDuration = Math.min(crossfadeSeconds, audio.duration / 2);
       if (
         nextTrack &&
+        !nextTrack.streamingProvider &&
+        nextTrack.src &&
         !(playQueue.length === 1 && nextTrack.id === currentTrack?.id) &&
         audio.duration - audio.currentTime <= fadeDuration
       ) {
@@ -966,6 +997,10 @@ const App = () => {
     (audio: HTMLAudioElement) => {
       if (audio !== activeAudioRef.current || crossfadeOutgoingRef.current === audio) return;
       if (repeatMode === 'one') {
+        if (currentTrack?.streamingProvider === 'audiomack') {
+          void playAudioTrack(currentTrack);
+          return;
+        }
         audio.currentTime = 0;
         audio.play().catch((error: unknown) => {
           console.error('Could not repeat the current track:', error);
@@ -982,7 +1017,7 @@ const App = () => {
         setIsPlaying(false);
       }
     },
-    [playQueue.length, playQueueAt, playQueueIndex, repeatMode]
+    [currentTrack, playAudioTrack, playQueue.length, playQueueAt, playQueueIndex, repeatMode]
   );
 
   const handleToggleShuffle = () => {
@@ -1341,7 +1376,6 @@ const App = () => {
           tracks={libraryTracks}
           showBrowseSection={showBrowseSection}
           showRadioSection={showRadioSection}
-          showSpotifySection={showSpotifySection}
         />
 
         {/* Main Content Area */}
@@ -1492,9 +1526,22 @@ const App = () => {
                   }
                 />
                 <Route path='/browse' element={<SectionPlaceholder title='Browse' />} />
-                <Route path='/radio' element={<SectionPlaceholder title='Radio' />} />
-                <Route path='/spotify' element={<SpotifyPage />} />
-                <Route path='/spotify/callback' element={<SpotifyPage />} />
+                <Route
+                  path='/radio'
+                  element={
+                    <RadioPage
+                      currentTrack={currentTrack}
+                      isPlaying={isPlaying}
+                      onPlayTrack={playTrack}
+                      onPlayPause={handlePlayPause}
+                    />
+                  }
+                />
+                <Route path='/jamendo' element={<Navigate to='/radio?tab=jamendo' replace />} />
+                <Route
+                  path='/audiomack'
+                  element={<Navigate to='/radio?tab=audiomack' replace />}
+                />
                 <Route
                   path='/search'
                   element={
@@ -1542,8 +1589,6 @@ const App = () => {
                       onShowBrowseSectionChange={setShowBrowseSection}
                       showRadioSection={showRadioSection}
                       onShowRadioSectionChange={setShowRadioSection}
-                      showSpotifySection={showSpotifySection}
-                      onShowSpotifySectionChange={setShowSpotifySection}
                     />
                   }
                 />
@@ -1591,8 +1636,6 @@ const App = () => {
                       onShowBrowseSectionChange={setShowBrowseSection}
                       showRadioSection={showRadioSection}
                       onShowRadioSectionChange={setShowRadioSection}
-                      showSpotifySection={showSpotifySection}
-                      onShowSpotifySectionChange={setShowSpotifySection}
                     />
                   }
                 />
@@ -1618,7 +1661,11 @@ const App = () => {
           if (event.currentTarget === activeAudioRef.current && currentTrack) {
             setIsPlaying(false);
             setLibraryError(
-              `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
+              currentTrack.streamingProvider === 'audiomack'
+                ? `Audiomack could not stream "${currentTrack.name}". The stream may have expired or become unavailable.`
+                : currentTrack.streamingProvider === 'jamendo'
+                  ? `Jamendo could not stream "${currentTrack.name}". The track may no longer be available.`
+                  : `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
             );
           }
         }}
@@ -1638,42 +1685,80 @@ const App = () => {
           if (event.currentTarget === activeAudioRef.current && currentTrack) {
             setIsPlaying(false);
             setLibraryError(
-              `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
+              currentTrack.streamingProvider === 'audiomack'
+                ? `Audiomack could not stream "${currentTrack.name}". The stream may have expired or become unavailable.`
+                : currentTrack.streamingProvider === 'jamendo'
+                  ? `Jamendo could not stream "${currentTrack.name}". The track may no longer be available.`
+                  : `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
             );
           }
         }}
         hidden
       />
-      <PlayBar
-        track={currentTrack}
-        activeAudio={activeAudioRef.current}
-        isPlaying={isPlaying}
-        isLoved={currentTrack ? lovedTrackIds.includes(currentTrack.id) : false}
-        onPlayPause={handlePlayPause}
-        onPrevious={handlePrevious}
-        onNext={handleNext}
-        onDeleteTrackFromLibrary={handleDeleteTrackFromLibrary}
-        onAddTrackToPlaylist={handleAddTrackToPlaylist}
-        onShowAlbum={handleShowAlbum}
-        onToggleLove={handleToggleLove}
-        onSuggestTrackLess={handleSuggestTrackLess}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
-        onSeek={handleSeek}
-        isShuffled={isShuffled}
-        onToggleShuffle={handleToggleShuffle}
-        repeatMode={repeatMode}
-        onToggleRepeat={handleToggleRepeat}
-        visualizerAnalyser={visualizerAnalyser}
-        visualizerStyle={visualizerStyle}
-        showVisualizer={showVisualizer}
-        showArtistImageBackground={autoDownloadArtistImages && showArtistImageBackground}
-        showLyrics={showLyrics}
-        playQueue={playQueue}
-        playQueueIndex={playQueueIndex}
-        onQueueSelect={playQueueAt}
-        onQueueTracks={handleQueueTracks}
+      <audio
+        ref={audiomackAudioRef}
+        onTimeUpdate={(event) => handleAudioTimeUpdate(event.currentTarget)}
+        onEnded={(event) => handleAudioEnded(event.currentTarget)}
+        onPause={(event) => {
+          if (event.currentTarget === activeAudioRef.current) setIsPlaying(false);
+        }}
+        onPlay={(event) => {
+          if (event.currentTarget === activeAudioRef.current) setIsPlaying(true);
+        }}
+        onError={(event) => {
+          if (event.currentTarget === activeAudioRef.current && currentTrack) {
+            setIsPlaying(false);
+            setLibraryError(
+              `Audiomack could not stream "${currentTrack.name}". The stream may have expired or become unavailable.`
+            );
+          }
+        }}
+        hidden
       />
+      {currentTrack?.streamingProvider ? (
+        <StreamingPlayBar
+          track={currentTrack}
+          activeAudio={activeAudioRef.current}
+          isPlaying={isPlaying}
+          volume={volume}
+          onPlayPause={handlePlayPause}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          onVolumeChange={handleVolumeChange}
+          onSeek={handleSeek}
+        />
+      ) : (
+        <PlayBar
+          track={currentTrack}
+          activeAudio={activeAudioRef.current}
+          isPlaying={isPlaying}
+          isLoved={currentTrack ? lovedTrackIds.includes(currentTrack.id) : false}
+          onPlayPause={handlePlayPause}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          onDeleteTrackFromLibrary={handleDeleteTrackFromLibrary}
+          onAddTrackToPlaylist={handleAddTrackToPlaylist}
+          onShowAlbum={handleShowAlbum}
+          onToggleLove={handleToggleLove}
+          onSuggestTrackLess={handleSuggestTrackLess}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          onSeek={handleSeek}
+          isShuffled={isShuffled}
+          onToggleShuffle={handleToggleShuffle}
+          repeatMode={repeatMode}
+          onToggleRepeat={handleToggleRepeat}
+          visualizerAnalyser={visualizerAnalyser}
+          visualizerStyle={visualizerStyle}
+          showVisualizer={showVisualizer}
+          showArtistImageBackground={autoDownloadArtistImages && showArtistImageBackground}
+          showLyrics={showLyrics}
+          playQueue={playQueue}
+          playQueueIndex={playQueueIndex}
+          onQueueSelect={playQueueAt}
+          onQueueTracks={handleQueueTracks}
+        />
+      )}
       {playlistDialog && (
         <PlaylistDialog
           dialog={playlistDialog}

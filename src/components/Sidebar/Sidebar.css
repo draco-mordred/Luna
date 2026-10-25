@@ -149,12 +149,6 @@
   text-align: center;
 }
 
-.nav-icon-spotify {
-  display: block;
-  flex: 0 0 24px;
-  height: 24px;
-}
-
 .nav-label {
   font-size: 0.95rem;
   font-weight: 500;

@@ -596,7 +596,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
     { label: 'Show Album', icon: 'album', action: 'album' },
     { label: isLoved ? 'Loved' : 'Love', icon: isLoved ? 'favorite' : 'favorite_border', action: 'love' },
     { label: 'Suggest the track less', icon: 'thumb_down', action: 'less' },
-  ];
+  ].filter(
+    (item) =>
+      !track?.streamingProvider || item.action === 'queue' || item.action === 'next'
+  );
 
   // Format time display
   const formatTime = (seconds: number): string => {

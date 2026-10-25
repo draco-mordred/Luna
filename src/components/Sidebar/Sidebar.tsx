@@ -12,7 +12,6 @@ interface SidebarProps {
   tracks: Track[];
   showBrowseSection: boolean;
   showRadioSection: boolean;
-  showSpotifySection: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -22,7 +21,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   tracks,
   showBrowseSection,
   showRadioSection,
-  showSpotifySection,
 }) => {
   const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const location = useLocation();
@@ -104,27 +102,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             </Link>
           </li>
 
-          {showSpotifySection && (
-            <li className='nav-item'>
-              <Link
-                to='/spotify'
-                className={`nav-button ${activeSection === 'spotify' ? 'active' : ''}`}
-                aria-label='Spotify'
-              >
-                <svg className='nav-icon nav-icon-spotify' viewBox='0 0 24 24' aria-hidden='true'>
-                  <circle cx='12' cy='12' r='12' fill='#1DB954' />
-                  <path
-                    d='M5.2 9.2c4.3-1.3 9.3-.9 13.4 1.5M6.3 12.3c3.6-1 7.5-.6 10.8 1.3M7.3 15.2c2.8-.7 5.6-.3 8.1 1'
-                    fill='none'
-                    stroke='#000'
-                    strokeLinecap='round'
-                    strokeWidth='1.6'
-                  />
-                </svg>
-                {!collapsed && <span className='nav-label'>Spotify</span>}
-              </Link>
-            </li>
-          )}
         </ul>
       </nav>
 

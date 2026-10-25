@@ -24,12 +24,6 @@ export interface TrackMetadataUpdate {
   albumArtMimeType?: string;
 }
 
-export interface SpotifyAuthorizationResult {
-  code: string | null;
-  state: string | null;
-  error: string | null;
-}
-
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
 export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
@@ -60,7 +54,6 @@ export interface AppSettings {
   repeatMode: 'off' | 'one' | 'all';
   showBrowseSection: boolean;
   showRadioSection: boolean;
-  showSpotifySection: boolean;
   systemTheme: 'light' | 'dark';
   systemAccentColor: string | null;
   platform: string;
@@ -77,6 +70,11 @@ declare global {
       closeWindow: () => Promise<void>;
       loadMusicLibrary: () => Promise<MusicLibraryResponse>;
       loadAppSettings: () => Promise<AppSettings>;
+      audiomackHasCredentials: () => Promise<boolean>;
+      audiomackSaveCredentials: (consumerKey: string, consumerSecret: string) => Promise<void>;
+      audiomackClearCredentials: () => Promise<void>;
+      audiomackSearchTracks: (query: string) => Promise<unknown>;
+      audiomackPlayTrack: (musicId: string, session: string) => Promise<string>;
       savePlaylists: (playlists: Playlist[]) => Promise<Playlist[]>;
       saveAppSettings: (
         settings: Partial<
@@ -97,7 +95,6 @@ declare global {
             | 'repeatMode'
             | 'showBrowseSection'
             | 'showRadioSection'
-            | 'showSpotifySection'
           >
         >
       ) => Promise<AppSettings>;
@@ -114,15 +111,6 @@ declare global {
       onTaskbarPrevious: (callback: () => void) => () => void;
       onTaskbarPlayPause: (callback: () => void) => () => void;
       onTaskbarNext: (callback: () => void) => () => void;
-      startSpotifyAuthorization: (state: string) => Promise<{ redirectUri: string }>;
-      openSpotifyAuthorization: (url: string) => Promise<void>;
-      openSpotifyDashboard: () => Promise<void>;
-      loadSpotifySession: () => Promise<string | null>;
-      saveSpotifySession: (session: string) => Promise<void>;
-      clearSpotifySession: () => Promise<void>;
-      onSpotifyAuthorizationResult: (
-        callback: (result: SpotifyAuthorizationResult) => void
-      ) => () => void;
     };
   }
 }

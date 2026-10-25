@@ -1,8 +1,29 @@
+.indexed-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
 .indexed-list-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 24px;
   align-items: start;
   column-gap: 8px;
+}
+
+.indexed-page-layout.has-index {
+  grid-template-columns: minmax(0, 1fr) 24px;
+  column-gap: 8px;
+}
+
+.indexed-page-content {
+  min-width: 0;
+}
+
+.indexed-page-layout > .alpha-numeric-index {
+  grid-column: 2;
+  grid-row: 1;
+  max-height: max(120px, calc(100vh - var(--playbar-collapsed-height) - 24px));
 }
 
 .alpha-numeric-index {
@@ -42,6 +63,11 @@
 
 @media (max-width: 480px) {
   .indexed-list-layout {
+    grid-template-columns: minmax(0, 1fr) 20px;
+    column-gap: 4px;
+  }
+
+  .indexed-page-layout.has-index {
     grid-template-columns: minmax(0, 1fr) 20px;
     column-gap: 4px;
   }

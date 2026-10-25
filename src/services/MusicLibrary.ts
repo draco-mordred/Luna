@@ -17,6 +17,8 @@ export interface Track {
   id: string;
   path: string;
   src?: string;
+  streamingProvider?: 'audiomack' | 'jamendo';
+  streamingId?: string;
   filename: string;
   name: string;
   artist: string;

@@ -1,0 +1,238 @@
+.jamendo-page {
+  min-height: 100%;
+  padding: 32px clamp(20px, 4vw, 56px) 150px;
+  overflow: auto;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.jamendo-header,
+.jamendo-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.jamendo-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+}
+
+.jamendo-header p:last-child,
+.jamendo-setup-card p {
+  color: var(--text-secondary);
+}
+
+.jamendo-eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.jamendo-secondary-button,
+.jamendo-search button,
+.jamendo-client-id-form button {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 16px;
+  background: var(--accent);
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+.jamendo-setup-card {
+  max-width: 620px;
+  margin: 48px auto;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+}
+
+.jamendo-setup-card > .material-symbols-outlined {
+  color: var(--accent);
+  font-size: 36px;
+}
+
+.jamendo-setup-card a,
+.jamendo-attribution a {
+  color: var(--accent);
+}
+
+.jamendo-setup-card a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jamendo-client-id-form,
+.jamendo-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.jamendo-client-id-form {
+  margin-top: 22px;
+}
+
+.jamendo-client-id-form input,
+.jamendo-search input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  color: inherit;
+  font: inherit;
+}
+
+.jamendo-client-id-form button:disabled,
+.jamendo-search button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.jamendo-search {
+  margin: 28px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.jamendo-search input {
+  border: 0;
+  background: transparent;
+}
+
+.jamendo-search > .material-symbols-outlined {
+  color: var(--text-secondary);
+}
+
+.jamendo-results-heading {
+  margin-bottom: 14px;
+}
+
+.jamendo-results-heading h2 {
+  margin: 0;
+}
+
+.jamendo-results-heading span,
+.jamendo-track-copy small {
+  color: var(--text-secondary);
+}
+
+.jamendo-track-list {
+  display: grid;
+  gap: 6px;
+}
+
+.jamendo-track-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto 42px;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.jamendo-track-row:hover,
+.jamendo-track-row.playing {
+  background: var(--surface-muted);
+}
+
+.jamendo-track-row > img {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.jamendo-track-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.jamendo-track-copy > a {
+  overflow: hidden;
+  color: inherit;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jamendo-track-copy span,
+.jamendo-track-copy small,
+.jamendo-track-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jamendo-track-copy span {
+  color: var(--text-secondary);
+}
+
+.jamendo-license-link {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.jamendo-play-button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.jamendo-attribution {
+  margin: 24px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.jamendo-error {
+  color: #ff7676;
+}
+
+.jamendo-empty {
+  padding: 28px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .jamendo-page {
+    padding: 24px 16px 170px;
+  }
+
+  .jamendo-header {
+    align-items: flex-start;
+  }
+
+  .jamendo-track-row {
+    grid-template-columns: 44px minmax(0, 1fr) 40px;
+    gap: 10px;
+  }
+
+  .jamendo-track-row > img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .jamendo-license-link {
+    display: none;
+  }
+}

@@ -6,6 +6,15 @@ export interface AlphaNumericIndexEntry {
   targetId: string;
 }
 
+const getScrollportContentTop = (scrollContainer: HTMLElement): number => {
+  const paddingTop = Number.parseFloat(window.getComputedStyle(scrollContainer).paddingTop) || 0;
+  return (
+    scrollContainer.getBoundingClientRect().top +
+    scrollContainer.clientTop +
+    paddingTop
+  );
+};
+
 export const getAlphaNumericLabel = (value: string | number | undefined) => {
   const firstCharacter = Array.from(String(value ?? '')
     .trim()
@@ -53,12 +62,12 @@ const AlphaNumericIndex = ({
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
         const scrollContainer = document.querySelector<HTMLElement>(scrollContainerSelector);
-        const containerTop = scrollContainer?.getBoundingClientRect().top ?? 0;
+        const containerTop = scrollContainer ? getScrollportContentTop(scrollContainer) : 0;
         let activeEntry = entries[0];
 
         for (const entry of entries) {
           const target = document.getElementById(entry.targetId);
-          if (target && target.getBoundingClientRect().top <= containerTop + 48) {
+          if (target && target.getBoundingClientRect().top <= containerTop) {
             activeEntry = entry;
           } else {
             break;
@@ -83,12 +92,13 @@ const AlphaNumericIndex = ({
     const scrollContainer = document.querySelector<HTMLElement>(scrollContainerSelector);
     if (!target || !scrollContainer) return;
 
+    const scrollportTop = getScrollportContentTop(scrollContainer);
     scrollContainer.scrollTo({
       top:
         scrollContainer.scrollTop +
         target.getBoundingClientRect().top -
-        scrollContainer.getBoundingClientRect().top,
-      behavior: 'smooth',
+        scrollportTop,
+      behavior: 'auto',
     });
   };
 
@@ -110,7 +120,7 @@ const AlphaNumericIndex = ({
       className='alpha-numeric-index'
       aria-label={ariaLabel}
       ref={railRef}
-      style={{ height: `min(72vh, ${Math.max(120, Math.min(entries.length * 18, 620))}px)` }}
+      style={{ height: `min(88vh, ${Math.max(120, Math.min(entries.length * 18, 620))}px)` }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         scrollToPointerPosition(event.clientY);

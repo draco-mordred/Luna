@@ -175,76 +175,78 @@ const TracksPage = ({
   ));
 
   return (
-    <div className='tracks-page'>
-      <header className='page-header'>
-        <div>
-          <h1>Tracks</h1>
-          <p className='track-count'>{tracks.length} tracks</p>
-        </div>
-        <button
-          className='shuffle-play-button'
-          type='button'
-          disabled={tracks.length === 0 || isLoading}
-          onClick={() => onShufflePlay(sortedTracks)}
-        >
-          <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
-          Shuffle &amp; Play
-        </button>
-      </header>
-
-      {libraryError && <p className='library-message library-error' role='alert'>{libraryError}</p>}
-
-      {isLoading ? (
-        <p className='library-message'>Scanning your music folders…</p>
-      ) : tracks.length === 0 ? (
-        <section className='library-empty-state'>
-          <span className='material-symbols-outlined' aria-hidden='true'>library_music</span>
-          <h2>Your music library is empty</h2>
-          <p>
-            {isDesktopApp
-              ? 'Choose a folder containing your music files to add them to Luna.'
-              : 'Local music folders can be indexed and played in the Luna desktop app.'}
-          </p>
-          {isDesktopApp && (
-            <button className='add-music-folder-button' type='button' onClick={onAddMusicFolder}>
-              <span className='material-symbols-outlined' aria-hidden='true'>folder_open</span>
-              Add Music Folder
-            </button>
-          )}
-        </section>
-      ) : (
-        <>
-          <div className='track-list-header'>
-            <span aria-hidden='true' />
-            {([
-              ['name', 'Name'],
-              ['artist', 'Artist'],
-              ['album', 'Album'],
-              ['genre', 'Genre'],
-              ['year', 'Year'],
-              ['duration', 'Duration'],
-            ] as Array<[SortField, string]>).map(([field, label]) => (
-              <button
-                key={field}
-                type='button'
-                className={`sort-button ${sortBy === field ? 'active' : ''}`}
-                aria-label={sortBy === field
-                  ? `${label}, sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'}`
-                  : label}
-                onClick={() => handleSort(field)}
-              >
-                <span>{label}</span>
-                {sortBy === field && (
-                  <span className='material-symbols-outlined sort-icon' aria-hidden='true'>
-                    {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                  </span>
-                )}
-              </button>
-            ))}
-            <span aria-hidden='true' />
+    <div
+      className={`tracks-page indexed-page-layout ${trackIndexEntries.length ? 'has-index' : ''}`}
+    >
+      <div className='indexed-page-content'>
+        <header className='page-header'>
+          <div>
+            <h1>Tracks</h1>
+            <p className='track-count'>{tracks.length} tracks</p>
           </div>
+          <button
+            className='shuffle-play-button'
+            type='button'
+            disabled={tracks.length === 0 || isLoading}
+            onClick={() => onShufflePlay(sortedTracks)}
+          >
+            <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+            Shuffle &amp; Play
+          </button>
+        </header>
 
-          <div className='indexed-list-layout'>
+        {libraryError && <p className='library-message library-error' role='alert'>{libraryError}</p>}
+
+        {isLoading ? (
+          <p className='library-message'>Scanning your music folders…</p>
+        ) : tracks.length === 0 ? (
+          <section className='library-empty-state'>
+            <span className='material-symbols-outlined' aria-hidden='true'>library_music</span>
+            <h2>Your music library is empty</h2>
+            <p>
+              {isDesktopApp
+                ? 'Choose a folder containing your music files to add them to Luna.'
+                : 'Local music folders can be indexed and played in the Luna desktop app.'}
+            </p>
+            {isDesktopApp && (
+              <button className='add-music-folder-button' type='button' onClick={onAddMusicFolder}>
+                <span className='material-symbols-outlined' aria-hidden='true'>folder_open</span>
+                Add Music Folder
+              </button>
+            )}
+          </section>
+        ) : (
+          <>
+            <div className='track-list-header'>
+              <span aria-hidden='true' />
+              {([
+                ['name', 'Name'],
+                ['artist', 'Artist'],
+                ['album', 'Album'],
+                ['genre', 'Genre'],
+                ['year', 'Year'],
+                ['duration', 'Duration'],
+              ] as Array<[SortField, string]>).map(([field, label]) => (
+                <button
+                  key={field}
+                  type='button'
+                  className={`sort-button ${sortBy === field ? 'active' : ''}`}
+                  aria-label={sortBy === field
+                    ? `${label}, sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'}`
+                    : label}
+                  onClick={() => handleSort(field)}
+                >
+                  <span>{label}</span>
+                  {sortBy === field && (
+                    <span className='material-symbols-outlined sort-icon' aria-hidden='true'>
+                      {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                    </span>
+                  )}
+                </button>
+              ))}
+              <span aria-hidden='true' />
+            </div>
+
             <TrackQueueContextMenu
               tracks={sortedTracks}
               onQueueTracks={onQueueTracks}
@@ -254,13 +256,15 @@ const TracksPage = ({
             >
               <div className='track-list'>{trackRows}</div>
             </TrackQueueContextMenu>
-            <AlphaNumericIndex
-              entries={trackIndexEntries}
-              ariaLabel='Track list index'
-              scrollContainerSelector='.page-content'
-            />
-          </div>
-        </>
+          </>
+        )}
+      </div>
+      {trackIndexEntries.length > 0 && (
+        <AlphaNumericIndex
+          entries={trackIndexEntries}
+          ariaLabel='Track list index'
+          scrollContainerSelector='.page-content'
+        />
       )}
     </div>
   );

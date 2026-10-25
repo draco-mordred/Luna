@@ -11,7 +11,13 @@ interface TopNavbarProps {
   onRescanMusicLibrary: () => Promise<MusicLibraryResponse>;
 }
 
-type Section = 'library' | 'browse' | 'radio' | 'spotify' | 'search' | 'settings' | 'playlists';
+type Section =
+  | 'library'
+  | 'browse'
+  | 'radio'
+  | 'search'
+  | 'settings'
+  | 'playlists';
 type TabType = 'tracks' | 'albums' | 'artists' | 'composer' | 'genres';
 
 const LIBRARY_TABS: Array<{ id: TabType; label: string; icon: string }> = [
@@ -26,7 +32,6 @@ const SECTION_TITLES: Record<Section, string> = {
   library: 'Library',
   browse: 'Browse',
   radio: 'Radio',
-  spotify: 'Spotify',
   search: 'Search',
   settings: 'Settings',
   playlists: 'Playlists',
@@ -55,7 +60,9 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
         ? 'settings'
         : path === 'playlists'
           ? 'playlists'
-        : path === 'browse' || path === 'radio' || path === 'spotify' || path === 'search'
+        : path === 'browse' ||
+            path === 'radio' ||
+            path === 'search'
           ? path
           : 'library';
 

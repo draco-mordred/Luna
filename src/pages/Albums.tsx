@@ -220,70 +220,72 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
   );
 
   return (
-    <div className='albums-page'>
-      <header className='page-header'>
-        <div className='header-left'>
-          <h1>Albums</h1>
-          <p className='album-count'>{albums.length} albums</p>
-        </div>
-        <div className='header-right'>
-          <button
-            className='shuffle-play-button'
-            type='button'
-            disabled={tracks.length === 0}
-            onClick={() => onShufflePlay(tracks)}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
-            Shuffle &amp; Play
-          </button>
-          <div className='view-mode-toggle'>
-            <button
-              type='button'
-              aria-label='Grid view'
-              className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-            >
-              <span className='material-symbols-outlined'>grid_view</span>
-            </button>
-            <button
-              type='button'
-              aria-label='List view'
-              className={`view-mode-btn ${viewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setViewMode('list')}
-            >
-              <span className='material-symbols-outlined'>list</span>
-            </button>
+    <div
+      className={`albums-page indexed-page-layout ${albumIndexEntries.length ? 'has-index' : ''}`}
+    >
+      <div className='indexed-page-content'>
+        <header className='page-header'>
+          <div className='header-left'>
+            <h1>Albums</h1>
+            <p className='album-count'>{albums.length} albums</p>
           </div>
-          <div className='sort-selector'>
-            <span className='sort-label'>Sort by:</span>
-            <select
-              className='sort-select'
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-            >
-              <option value='name'>Name</option>
-              <option value='artist'>Artist</option>
-              <option value='year'>Year</option>
-              <option value='tracks'>Track Count</option>
-            </select>
+          <div className='header-right'>
             <button
-              className='sort-direction'
+              className='shuffle-play-button'
               type='button'
-              aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
-              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              disabled={tracks.length === 0}
+              onClick={() => onShufflePlay(tracks)}
             >
-              <span className='material-symbols-outlined'>
-                {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-              </span>
+              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+              Shuffle &amp; Play
             </button>
+            <div className='view-mode-toggle'>
+              <button
+                type='button'
+                aria-label='Grid view'
+                className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+              >
+                <span className='material-symbols-outlined'>grid_view</span>
+              </button>
+              <button
+                type='button'
+                aria-label='List view'
+                className={`view-mode-btn ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+              >
+                <span className='material-symbols-outlined'>list</span>
+              </button>
+            </div>
+            <div className='sort-selector'>
+              <span className='sort-label'>Sort by:</span>
+              <select
+                className='sort-select'
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+              >
+                <option value='name'>Name</option>
+                <option value='artist'>Artist</option>
+                <option value='year'>Year</option>
+                <option value='tracks'>Track Count</option>
+              </select>
+              <button
+                className='sort-direction'
+                type='button'
+                aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              >
+                <span className='material-symbols-outlined'>
+                  {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {albums.length === 0 ? (
-        <p className='library-message'>Albums from your indexed music folders will appear here.</p>
-      ) : (
-        <div className='indexed-list-layout'>
+        {albums.length === 0 ? (
+          <p className='library-message'>Albums from your indexed music folders will appear here.</p>
+        ) : (
           <div className={`albums-container ${viewMode}`}>
             {viewMode === 'grid' ? (
               <div className='albums-grid'>
@@ -312,12 +314,14 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
               </div>
             )}
           </div>
-          <AlphaNumericIndex
-            entries={albumIndexEntries}
-            ariaLabel='Album list index'
-            scrollContainerSelector='.page-content'
-          />
-        </div>
+        )}
+      </div>
+      {albumIndexEntries.length > 0 && (
+        <AlphaNumericIndex
+          entries={albumIndexEntries}
+          ariaLabel='Album list index'
+          scrollContainerSelector='.page-content'
+        />
       )}
     </div>
   );

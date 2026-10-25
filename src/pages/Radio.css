@@ -1,0 +1,61 @@
+.radio-section {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.radio-tabs {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px clamp(20px, 4vw, 56px);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.radio-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.radio-tab:hover,
+.radio-tab.active {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.radio-tab.active {
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.radio-tab-panel {
+  min-height: 0;
+  flex: 1;
+}
+
+.radio-tab-panel > .jamendo-page {
+  min-height: 100%;
+}
+
+@media (max-width: 560px) {
+  .radio-tabs {
+    gap: 4px;
+    padding: 8px 12px;
+  }
+
+  .radio-tab {
+    gap: 5px;
+    padding: 9px 10px;
+    font-size: 0.9rem;
+  }
+}

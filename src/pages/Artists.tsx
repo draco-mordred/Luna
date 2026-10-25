@@ -141,42 +141,44 @@ const ArtistsPage = ({
   );
 
   return (
-    <div className='artists-page'>
-      <header className='page-header'>
-        <div>
-          <h1>Artists</h1>
-          <p className='artist-count'>{artists.length} artists</p>
-        </div>
-        <div className='artists-header-actions'>
-          <button
-            className='shuffle-play-button'
-            type='button'
-            disabled={tracks.length === 0}
-            onClick={() => onShufflePlay(tracks)}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
-            Shuffle &amp; Play
-          </button>
-          {artists.length > 0 && (
-            <div className='sort-selector'>
-              <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
-              <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
-                <option value='name'>Name</option>
-                <option value='albums'>Albums</option>
-                <option value='tracks'>Tracks</option>
-              </select>
-              <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
-                <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
+    <div
+      className={`artists-page indexed-page-layout ${artistIndexEntries.length ? 'has-index' : ''}`}
+    >
+      <div className='indexed-page-content'>
+        <header className='page-header'>
+          <div>
+            <h1>Artists</h1>
+            <p className='artist-count'>{artists.length} artists</p>
+          </div>
+          <div className='artists-header-actions'>
+            <button
+              className='shuffle-play-button'
+              type='button'
+              disabled={tracks.length === 0}
+              onClick={() => onShufflePlay(tracks)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+              Shuffle &amp; Play
+            </button>
+            {artists.length > 0 && (
+              <div className='sort-selector'>
+                <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
+                <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+                  <option value='name'>Name</option>
+                  <option value='albums'>Albums</option>
+                  <option value='tracks'>Tracks</option>
+                </select>
+                <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
+                  <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
 
-      {artists.length === 0 ? (
-        <p className='library-message'>Artists from your indexed music folders will appear here.</p>
-      ) : (
-        <div className='indexed-list-layout'>
+        {artists.length === 0 ? (
+          <p className='library-message'>Artists from your indexed music folders will appear here.</p>
+        ) : (
           <div className='artists-grid'>
             {sortedArtists.map((artist) => (
               <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
@@ -189,12 +191,14 @@ const ArtistsPage = ({
               </QueueContextMenu>
             ))}
           </div>
-          <AlphaNumericIndex
-            entries={artistIndexEntries}
-            ariaLabel='Artist list index'
-            scrollContainerSelector='.page-content'
-          />
-        </div>
+        )}
+      </div>
+      {artistIndexEntries.length > 0 && (
+        <AlphaNumericIndex
+          entries={artistIndexEntries}
+          ariaLabel='Artist list index'
+          scrollContainerSelector='.page-content'
+        />
       )}
     </div>
   );

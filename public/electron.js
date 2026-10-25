@@ -6,13 +6,11 @@ const {
   protocol,
   nativeTheme,
   nativeImage,
-  shell,
   safeStorage,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const http = require('http');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
 const { parseFile, selectCover } = require('music-metadata');
@@ -27,9 +25,6 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow;
-let spotifyAuthorizationServer = null;
-let spotifyAuthorizationTimeout = null;
-const SPOTIFY_CALLBACK_PORT = 43821;
 let indexedAudioPaths = new Set();
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -87,8 +82,9 @@ const EDITABLE_ARTWORK_MIME_TYPES = new Set([
 const getLibraryPath = () => path.join(app.getPath('userData'), 'music-library.json');
 const getPlaylistsPath = () => path.join(app.getPath('userData'), 'playlists.json');
 const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.ini');
-const getSpotifySessionPath = () => path.join(app.getPath('userData'), 'spotify-session.bin');
 const getLegacySettingsPath = () => path.join(app.getPath('userData'), 'app-settings.json');
+const getAudiomackCredentialsPath = () =>
+  path.join(app.getPath('userData'), 'audiomack-credentials.bin');
 const getArtworkPath = (fileName) => path.join(app.getPath('userData'), 'artwork', fileName);
 const DEFAULT_SETTINGS = {
   themeMode: 'system',
@@ -106,7 +102,6 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'off',
   showBrowseSection: true,
   showRadioSection: true,
-  showSpotifySection: true,
 };
 let appSettingsWriteQueue = Promise.resolve();
 let settingsFlushInProgress = false;
@@ -335,10 +330,6 @@ const readAppSettings = async () => {
       typeof saved.showRadioSection === 'boolean'
         ? saved.showRadioSection
         : DEFAULT_SETTINGS.showRadioSection,
-    showSpotifySection:
-      typeof saved.showSpotifySection === 'boolean'
-        ? saved.showSpotifySection
-        : DEFAULT_SETTINGS.showSpotifySection,
     systemTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
     systemAccentColor,
     platform: process.platform,
@@ -358,8 +349,7 @@ const readAppSettings = async () => {
     saved.isShuffled !== settings.isShuffled ||
     saved.repeatMode !== settings.repeatMode ||
     saved.showBrowseSection !== settings.showBrowseSection ||
-    saved.showRadioSection !== settings.showRadioSection ||
-    saved.showSpotifySection !== settings.showSpotifySection
+    saved.showRadioSection !== settings.showRadioSection
   ) {
     await persistSettings({ ...saved, ...settings });
   }
@@ -480,7 +470,10 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Invalid repeat mode.');
     next.repeatMode = patch.repeatMode;
   }
-  for (const key of ['showBrowseSection', 'showRadioSection', 'showSpotifySection']) {
+  for (const key of [
+    'showBrowseSection',
+    'showRadioSection',
+  ]) {
     if (patch[key] !== undefined) {
       if (typeof patch[key] !== 'boolean') throw new TypeError(`${key} must be a boolean.`);
       next[key] = patch[key];
@@ -497,6 +490,107 @@ const saveAppSettings = (patch) => {
     () => undefined
   );
   return update;
+};
+
+const readAudiomackCredentials = async () => {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure credential storage is unavailable on this device.');
+  }
+  try {
+    const encrypted = await fs.promises.readFile(getAudiomackCredentialsPath());
+    const credentials = JSON.parse(safeStorage.decryptString(encrypted));
+    if (
+      typeof credentials.consumerKey !== 'string' ||
+      typeof credentials.consumerSecret !== 'string'
+    ) {
+      throw new Error('Saved Audiomack credentials are invalid. Please reconnect Audiomack.');
+    }
+    return credentials;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+};
+
+const encodeOAuthComponent = (value) =>
+  encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+
+const signedAudiomackRequest = async (method, endpoint, parameters = {}) => {
+  const credentials = await readAudiomackCredentials();
+  if (!credentials) throw new Error('Connect Audiomack with API credentials before continuing.');
+
+  const url = new URL(`https://api.audiomack.com/v1${endpoint}`);
+  for (const [key, value] of Object.entries(parameters)) {
+    url.searchParams.set(key, String(value));
+  }
+
+  const oauthParameters = {
+    oauth_consumer_key: credentials.consumerKey,
+    oauth_nonce: crypto.randomBytes(16).toString('hex'),
+    oauth_signature_method: 'HMAC-SHA1',
+    oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+    oauth_version: '1.0',
+  };
+  const normalizedParameters = [
+    ...url.searchParams.entries(),
+    ...Object.entries(oauthParameters),
+  ]
+    .map(([key, value]) => [encodeOAuthComponent(key), encodeOAuthComponent(value)])
+    .sort(([firstKey, firstValue], [secondKey, secondValue]) =>
+      firstKey === secondKey
+        ? firstValue < secondValue
+          ? -1
+          : firstValue > secondValue
+            ? 1
+            : 0
+        : firstKey < secondKey
+          ? -1
+          : 1
+    )
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
+  const signatureBase = [
+    method.toUpperCase(),
+    encodeOAuthComponent(`${url.origin}${url.pathname}`),
+    encodeOAuthComponent(normalizedParameters),
+  ].join('&');
+  const signingKey = `${encodeOAuthComponent(credentials.consumerSecret)}&`;
+  const signature = crypto
+    .createHmac('sha1', signingKey)
+    .update(signatureBase)
+    .digest('base64');
+  const authorizationParameters = {
+    ...oauthParameters,
+    oauth_signature: signature,
+  };
+  const authorization = `OAuth ${Object.entries(authorizationParameters)
+    .map(([key, value]) => `${encodeOAuthComponent(key)}="${encodeOAuthComponent(value)}"`)
+    .join(', ')}`;
+
+  const response = await fetch(url, {
+    method,
+    headers: { Authorization: authorization, Accept: 'application/json' },
+  });
+  const responseText = await response.text();
+  let data;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    data = responseText;
+  }
+  if (!response.ok) {
+    const message =
+      data && typeof data === 'object' && typeof data.message === 'string'
+        ? data.message
+        : `Audiomack returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+  if (data && typeof data === 'object' && data.errorcode) {
+    throw new Error(data.message || 'Audiomack could not complete the request.');
+  }
+  return data;
 };
 
 const saveEmbeddedArtwork = async (picture, trackPath, stat) => {
@@ -884,6 +978,80 @@ ipcMain.handle('remove-music-folder', async (_event, folder) => {
   );
 });
 
+ipcMain.handle('audiomack-has-credentials', async () => {
+  const credentials = await readAudiomackCredentials();
+  return Boolean(credentials);
+});
+ipcMain.handle('audiomack-save-credentials', async (_event, consumerKey, consumerSecret) => {
+  if (typeof consumerKey !== 'string' || !consumerKey.trim()) {
+    throw new TypeError('An Audiomack consumer key is required.');
+  }
+  if (typeof consumerSecret !== 'string' || !consumerSecret.trim()) {
+    throw new TypeError('An Audiomack consumer secret is required.');
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure credential storage is unavailable on this device.');
+  }
+  const encrypted = safeStorage.encryptString(
+    JSON.stringify({ consumerKey: consumerKey.trim(), consumerSecret: consumerSecret.trim() })
+  );
+  const credentialsPath = getAudiomackCredentialsPath();
+  const temporaryPath = `${credentialsPath}.tmp`;
+  await fs.promises.mkdir(path.dirname(credentialsPath), { recursive: true });
+  try {
+    await fs.promises.writeFile(temporaryPath, encrypted);
+    await fs.promises.rename(temporaryPath, credentialsPath);
+  } catch (error) {
+    await fs.promises.rm(temporaryPath, { force: true });
+    throw error;
+  }
+});
+ipcMain.handle('audiomack-clear-credentials', async () => {
+  try {
+    await fs.promises.unlink(getAudiomackCredentialsPath());
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+});
+ipcMain.handle('audiomack-search-tracks', async (_event, query) => {
+  if (typeof query !== 'string' || query.length > 200) {
+    throw new TypeError('Audiomack search text must be 200 characters or fewer.');
+  }
+  const normalizedQuery = query.trim();
+  return normalizedQuery
+    ? signedAudiomackRequest('GET', '/search', {
+        q: normalizedQuery,
+        show: 'songs',
+        limit: 30,
+      })
+    : signedAudiomackRequest('GET', '/music/trending');
+});
+ipcMain.handle('audiomack-play-track', async (_event, musicId, session) => {
+  if (!/^\d+$/.test(String(musicId))) throw new TypeError('Invalid Audiomack music ID.');
+  if (typeof session !== 'string' || !session || session.length > 128) {
+    throw new TypeError('An Audiomack playback session is required.');
+  }
+  const streamUrl = await signedAudiomackRequest('POST', `/music/${musicId}/play`, {
+    session,
+  });
+  if (typeof streamUrl !== 'string') {
+    throw new Error('Audiomack did not return a valid streaming URL.');
+  }
+  let parsedStreamUrl;
+  try {
+    parsedStreamUrl = new URL(streamUrl);
+  } catch {
+    throw new Error('Audiomack did not return a valid streaming URL.');
+  }
+  if (
+    parsedStreamUrl.protocol !== 'https:' ||
+    !['songs.audiomack.com', 'songs.dev.audiomack.com'].includes(parsedStreamUrl.hostname)
+  ) {
+    throw new Error('Audiomack did not return a supported streaming URL.');
+  }
+  return streamUrl;
+});
+
 ipcMain.handle('save-track-metadata', async (_event, trackPath, metadata) => {
   await saveTrackMetadataToFile(trackPath, metadata);
   const library = await readLibraryConfig();
@@ -950,146 +1118,6 @@ const setTaskbarPlaybackState = (isPlaying) => {
 
 ipcMain.on('taskbar-playback-state', (_event, isPlaying) => {
   if (typeof isPlaying === 'boolean') setTaskbarPlaybackState(isPlaying);
-});
-
-const closeSpotifyAuthorizationServer = () => {
-  if (spotifyAuthorizationTimeout) clearTimeout(spotifyAuthorizationTimeout);
-  spotifyAuthorizationTimeout = null;
-  if (spotifyAuthorizationServer) spotifyAuthorizationServer.close();
-  spotifyAuthorizationServer = null;
-};
-
-ipcMain.handle('spotify-auth-start', (event, state) => {
-  if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{43,128}$/.test(state)) {
-    throw new Error('Invalid Spotify authorization state.');
-  }
-  closeSpotifyAuthorizationServer();
-  const authWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!authWindow) throw new Error('Could not find the Luna window for Spotify sign-in.');
-
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((request, response) => {
-      const callbackUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
-      if (request.method !== 'GET' || callbackUrl.pathname !== '/callback') {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-        response.end('Not found.');
-        return;
-      }
-
-      const returnedState = callbackUrl.searchParams.get('state');
-      if (!returnedState || returnedState !== state) {
-        response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-        response.end('Spotify sign-in could not be verified. Return to Luna and try again.');
-        return;
-      }
-
-      const result = {
-        code: callbackUrl.searchParams.get('code'),
-        state: returnedState,
-        error: callbackUrl.searchParams.get('error'),
-      };
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(
-        '<!doctype html><html><head><meta charset="utf-8"><title>Luna Spotify sign-in</title></head><body><p>Spotify sign-in is complete. You can return to Luna.</p></body></html>'
-      );
-      closeSpotifyAuthorizationServer();
-      if (!authWindow.isDestroyed()) {
-        authWindow.webContents.send('spotify-auth-result', result);
-      }
-    });
-    spotifyAuthorizationServer = server;
-    server.once('error', (error) => {
-      closeSpotifyAuthorizationServer();
-      reject(
-        error.code === 'EADDRINUSE'
-          ? new Error(
-              `Spotify sign-in could not use port ${SPOTIFY_CALLBACK_PORT}. Close another Luna window and try again.`
-            )
-          : error
-      );
-    });
-    server.listen(SPOTIFY_CALLBACK_PORT, '127.0.0.1', () => {
-      spotifyAuthorizationTimeout = setTimeout(
-        () => {
-          closeSpotifyAuthorizationServer();
-          if (!authWindow.isDestroyed()) {
-            authWindow.webContents.send('spotify-auth-result', {
-              code: null,
-              state,
-              error: 'timeout',
-            });
-          }
-        },
-        5 * 60 * 1000
-      );
-      resolve({ redirectUri: `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback` });
-    });
-  });
-});
-
-ipcMain.handle('spotify-auth-open', async (_event, value) => {
-  let authorizationUrl;
-  try {
-    authorizationUrl = new URL(value);
-  } catch {
-    throw new Error('Invalid Spotify authorization URL.');
-  }
-  if (
-    authorizationUrl.protocol !== 'https:' ||
-    authorizationUrl.hostname !== 'accounts.spotify.com' ||
-    authorizationUrl.pathname !== '/authorize'
-  ) {
-    throw new Error('Only Spotify account sign-in URLs can be opened.');
-  }
-  await shell.openExternal(authorizationUrl.toString());
-});
-
-ipcMain.handle('spotify-dashboard-open', async () => {
-  await shell.openExternal('https://developer.spotify.com/dashboard');
-});
-
-ipcMain.handle('spotify-session-load', async () => {
-  try {
-    const encryptedSession = await fs.promises.readFile(getSpotifySessionPath());
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('Secure storage is unavailable; Spotify sign-in cannot be restored.');
-    }
-    return safeStorage.decryptString(encryptedSession);
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
-});
-
-ipcMain.handle('spotify-session-save', async (_event, session) => {
-  if (typeof session !== 'string' || session.length > 16_384) {
-    throw new Error('Invalid Spotify session data.');
-  }
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Secure storage is unavailable; Spotify session was not saved.');
-  }
-  const parsedSession = JSON.parse(session);
-  if (
-    typeof parsedSession.access_token !== 'string' ||
-    typeof parsedSession.expires_at !== 'number' ||
-    (parsedSession.refresh_token !== undefined && typeof parsedSession.refresh_token !== 'string')
-  ) {
-    throw new Error('Invalid Spotify session data.');
-  }
-
-  const sessionPath = getSpotifySessionPath();
-  await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
-  const temporaryPath = `${sessionPath}.tmp`;
-  await fs.promises.writeFile(temporaryPath, safeStorage.encryptString(session));
-  await fs.promises.rename(temporaryPath, sessionPath);
-});
-
-ipcMain.handle('spotify-session-clear', async () => {
-  try {
-    await fs.promises.unlink(getSpotifySessionPath());
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
 });
 
 function createWindow() {
@@ -1231,7 +1259,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', (event) => {
-  closeSpotifyAuthorizationServer();
   if (allowQuitAfterSettingsFlush) return;
   event.preventDefault();
   if (settingsFlushInProgress) return;

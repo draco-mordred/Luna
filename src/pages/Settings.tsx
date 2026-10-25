@@ -38,8 +38,6 @@ interface SettingsPageProps {
   onShowBrowseSectionChange: (show: boolean) => void;
   showRadioSection: boolean;
   onShowRadioSectionChange: (show: boolean) => void;
-  showSpotifySection: boolean;
-  onShowSpotifySectionChange: (show: boolean) => void;
 }
 
 type SettingsSection = {
@@ -81,8 +79,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onShowBrowseSectionChange,
   showRadioSection,
   onShowRadioSectionChange,
-  showSpotifySection,
-  onShowSpotifySectionChange,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -295,23 +291,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   aria-label='Show Radio section in sidebar'
                   checked={showRadioSection}
                   onChange={(event) => onShowRadioSectionChange(event.currentTarget.checked)}
-                />
-                <span className='toggle-slider'></span>
-              </label>
-            </div>
-          </div>
-          <div className='setting-item'>
-            <div className='setting-info'>
-              <h3>Spotify section</h3>
-              <p>Show Spotify in the main sidebar</p>
-            </div>
-            <div className='setting-control'>
-              <label className='toggle-switch'>
-                <input
-                  type='checkbox'
-                  aria-label='Show Spotify section in sidebar'
-                  checked={showSpotifySection}
-                  onChange={(event) => onShowSpotifySectionChange(event.currentTarget.checked)}
                 />
                 <span className='toggle-slider'></span>
               </label>

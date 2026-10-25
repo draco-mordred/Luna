@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Playlist, Track } from '../services/MusicLibrary';
 import TrackQueueContextMenu from '../components/TrackQueueContextMenu';
+import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import { splitArtistCredits } from '../utils/artistCredits';
 import { getLibraryItemHash } from '../utils/libraryNavigation';
 import './Tracks.css';
@@ -28,15 +29,20 @@ const TrackRow = memo(({ track, index, isPlaying, onPlayTrack, queueTracks }: Tr
   return (
     <div
       data-track-id={track.id}
+      id={`track-row-${track.id}`}
       className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}`}
     >
-      <span className='track-number' aria-hidden='true'>{index + 1}</span>
+      <span className='track-number' aria-hidden='true'>
+        {index + 1}
+      </span>
       <div className='track-title-cell'>
         <div className='track-art-thumb'>
           {track.albumArt ? (
             <img src={track.albumArt} alt='' loading='lazy' decoding='async' />
           ) : (
-            <span className='material-symbols-outlined' aria-hidden='true'>music_note</span>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              music_note
+            </span>
           )}
           <button
             className='track-art-play'
@@ -44,7 +50,9 @@ const TrackRow = memo(({ track, index, isPlaying, onPlayTrack, queueTracks }: Tr
             aria-label={`Play ${track.name}`}
             onClick={() => onPlayTrack(track, queueTracks)}
           >
-            <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              play_arrow
+            </span>
           </button>
         </div>
         <button
@@ -141,6 +149,14 @@ const TracksPage = ({
     return sortDirection === 'asc' ? comparison : -comparison;
   }), [sortBy, sortDirection, tracks]);
 
+  const trackIndexEntries = useMemo(() => {
+    return buildAlphaNumericIndex(
+      sortedTracks,
+      (track) => track[sortBy],
+      (track) => `track-row-${track.id}`
+    );
+  }, [sortBy, sortedTracks]);
+
   const handleSort = (field: SortField) => {
     if (sortBy === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -231,15 +247,22 @@ const TracksPage = ({
             <span aria-hidden='true' />
           </div>
 
-          <TrackQueueContextMenu
-            tracks={sortedTracks}
-            onQueueTracks={onQueueTracks}
-            playlists={playlists}
-            onAddTracksToPlaylist={onAddTracksToPlaylist}
-            onEditTrack={isDesktopApp ? onEditTrack : undefined}
-          >
-            <div className='track-list'>{trackRows}</div>
-          </TrackQueueContextMenu>
+          <div className='indexed-list-layout'>
+            <TrackQueueContextMenu
+              tracks={sortedTracks}
+              onQueueTracks={onQueueTracks}
+              playlists={playlists}
+              onAddTracksToPlaylist={onAddTracksToPlaylist}
+              onEditTrack={isDesktopApp ? onEditTrack : undefined}
+            >
+              <div className='track-list'>{trackRows}</div>
+            </TrackQueueContextMenu>
+            <AlphaNumericIndex
+              entries={trackIndexEntries}
+              ariaLabel='Track list index'
+              scrollContainerSelector='.page-content'
+            />
+          </div>
         </>
       )}
     </div>

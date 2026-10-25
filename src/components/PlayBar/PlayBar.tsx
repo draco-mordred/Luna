@@ -1,5 +1,6 @@
 import { memo, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import AudioVisualizer from './AudioVisualizer';
+import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex';
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import './PlayBar.css';
@@ -292,6 +293,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
   const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
+  const queueIndexEntries = useMemo(
+    () =>
+      buildAlphaNumericIndex(
+        playQueue,
+        (queuedTrack) => queuedTrack.name,
+        (_queuedTrack, index) => `play-queue-row-${index}`
+      ),
+    [playQueue]
+  );
   const showSyncedLyricCaption = Boolean(showLyrics && showSyncedLyrics && hasSyncedLyrics);
   const showPlainLyricsPanel = Boolean(
     showLyrics && track?.lyrics?.trim() && (!hasSyncedLyrics || !showSyncedLyrics),
@@ -841,28 +851,40 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <span className="material-symbols-outlined" aria-hidden="true">close</span>
               </button>
             </header>
-            <ol className="play-queue-list">
-              {playQueue.map((queuedTrack, index) => (
-                <li key={`${queuedTrack.id}-${index}`}>
-                  <button
-                    type="button"
-                    className={`play-queue-item ${index === playQueueIndex ? 'current' : ''}`}
-                    aria-current={index === playQueueIndex ? 'true' : undefined}
-                    tabIndex={showPlayQueue ? 0 : -1}
-                    onClick={() => onQueueSelect(index)}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden="true">
-                      {index === playQueueIndex ? 'equalizer' : 'music_note'}
-                    </span>
-                    <span className="play-queue-track-copy">
-                      <strong>{queuedTrack.name}</strong>
-                      <small>{queuedTrack.artist}</small>
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {playQueue.length === 0 && <li className="play-queue-empty">Play a track to start a queue.</li>}
-            </ol>
+            {playQueue.length > 0 ? (
+              <div className="play-queue-content indexed-list-layout">
+                <ol className="play-queue-list">
+                  {playQueue.map((queuedTrack, index) => (
+                    <li id={`play-queue-row-${index}`} key={`${queuedTrack.id}-${index}`}>
+                      <button
+                        type="button"
+                        className={`play-queue-item ${index === playQueueIndex ? 'current' : ''}`}
+                        aria-current={index === playQueueIndex ? 'true' : undefined}
+                        tabIndex={showPlayQueue ? 0 : -1}
+                        onClick={() => onQueueSelect(index)}
+                      >
+                        <span className="material-symbols-outlined" aria-hidden="true">
+                          {index === playQueueIndex ? 'equalizer' : 'music_note'}
+                        </span>
+                        <span className="play-queue-track-copy">
+                          <strong>{queuedTrack.name}</strong>
+                          <small>{queuedTrack.artist}</small>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <AlphaNumericIndex
+                  entries={queueIndexEntries}
+                  ariaLabel="Play queue index"
+                  scrollContainerSelector=".play-queue-list"
+                />
+              </div>
+            ) : (
+              <ol className="play-queue-list">
+                <li className="play-queue-empty">Play a track to start a queue.</li>
+              </ol>
+            )}
           </section>
           
           {/* Progress Bar */}

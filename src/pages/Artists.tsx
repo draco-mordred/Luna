@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
+import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import QueueContextMenu from '../components/QueueContextMenu';
 import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
@@ -15,12 +16,16 @@ interface ArtistCardProps {
     albums: Set<string>;
     tracks: Track[];
   };
+  loadImage: boolean;
   onOpen: () => void;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
 }
 
-const ArtistCard = ({ artist, onOpen, onPlayTrack }: ArtistCardProps) => {
-  const { elementRef, imageUrl } = useArtistImage(artist.name, { loadWhenVisible: true });
+const ArtistCard = ({ artist, loadImage, onOpen, onPlayTrack }: ArtistCardProps) => {
+  const { elementRef, imageUrl } = useArtistImage(artist.name, {
+    enabled: loadImage,
+    loadWhenVisible: true,
+  });
 
   return (
     <div
@@ -72,12 +77,19 @@ const ArtistCard = ({ artist, onOpen, onPlayTrack }: ArtistCardProps) => {
 
 interface ArtistsPageProps {
   tracks: Track[];
+  autoDownloadArtistImages: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-const ArtistsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: ArtistsPageProps) => {
+const ArtistsPage = ({
+  tracks,
+  autoDownloadArtistImages,
+  onPlayTrack,
+  onShufflePlay,
+  onQueueTracks,
+}: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const navigate = useNavigate();
@@ -100,14 +112,27 @@ const ArtistsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Arti
     }));
   }, [tracks]);
 
-  const sortedArtists = [...artists].sort((a, b) => {
-    const aValue = sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
-    const bValue = sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
-    const comparison = typeof aValue === 'number' && typeof bValue === 'number'
-      ? aValue - bValue
-      : String(aValue).localeCompare(String(bValue));
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+  const sortedArtists = useMemo(
+    () =>
+      [...artists].sort((a, b) => {
+        const aValue = sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
+        const bValue = sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
+        const comparison = typeof aValue === 'number' && typeof bValue === 'number'
+          ? aValue - bValue
+          : String(aValue).localeCompare(String(bValue));
+        return sortDirection === 'asc' ? comparison : -comparison;
+      }),
+    [artists, sortBy, sortDirection]
+  );
+  const artistIndexEntries = useMemo(
+    () =>
+      buildAlphaNumericIndex(
+        sortedArtists,
+        (artist) => (sortBy === 'name' ? artist.name : sortBy === 'albums' ? artist.albums.size : artist.tracks.length),
+        (artist) => getLibraryItemHash('artist', artist.name).slice(1)
+      ),
+    [sortBy, sortedArtists]
+  );
 
   return (
     <div className='artists-page'>
@@ -145,16 +170,24 @@ const ArtistsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Arti
       {artists.length === 0 ? (
         <p className='library-message'>Artists from your indexed music folders will appear here.</p>
       ) : (
-        <div className='artists-grid'>
-          {sortedArtists.map((artist) => (
-            <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
-              <ArtistCard
-                artist={artist}
-                onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
-                onPlayTrack={onPlayTrack}
-              />
-            </QueueContextMenu>
-          ))}
+        <div className='indexed-list-layout'>
+          <div className='artists-grid'>
+            {sortedArtists.map((artist) => (
+              <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
+                <ArtistCard
+                  artist={artist}
+                  loadImage={autoDownloadArtistImages}
+                  onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
+                  onPlayTrack={onPlayTrack}
+                />
+              </QueueContextMenu>
+            ))}
+          </div>
+          <AlphaNumericIndex
+            entries={artistIndexEntries}
+            ariaLabel='Artist list index'
+            scrollContainerSelector='.page-content'
+          />
         </div>
       )}
     </div>

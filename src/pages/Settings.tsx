@@ -21,6 +21,8 @@ interface SettingsPageProps {
   onShowVisualizerChange: (show: boolean) => void;
   showArtistImageBackground: boolean;
   onShowArtistImageBackgroundChange: (show: boolean) => void;
+  autoDownloadArtistImages: boolean;
+  onAutoDownloadArtistImagesChange: (enabled: boolean) => void;
   showLyrics: boolean;
   onShowLyricsChange: (show: boolean) => void;
   crossfadeSeconds: number;
@@ -62,6 +64,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onShowVisualizerChange,
   showArtistImageBackground,
   onShowArtistImageBackgroundChange,
+  autoDownloadArtistImages,
+  onAutoDownloadArtistImagesChange,
   showLyrics,
   onShowLyricsChange,
   crossfadeSeconds,
@@ -399,6 +403,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
           <div className='setting-item'>
             <div className='setting-info'>
+              <h3>Automatically download artist images</h3>
+              <p>Fetch and cache artist images for the Artists page and Now Playing</p>
+            </div>
+            <div className='setting-control'>
+              <label className='toggle-switch'>
+                <input
+                  type='checkbox'
+                  aria-label='Automatically download artist images'
+                  checked={autoDownloadArtistImages}
+                  onChange={(event) =>
+                    onAutoDownloadArtistImagesChange(event.currentTarget.checked)
+                  }
+                />
+                <span className='toggle-slider'></span>
+              </label>
+            </div>
+          </div>
+          <div className={`setting-item ${!autoDownloadArtistImages ? 'setting-item-disabled' : ''}`}>
+            <div className='setting-info'>
               <h3>Artist image background</h3>
               <p>Show the current artist’s web image behind Now Playing</p>
             </div>
@@ -408,6 +431,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   type='checkbox'
                   aria-label='Show artist image background in Now Playing'
                   checked={showArtistImageBackground}
+                  disabled={!autoDownloadArtistImages}
                   onChange={(event) =>
                     onShowArtistImageBackgroundChange(event.currentTarget.checked)
                   }

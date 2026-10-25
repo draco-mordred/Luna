@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 const CACHE_PREFIX = 'luna-artist-image:';
+const IMAGE_DATABASE_NAME = 'luna-artist-images';
+const IMAGE_DATABASE_VERSION = 1;
+const IMAGE_STORE_NAME = 'images';
+const MAX_ARTIST_IMAGE_SIZE = 12 * 1024 * 1024;
 const IMAGE_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000;
 const MISS_CACHE_DURATION = 24 * 60 * 60 * 1000;
 
@@ -33,6 +37,9 @@ export interface ArtistWebInfo {
 
 const imageCache = new Map<string, CachedArtistImage>();
 const pendingRequests = new Map<string, Promise<ArtistWebInfo>>();
+const downloadedImageUrls = new Map<string, string>();
+const pendingImageDownloads = new Map<string, Promise<string | null>>();
+let imageDatabasePromise: Promise<IDBDatabase> | null = null;
 
 const normalizeArtistName = (artist: string) => artist.trim().toLocaleLowerCase();
 
@@ -181,7 +188,129 @@ export const getArtistInfo = (artist: string): Promise<ArtistWebInfo> => {
 };
 
 export const getArtistImage = (artist: string): Promise<string | null> =>
-  getArtistInfo(artist).then((info) => info.imageUrl);
+  getDownloadedArtistImage(artist);
+
+const openArtistImageDatabase = (): Promise<IDBDatabase> => {
+  if (imageDatabasePromise) return imageDatabasePromise;
+  imageDatabasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(IMAGE_DATABASE_NAME, IMAGE_DATABASE_VERSION);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+        database.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'artist' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Could not open artist image cache.'));
+    request.onblocked = () => reject(new Error('Artist image cache upgrade is blocked.'));
+  }).catch((error: unknown) => {
+    imageDatabasePromise = null;
+    throw error;
+  });
+  return imageDatabasePromise;
+};
+
+const getCachedArtistImageBlob = async (
+  artist: string,
+  sourceUrl?: string
+): Promise<Blob | null> => {
+  const database = await openArtistImageDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(IMAGE_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(IMAGE_STORE_NAME).get(artist);
+    request.onsuccess = () => {
+      const cached = request.result as { sourceUrl?: string; image?: Blob } | undefined;
+      resolve(
+        cached &&
+          (!sourceUrl || cached.sourceUrl === sourceUrl) &&
+          cached.image instanceof Blob &&
+          cached.image.size <= MAX_ARTIST_IMAGE_SIZE
+          ? cached.image
+          : null
+      );
+    };
+    request.onerror = () => reject(request.error ?? new Error('Could not read cached artist image.'));
+  });
+};
+
+const getCachedArtistImageUrl = async (
+  artist: string,
+  sourceUrl?: string
+): Promise<string | null> => {
+  try {
+    const image = await getCachedArtistImageBlob(artist, sourceUrl);
+    if (!image) return null;
+    const objectUrl = URL.createObjectURL(image);
+    downloadedImageUrls.set(artist, objectUrl);
+    return objectUrl;
+  } catch (error) {
+    console.warn(`Could not read cached artist image for "${artist}":`, error);
+    return null;
+  }
+};
+
+const cacheArtistImageBlob = async (
+  artist: string,
+  sourceUrl: string,
+  image: Blob
+): Promise<void> => {
+  const database = await openArtistImageDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(IMAGE_STORE_NAME, 'readwrite');
+    transaction.objectStore(IMAGE_STORE_NAME).put({ artist, sourceUrl, image, cachedAt: Date.now() });
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error('Could not save downloaded artist image.'));
+    transaction.onabort = () =>
+      reject(transaction.error ?? new Error('Saving the downloaded artist image was aborted.'));
+  });
+};
+
+const getDownloadedArtistImage = async (artistName: string): Promise<string | null> => {
+  const artist = normalizeArtistName(artistName);
+  if (!artist) return null;
+  const cachedObjectUrl = downloadedImageUrls.get(artist);
+  if (cachedObjectUrl) return cachedObjectUrl;
+  const pendingDownload = pendingImageDownloads.get(artist);
+  if (pendingDownload) return pendingDownload;
+
+  const download = (async () => {
+    if (!navigator.onLine) {
+      return getCachedArtistImageUrl(artist);
+    }
+
+    const { imageUrl } = await getArtistInfo(artistName);
+    if (!imageUrl) return getCachedArtistImageUrl(artist);
+    try {
+      const cachedObjectUrl = await getCachedArtistImageUrl(artist, imageUrl);
+      if (cachedObjectUrl) return cachedObjectUrl;
+
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Artist image download failed (HTTP ${response.status}).`);
+      }
+      const declaredSize = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declaredSize) && declaredSize > MAX_ARTIST_IMAGE_SIZE) {
+        throw new Error('Artist image exceeds the 12 MB cache limit.');
+      }
+      const image = await response.blob();
+      if (!image.type.startsWith('image/') || image.size > MAX_ARTIST_IMAGE_SIZE) {
+        throw new Error('Artist image is not a supported image or exceeds the 12 MB cache limit.');
+      }
+      await cacheArtistImageBlob(artist, imageUrl, image);
+      const objectUrl = URL.createObjectURL(image);
+      downloadedImageUrls.set(artist, objectUrl);
+      return objectUrl;
+    } catch (error) {
+      console.warn(`Could not download or cache artist image for "${artistName}":`, error);
+      return getCachedArtistImageUrl(artist);
+    }
+  })();
+
+  pendingImageDownloads.set(artist, download);
+  void download.then(() => pendingImageDownloads.delete(artist));
+  return download;
+};
 
 interface UseArtistImageOptions {
   enabled?: boolean;
@@ -200,8 +329,8 @@ export const useArtistImage = (
     if (!enabled || !normalizedArtist) return;
     let isMounted = true;
     const load = () => {
-      void getArtistInfo(artist).then((info) => {
-        if (isMounted) setResult({ artist: normalizedArtist, imageUrl: info.imageUrl });
+      void getArtistImage(artist).then((imageUrl) => {
+        if (isMounted) setResult({ artist: normalizedArtist, imageUrl });
       });
     };
 

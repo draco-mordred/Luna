@@ -47,6 +47,7 @@ export interface AppSettings {
   seekbarStyle: SeekbarStyle;
   visualizerStyle: VisualizerStyle;
   showVisualizer: boolean;
+  autoDownloadArtistImages: boolean;
   showArtistImageBackground: boolean;
   showLyrics: boolean;
   isShuffled: boolean;
@@ -83,6 +84,7 @@ declare global {
             | 'seekbarStyle'
             | 'visualizerStyle'
             | 'showVisualizer'
+            | 'autoDownloadArtistImages'
             | 'showArtistImageBackground'
             | 'showLyrics'
             | 'isShuffled'

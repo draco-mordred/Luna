@@ -84,6 +84,7 @@ const DEFAULT_SETTINGS = {
   seekbarStyle: 'default',
   visualizerStyle: 'wave-smooth',
   showVisualizer: false,
+  autoDownloadArtistImages: true,
   showArtistImageBackground: false,
   showLyrics: true,
   isShuffled: false,
@@ -253,6 +254,10 @@ const getWindowsAccentColor = () => {
 const readAppSettings = async () => {
   const saved = await readSettingsFile();
   const systemAccentColor = getWindowsAccentColor();
+  const autoDownloadArtistImages =
+    typeof saved.autoDownloadArtistImages === 'boolean'
+      ? saved.autoDownloadArtistImages
+      : DEFAULT_SETTINGS.autoDownloadArtistImages;
   const settings = {
     ...DEFAULT_SETTINGS,
     ...saved,
@@ -295,10 +300,12 @@ const readAppSettings = async () => {
       typeof saved.showVisualizer === 'boolean'
         ? saved.showVisualizer
         : DEFAULT_SETTINGS.showVisualizer,
+    autoDownloadArtistImages,
     showArtistImageBackground:
+      autoDownloadArtistImages &&
       typeof saved.showArtistImageBackground === 'boolean'
         ? saved.showArtistImageBackground
-        : DEFAULT_SETTINGS.showArtistImageBackground,
+        : false,
     showLyrics:
       typeof saved.showLyrics === 'boolean' ? saved.showLyrics : DEFAULT_SETTINGS.showLyrics,
     isShuffled:
@@ -331,6 +338,7 @@ const readAppSettings = async () => {
     saved.seekbarStyle !== settings.seekbarStyle ||
     saved.visualizerStyle !== settings.visualizerStyle ||
     saved.showVisualizer !== settings.showVisualizer ||
+    saved.autoDownloadArtistImages !== settings.autoDownloadArtistImages ||
     saved.showArtistImageBackground !== settings.showArtistImageBackground ||
     saved.showLyrics !== settings.showLyrics ||
     saved.isShuffled !== settings.isShuffled ||
@@ -430,7 +438,18 @@ const updateAppSettings = async (patch) => {
   if (patch.showArtistImageBackground !== undefined) {
     if (typeof patch.showArtistImageBackground !== 'boolean')
       throw new TypeError('Show artist image background must be a boolean.');
+    if (
+      patch.showArtistImageBackground &&
+      !(patch.autoDownloadArtistImages ?? next.autoDownloadArtistImages)
+    )
+      throw new TypeError('Artist image backgrounds require automatic artist image downloads.');
     next.showArtistImageBackground = patch.showArtistImageBackground;
+  }
+  if (patch.autoDownloadArtistImages !== undefined) {
+    if (typeof patch.autoDownloadArtistImages !== 'boolean')
+      throw new TypeError('Automatic artist image downloads must be a boolean.');
+    next.autoDownloadArtistImages = patch.autoDownloadArtistImages;
+    if (!patch.autoDownloadArtistImages) next.showArtistImageBackground = false;
   }
   if (patch.showLyrics !== undefined) {
     if (typeof patch.showLyrics !== 'boolean')

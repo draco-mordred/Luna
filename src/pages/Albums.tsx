@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
+import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import QueueContextMenu from '../components/QueueContextMenu';
 import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
@@ -211,6 +212,15 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
       }),
     [albums, sortBy, sortDirection]
   );
+  const albumIndexEntries = useMemo(
+    () =>
+      buildAlphaNumericIndex(
+        sortedAlbums,
+        (album) => (sortBy === 'tracks' ? album.trackCount : album[sortBy]),
+        (album) => getLibraryItemHash('album', album.name, album.artist).slice(1)
+      ),
+    [sortBy, sortedAlbums]
+  );
 
   return (
     <div className='albums-page'>
@@ -276,33 +286,40 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
       {albums.length === 0 ? (
         <p className='library-message'>Albums from your indexed music folders will appear here.</p>
       ) : (
-        <div className={`albums-container ${viewMode}`}>
-          {viewMode === 'grid' ? (
-            <div className='albums-grid'>
-              {sortedAlbums.map((album) => (
-                <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
-                  <AlbumCard
-                    album={album}
-                    onPlayTrack={onPlayTrack}
-                    onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
-                  />
-                </QueueContextMenu>
-              ))}
-            </div>
-          ) : (
-            <div className='albums-list'>
-              {sortedAlbums.map((album, index) => (
-                <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
-                  <AlbumListItem
-                    album={album}
-                    index={index}
-                    onPlayTrack={onPlayTrack}
-                    onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
-                  />
-                </QueueContextMenu>
-              ))}
-            </div>
-          )}
+        <div className='indexed-list-layout'>
+          <div className={`albums-container ${viewMode}`}>
+            {viewMode === 'grid' ? (
+              <div className='albums-grid'>
+                {sortedAlbums.map((album) => (
+                  <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
+                    <AlbumCard
+                      album={album}
+                      onPlayTrack={onPlayTrack}
+                      onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
+                    />
+                  </QueueContextMenu>
+                ))}
+              </div>
+            ) : (
+              <div className='albums-list'>
+                {sortedAlbums.map((album, index) => (
+                  <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
+                    <AlbumListItem
+                      album={album}
+                      index={index}
+                      onPlayTrack={onPlayTrack}
+                      onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
+                    />
+                  </QueueContextMenu>
+                ))}
+              </div>
+            )}
+          </div>
+          <AlphaNumericIndex
+            entries={albumIndexEntries}
+            ariaLabel='Album list index'
+            scrollContainerSelector='.page-content'
+          />
         </div>
       )}
     </div>

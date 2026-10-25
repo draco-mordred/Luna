@@ -235,6 +235,9 @@ const App = () => {
   const [showVisualizer, setShowVisualizer] = useState(
     () => window.localStorage.getItem('luna-show-visualizer') === 'true'
   );
+  const [autoDownloadArtistImages, setAutoDownloadArtistImages] = useState(
+    () => window.localStorage.getItem('luna-auto-download-artist-images') !== 'false'
+  );
   const [showArtistImageBackground, setShowArtistImageBackground] = useState(
     () => window.localStorage.getItem('luna-show-artist-background') === 'true'
   );
@@ -414,9 +417,15 @@ const App = () => {
         setShowVisualizer(
           settings.showVisualizer ?? window.localStorage.getItem('luna-show-visualizer') === 'true'
         );
-        setShowArtistImageBackground(
+        const shouldAutoDownloadArtistImages =
+          settings.autoDownloadArtistImages ??
+          window.localStorage.getItem('luna-auto-download-artist-images') !== 'false';
+        const shouldShowArtistImageBackground =
           settings.showArtistImageBackground ??
-            window.localStorage.getItem('luna-show-artist-background') === 'true'
+          window.localStorage.getItem('luna-show-artist-background') === 'true';
+        setAutoDownloadArtistImages(shouldAutoDownloadArtistImages);
+        setShowArtistImageBackground(
+          shouldAutoDownloadArtistImages && shouldShowArtistImageBackground
         );
         setShowLyrics(
           settings.showLyrics ?? window.localStorage.getItem('luna-show-lyrics') !== 'false'
@@ -526,6 +535,10 @@ const App = () => {
     window.localStorage.setItem('luna-visualizer-style', visualizerStyle);
     window.localStorage.setItem('luna-show-visualizer', String(showVisualizer));
     window.localStorage.setItem(
+      'luna-auto-download-artist-images',
+      String(autoDownloadArtistImages)
+    );
+    window.localStorage.setItem(
       'luna-show-artist-background',
       String(showArtistImageBackground)
     );
@@ -546,6 +559,7 @@ const App = () => {
           seekbarStyle,
           visualizerStyle,
           showVisualizer,
+          autoDownloadArtistImages,
           showArtistImageBackground,
           showLyrics,
           isShuffled,
@@ -573,6 +587,7 @@ const App = () => {
     showSpotifySection,
     showLyrics,
     showVisualizer,
+    autoDownloadArtistImages,
     showArtistImageBackground,
     themeMode,
     visualizerStyle,
@@ -1394,6 +1409,7 @@ const App = () => {
                   element={
                     <Artists
                       tracks={libraryTracks}
+                      autoDownloadArtistImages={autoDownloadArtistImages}
                       onPlayTrack={playTrack}
                       onShufflePlay={shufflePlayTracks}
                       onQueueTracks={handleQueueTracks}
@@ -1490,6 +1506,11 @@ const App = () => {
                       onShowVisualizerChange={setShowVisualizer}
                       showArtistImageBackground={showArtistImageBackground}
                       onShowArtistImageBackgroundChange={setShowArtistImageBackground}
+                      autoDownloadArtistImages={autoDownloadArtistImages}
+                      onAutoDownloadArtistImagesChange={(enabled) => {
+                        setAutoDownloadArtistImages(enabled);
+                        if (!enabled) setShowArtistImageBackground(false);
+                      }}
                       showLyrics={showLyrics}
                       onShowLyricsChange={setShowLyrics}
                       crossfadeSeconds={crossfadeSeconds}
@@ -1534,6 +1555,11 @@ const App = () => {
                       onShowVisualizerChange={setShowVisualizer}
                       showArtistImageBackground={showArtistImageBackground}
                       onShowArtistImageBackgroundChange={setShowArtistImageBackground}
+                      autoDownloadArtistImages={autoDownloadArtistImages}
+                      onAutoDownloadArtistImagesChange={(enabled) => {
+                        setAutoDownloadArtistImages(enabled);
+                        if (!enabled) setShowArtistImageBackground(false);
+                      }}
                       showLyrics={showLyrics}
                       onShowLyricsChange={setShowLyrics}
                       crossfadeSeconds={crossfadeSeconds}
@@ -1639,7 +1665,7 @@ const App = () => {
         visualizerAnalyser={visualizerAnalyser}
         visualizerStyle={visualizerStyle}
         showVisualizer={showVisualizer}
-        showArtistImageBackground={showArtistImageBackground}
+        showArtistImageBackground={autoDownloadArtistImages && showArtistImageBackground}
         showLyrics={showLyrics}
         playQueue={playQueue}
         playQueueIndex={playQueueIndex}

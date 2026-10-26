@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleWindowMaximize: () => ipcRenderer.invoke('toggle-window-maximize'),
   getWindowState: () => ipcRenderer.invoke('get-window-state'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
+  isLocalTrackAvailable: (trackPath) =>
+    ipcRenderer.invoke('is-local-track-available', trackPath),
   loadMusicLibrary: () => ipcRenderer.invoke('load-music-library'),
   loadAppSettings: () => ipcRenderer.invoke('load-app-settings'),
   saveAppSettings: (settings) => ipcRenderer.invoke('save-app-settings', settings),
@@ -31,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-track-metadata', trackPath, metadata),
   onWindowStateChanged: (callback) => subscribe('window-state-changed', callback),
   onSystemThemeChanged: (callback) => subscribe('system-theme-changed', callback),
+  onMusicLibraryScanProgress: (callback) => subscribe('music-library-scan-progress', callback),
   setTaskbarPlaybackState: (isPlaying) => ipcRenderer.send('taskbar-playback-state', isPlaying),
   onTaskbarPrevious: (callback) => subscribe('taskbar-previous', callback),
   onTaskbarPlayPause: (callback) => subscribe('taskbar-play-pause', callback),

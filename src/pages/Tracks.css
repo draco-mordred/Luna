@@ -106,7 +106,10 @@
 .track-list-header,
 .track-item {
   display: grid;
-  grid-template-columns: 32px minmax(180px, 2fr) minmax(120px, 1.25fr) minmax(120px, 1.25fr) minmax(90px, 0.9fr) 72px 80px;
+  grid-template-columns: 32px minmax(180px, 2fr) minmax(120px, 1.25fr) minmax(120px, 1.25fr) minmax(
+      90px,
+      0.9fr
+    ) 72px 80px;
   align-items: center;
   column-gap: 12px;
 }
@@ -221,22 +224,24 @@
 }
 
 .sort-button {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 8px 5px;
-    background: transparent;
-    border: none;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 500;
-    border-radius: 6px;
-    transition: color 0.2s ease, background-color 0.2s ease;
-    /* margin: 0px 25px 0px -30px;*/
-    margin: 0px 25% 0px -15%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 6px;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+  /* margin: 0px 25px 0px -30px;*/
+  margin: 0px 25% 0px -15%;
 }
 
 .sort-button:hover {
@@ -257,6 +262,12 @@
   flex-direction: column;
   gap: 4px;
   contain: layout style;
+}
+
+.track-list-virtualized {
+  position: relative;
+  display: block;
+  gap: 0;
 }
 
 .track-item {
@@ -322,7 +333,10 @@
 
   .track-list-header,
   .track-item {
-    grid-template-columns: 28px minmax(160px, 2fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) 72px 80px;
+    grid-template-columns: 28px minmax(160px, 2fr) minmax(110px, 1.2fr) minmax(
+        110px,
+        1.2fr
+      ) 72px 80px;
   }
 }
 

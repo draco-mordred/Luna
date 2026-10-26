@@ -1,21 +1,25 @@
 export type AlphaNumericSortValue = string | number | null | undefined;
 
-const startsWithAlphaNumeric = (value: AlphaNumericSortValue) =>
-  /^[\p{L}\p{N}]/u.test(
-    String(value ?? '')
-      .trim()
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-  );
+const getSortCategory = (value: AlphaNumericSortValue) => {
+  const firstCharacter =
+    Array.from(
+      String(value ?? '')
+        .trim()
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+    )[0] ?? '';
+  if (/^\p{L}$/u.test(firstCharacter)) return 0;
+  if (/^\p{N}$/u.test(firstCharacter)) return 1;
+  return 2;
+};
 
 export const compareAlphaNumericFirst = (
   left: AlphaNumericSortValue,
   right: AlphaNumericSortValue,
   direction: 'asc' | 'desc'
 ) => {
-  const leftIsAlphaNumeric = startsWithAlphaNumeric(left);
-  const rightIsAlphaNumeric = startsWithAlphaNumeric(right);
-  if (leftIsAlphaNumeric !== rightIsAlphaNumeric) return leftIsAlphaNumeric ? -1 : 1;
+  const categoryDifference = getSortCategory(left) - getSortCategory(right);
+  if (categoryDifference !== 0) return categoryDifference;
 
   const comparison =
     typeof left === 'number' && typeof right === 'number'
@@ -26,3 +30,11 @@ export const compareAlphaNumericFirst = (
         });
   return direction === 'asc' ? comparison : -comparison;
 };
+
+export const sortByTrackTitle = <T extends { name: string }>(
+  tracks: readonly T[],
+  direction: 'asc' | 'desc'
+): T[] =>
+  [...tracks].sort((left, right) =>
+    compareAlphaNumericFirst(left.name.trim(), right.name.trim(), direction)
+  );

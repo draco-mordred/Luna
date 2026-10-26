@@ -25,6 +25,10 @@ interface SettingsPageProps {
   onAutoDownloadArtistImagesChange: (enabled: boolean) => void;
   showLyrics: boolean;
   onShowLyricsChange: (show: boolean) => void;
+  showSyncedLyricsOnPlayBar: boolean;
+  onShowSyncedLyricsOnPlayBarChange: (show: boolean) => void;
+  syncLyricsDisplay: boolean;
+  onSyncLyricsDisplayChange: (sync: boolean) => void;
   crossfadeSeconds: number;
   onCrossfadeChange: (seconds: number) => void;
   systemAccentColor: string | null;
@@ -66,6 +70,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onAutoDownloadArtistImagesChange,
   showLyrics,
   onShowLyricsChange,
+  showSyncedLyricsOnPlayBar,
+  onShowSyncedLyricsOnPlayBarChange,
+  syncLyricsDisplay,
+  onSyncLyricsDisplayChange,
   crossfadeSeconds,
   onCrossfadeChange,
   systemAccentColor,
@@ -296,6 +304,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </label>
             </div>
           </div>
+          <div className='setting-item'>
+            <div className='setting-info'>
+              <h3>Synchronized lyrics on the play bar</h3>
+              <p>Show a lyrics toggle when the current track has synchronized lyrics</p>
+            </div>
+            <div className='setting-control'>
+              <label className='toggle-switch'>
+                <input
+                  type='checkbox'
+                  aria-label='Show synchronized lyrics on the play bar'
+                  checked={showSyncedLyricsOnPlayBar}
+                  disabled={!showLyrics}
+                  onChange={(event) =>
+                    onShowSyncedLyricsOnPlayBarChange(event.currentTarget.checked)
+                  }
+                />
+                <span className='toggle-slider'></span>
+              </label>
+            </div>
+          </div>
         </div>
       ),
     },
@@ -352,8 +380,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <label className='toggle-switch'>
                 <input
                   type='checkbox'
-                  checked={showLyrics}
-                  onChange={(event) => onShowLyricsChange(event.currentTarget.checked)}
+                  disabled
                 />
                 <span className='toggle-slider'></span>
               </label>
@@ -375,7 +402,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
             <div className='setting-control'>
               <label className='toggle-switch'>
-                <input type='checkbox' defaultChecked />
+                <input
+                  type='checkbox'
+                  aria-label='Show lyrics when available'
+                  checked={showLyrics}
+                  onChange={(event) => onShowLyricsChange(event.currentTarget.checked)}
+                />
+                <span className='toggle-slider'></span>
+              </label>
+            </div>
+          </div>
+          <div className={`setting-item ${!showLyrics ? 'setting-item-disabled' : ''}`}>
+            <div className='setting-info'>
+              <h3>Synchronize lyric displays</h3>
+              <p>Keep the play bar and Now Playing lyrics visibility in sync</p>
+            </div>
+            <div className='setting-control'>
+              <label className='toggle-switch'>
+                <input
+                  type='checkbox'
+                  aria-label='Synchronize lyric displays'
+                  checked={syncLyricsDisplay}
+                  disabled={!showLyrics}
+                  onChange={(event) =>
+                    onSyncLyricsDisplayChange(event.currentTarget.checked)
+                  }
+                />
                 <span className='toggle-slider'></span>
               </label>
             </div>

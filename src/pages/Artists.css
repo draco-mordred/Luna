@@ -47,6 +47,8 @@
   transition: all 0.2s ease;
   position: relative;
   scroll-margin-block: 24px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
 }
 
 .artist-card:target,
@@ -193,7 +195,7 @@
   .artists-page {
     padding: 16px;
   }
-  
+
   .page-header h1 {
     font-size: 1.5rem;
   }
@@ -201,7 +203,7 @@
   .artists-header-actions {
     flex-wrap: wrap;
   }
-  
+
   .artists-grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;

@@ -339,6 +339,45 @@ select {
   width: 8px;
 }
 
+.playback-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--playbar-collapsed-height) + 16px);
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 14px 12px 18px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px var(--shadow-color);
+  font-size: 0.9rem;
+}
+
+.playback-notice button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.playback-notice button:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }

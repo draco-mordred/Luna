@@ -61,13 +61,16 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### Run Electron (Desktop)
 ```bash
-npm run electron:dev
+npm run dev
 ```
+Starts the React development server without opening a browser, then launches the app in an Electron window. The Electron window uses the development server for hot reload; no production build is created. `npm start` remains available when you want the browser version.
 On first launch, choose one or more music folders when prompted. Luna indexes supported audio files recursively and stores the folder list and track metadata in `music-library.json` under Electron's user data directory. On later launches, the cached library appears immediately while Luna checks saved folders in the background for added, changed, or removed tracks. App settings (theme, accent color, and last played track) are stored separately under Electron's user data directory. Windows uses a frameless custom title bar and can use the Windows accent color from **Settings → Appearance**. You can add folders from the Options menu or review saved locations and rescan from **Settings → Library**.
 
 In the desktop app, right-click a track in **Tracks** and choose **Edit metadata** to change its title, artist, album, album artist, composer, genre, year, track/disc number, comment, embedded album art, or lyrics. Changes are written into the audio file itself. The editor supports MP3, FLAC, M4A/MP4, and OGG/OGA files; other scanned formats remain playable but are not editable. Lyrics can be pasted as plain text or imported from an `.lrc` file, whose timestamps are preserved in the embedded lyrics text. Luna reads embedded lyric tags; unrelated comments, descriptions, and external sidecar files are not treated as lyrics. Text decoding supports Unicode byte-order marks and detected legacy encodings; lyric rendering supports right-to-left text and falls back to fonts available on the system for non-Latin scripts. On Windows, hover over Luna's taskbar icon to access Previous, Play/Pause, and Next controls.
 
 Artist cards and artist detail pages can look up artist images and introductory biographies through the English Wikipedia API; images are served from Wikimedia Commons and lookup results are cached locally. **Settings → Now Playing → Automatically download artist images** controls whether artist-card images are fetched and saved in a local IndexedDB cache for reuse in Now Playing. Cached artist images remain available offline while this option is enabled; first-time image lookups and artist biographies require an internet connection. Turning downloads off also disables and turns off the optional artist-image background. Artist credits separated by commas, ampersands, slashes, semicolons, or common collaboration terms such as "feat.", "ft.", "with", and "x" are shown as individual artists, with each artist's credited tracks and albums grouped on their own detail page. Artist detail pages show albums below the track list and an **About artist** section with a link to the source article when available. Artists without a matching image continue to use the app's placeholder artwork.
+
+Large local libraries are supported: folder scans reuse cached metadata for unchanged files and read uncached files with limited parallelism. Newly parsed tracks stream into the library during a scan, appear sorted in the Tracks page, and can be played before scanning finishes. Tracks only mounts rows near the visible area, and the alphanumeric indexes span the full track, album, or artist list.
 
 ### Stream Jamendo music
 
@@ -124,6 +127,7 @@ The PlayBar at the bottom provides:
 
 | Command | Description |
 |---------|-------------|
+| `npm run dev` | Run the development app in Electron without opening a browser |
 | `npm start` | Run web development server |
 | `npm run build` | Build for production |
 | `npm run electron:dev` | Run Electron with hot reload |

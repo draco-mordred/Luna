@@ -41,6 +41,8 @@ interface PlayBarProps {
   showVisualizer: boolean;
   showArtistImageBackground: boolean;
   showLyrics: boolean;
+  showSyncedLyricsOnPlayBar: boolean;
+  syncLyricsDisplay: boolean;
   playQueue: Track[];
   playQueueIndex: number;
   onQueueSelect: (index: number) => void;
@@ -236,6 +238,65 @@ const SyncedLyricCaption = memo<SyncedLyricCaptionProps>(({
   );
 });
 
+const MiniSyncedLyrics = memo<{ text: string }>(({ text }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lyricLines = useMemo(
+    () => text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    [text]
+  );
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    const fitText = () => {
+      const availableWidth = container.clientWidth;
+      const availableHeight = container.clientHeight;
+      if (!availableWidth || !availableHeight) return;
+
+      let minimumSize = 6;
+      let maximumSize = 32;
+      let fittedSize = minimumSize;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const candidate = (minimumSize + maximumSize) / 2;
+        container.style.setProperty('--mini-lyric-font-size', `${candidate}px`);
+        if (
+          container.scrollWidth <= availableWidth + 1 &&
+          container.scrollHeight <= availableHeight + 1
+        ) {
+          fittedSize = candidate;
+          minimumSize = candidate;
+        } else {
+          maximumSize = candidate;
+        }
+      }
+      container.style.setProperty('--mini-lyric-font-size', `${fittedSize}px`);
+    };
+
+    fitText();
+    const observer = new ResizeObserver(fitText);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <div
+      className="mini-synced-lyrics"
+      ref={containerRef}
+      role="status"
+      aria-label="Current synchronized lyrics"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div className="mini-synced-lyrics-lines" key={text}>
+        {lyricLines.map((line, index) => (
+          <span dir="auto" key={`${index}:${line}`}>{line}</span>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 const PlayBar: React.FC<PlayBarProps> = ({
   track,
   activeAudio,
@@ -261,6 +322,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
   showVisualizer,
   showArtistImageBackground,
   showLyrics: lyricsEnabled,
+  showSyncedLyricsOnPlayBar,
+  syncLyricsDisplay,
   playQueue,
   playQueueIndex,
   onQueueSelect,
@@ -274,6 +337,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [showMiniSyncedLyrics, setShowMiniSyncedLyrics] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showTrackMenu, setShowTrackMenu] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
@@ -303,14 +367,23 @@ const PlayBar: React.FC<PlayBarProps> = ({
       ),
     [playQueue]
   );
-  const showSyncedLyricCaption = Boolean(showLyrics && showSyncedLyrics && hasSyncedLyrics);
+  const showSyncedLyricCaption = Boolean(
+    lyricsEnabled && showLyrics && showSyncedLyrics && hasSyncedLyrics,
+  );
   const showPlainLyricsPanel = Boolean(
-    showLyrics && track?.lyrics?.trim() && (!hasSyncedLyrics || !showSyncedLyrics),
+    lyricsEnabled && showLyrics && track?.lyrics?.trim() && (!hasSyncedLyrics || !showSyncedLyrics),
+  );
+  const isMiniSyncedLyricsVisible = Boolean(
+    lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && showMiniSyncedLyrics,
   );
   const plainLyricsFontSize = `${0.95 + plainLyricsFontStep * 0.15}rem`;
   const visualizerLocation = showSyncedLyricCaption || showPlainLyricsPanel
     ? 'below-art'
     : hasSyncedLyrics ? 'default' : 'lyrics-slot';
+  const updateLyricsVisibility = (visible: boolean) => {
+    setShowLyrics(visible);
+    if (syncLyricsDisplay) setShowMiniSyncedLyrics(visible);
+  };
 
   useEffect(() => {
     const syncPlaybackPosition = () => {
@@ -354,9 +427,25 @@ const PlayBar: React.FC<PlayBarProps> = ({
   useEffect(() => {
     if (!lyricsEnabled) {
       setShowLyrics(false);
+      setShowMiniSyncedLyrics(false);
       setShowLyricsHint(false);
+      return;
     }
-  }, [lyricsEnabled]);
+
+    if (syncLyricsDisplay) {
+      setShowMiniSyncedLyrics(
+        showLyrics && showSyncedLyricsOnPlayBar && hasSyncedLyrics
+      );
+    } else if (!showSyncedLyricsOnPlayBar || !hasSyncedLyrics) {
+      setShowMiniSyncedLyrics(false);
+    }
+  }, [
+    hasSyncedLyrics,
+    lyricsEnabled,
+    showLyrics,
+    showSyncedLyricsOnPlayBar,
+    syncLyricsDisplay,
+  ]);
 
   useLayoutEffect(() => {
     if (visualizerLocationRef.current === null) {
@@ -386,8 +475,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
     setShowLyrics(false);
     setShowLyricsHint(false);
     setShowTrackMenu(false);
+    setShowMiniSyncedLyrics(false);
     setShowSyncedLyrics(Boolean(track?.syncedLyrics && track.syncedLyrics.length > 0));
   }, [track?.id, track?.syncedLyrics]);
+
+  useEffect(() => {
+    if (!showSyncedLyricsOnPlayBar || !hasSyncedLyrics) {
+      setShowMiniSyncedLyrics(false);
+    }
+  }, [hasSyncedLyrics, showSyncedLyricsOnPlayBar]);
 
   useEffect(() => {
     if (!track?.lyrics?.trim()) return undefined;
@@ -538,9 +634,17 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   const handleLyricsToggle = () => {
     if (lyricsEnabled && track?.lyrics?.trim()) {
-      setShowLyrics((current) => !current);
+      updateLyricsVisibility(!showLyrics);
       setShowLyricsHint(false);
     }
+  };
+
+  const handleMiniLyricsToggle = () => {
+    const nextVisible = !isMiniSyncedLyricsVisible;
+    setShowMiniSyncedLyrics(nextVisible);
+    if (syncLyricsDisplay) setShowLyrics(nextVisible);
+    setShowVolumeSlider(false);
+    setShowOptionsMenu(false);
   };
 
   const handleLyricsToggleFromArtwork = (event?: React.MouseEvent | React.PointerEvent) => {
@@ -751,7 +855,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
                 onDoubleClick={() => {
                   if (lyricsEnabled && track?.lyrics?.trim()) {
-                    setShowLyrics((current) => !current);
+                    updateLyricsVisibility(!showLyrics);
                   }
                 }}
               >
@@ -812,7 +916,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
 
-          {track?.lyrics?.trim() && (
+          {lyricsEnabled && track?.lyrics?.trim() && (
             <section
               className={`lyrics-panel ${showPlainLyricsPanel ? 'is-visible' : 'is-hidden'}`}
               aria-label={`Lyrics for ${track.name}`}
@@ -856,7 +960,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     className="lyrics-close"
                     aria-label="Close lyrics"
                     tabIndex={showPlainLyricsPanel ? 0 : -1}
-                    onClick={() => setShowLyrics(false)}
+                    onClick={() => updateLyricsVisibility(false)}
                   >
                     <span className="material-symbols-outlined" aria-hidden="true">close</span>
                   </button>
@@ -931,7 +1035,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
           </section>
           
           {/* Progress Bar */}
-          {hasSyncedLyrics && track?.syncedLyrics && (
+          {lyricsEnabled && hasSyncedLyrics && track?.syncedLyrics && (
             <SyncedLyricCaption
               lineKey={currentSyncedLyricKey}
               text={currentSyncedLyricText}
@@ -1032,44 +1136,64 @@ const PlayBar: React.FC<PlayBarProps> = ({
         </div>
         
         {/* Controls */}
-        <div className="controls">
-          <button
-            aria-label="Shuffle"
-            aria-pressed={isShuffled}
-            className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
-            onClick={handleShuffle}
-            disabled={!track}
-          >
-            <TransportIcon name="shuffle" />
-          </button>
-          <button className="control-btn" onClick={onPrevious} disabled={!track}>
-            <TransportIcon name="previous" />
-          </button>
-          <button className="control-btn play-pause" onClick={onPlayPause} disabled={!track}>
-            <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
-              {isPlaying
-                ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
-                : <>
-                  <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
-                  <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
-                </>}
-            </svg>
-          </button>
-          <button className="control-btn" onClick={onNext} disabled={!track}>
-            <TransportIcon name="next" />
-          </button>
-          <button
-            aria-label={`Repeat ${repeatMode === 'off' ? 'off' : repeatMode === 'one' ? 'one' : 'all'}`}
-            aria-pressed={repeatMode !== 'off'}
-            className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
-            onClick={handleRepeat}
-            disabled={!track}
-          >
-            <TransportIcon name={getRepeatIcon()} />
-          </button>
+        <div
+          className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+        >
+          {isMiniSyncedLyricsVisible ? (
+            <MiniSyncedLyrics key={currentSyncedLyricKey} text={currentSyncedLyricText} />
+          ) : (
+            <div className="controls">
+              <button
+                aria-label="Shuffle"
+                aria-pressed={isShuffled}
+                className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
+                onClick={handleShuffle}
+                disabled={!track}
+              >
+                <TransportIcon name="shuffle" />
+              </button>
+              <button className="control-btn" onClick={onPrevious} disabled={!track}>
+                <TransportIcon name="previous" />
+              </button>
+              <button className="control-btn play-pause" onClick={onPlayPause} disabled={!track}>
+                <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  {isPlaying
+                    ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
+                    : <>
+                      <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
+                      <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
+                    </>}
+                </svg>
+              </button>
+              <button className="control-btn" onClick={onNext} disabled={!track}>
+                <TransportIcon name="next" />
+              </button>
+              <button
+                aria-label={`Repeat ${repeatMode === 'off' ? 'off' : repeatMode === 'one' ? 'one' : 'all'}`}
+                aria-pressed={repeatMode !== 'off'}
+                className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
+                onClick={handleRepeat}
+                disabled={!track}
+              >
+                <TransportIcon name={getRepeatIcon()} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="mini-player-actions">
+          {lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && (
+            <button
+              type="button"
+              className={`control-btn mini-synced-lyrics-toggle ${isMiniSyncedLyricsVisible ? 'active' : ''}`}
+              aria-label={isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'}
+              title={isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'}
+              aria-pressed={isMiniSyncedLyricsVisible}
+              onClick={handleMiniLyricsToggle}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">lyrics</span>
+            </button>
+          )}
           <div className="volume-control">
             {showVolumeSlider && (
               <div className="volume-popover">
@@ -1113,7 +1237,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </span>
             </button>
           </div>
-
           <div className="more-options">
             <button
               aria-label="More options"

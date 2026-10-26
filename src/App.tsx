@@ -15,6 +15,7 @@ import type {
   AppSettings,
   IconStyle,
   MusicLibraryResponse,
+  MusicLibraryScanProgress,
   SeekbarStyle,
   ThemeMode,
   TrackMetadataUpdate,
@@ -246,6 +247,12 @@ const App = () => {
   const [showLyrics, setShowLyrics] = useState(
     () => window.localStorage.getItem('luna-show-lyrics') !== 'false'
   );
+  const [showSyncedLyricsOnPlayBar, setShowSyncedLyricsOnPlayBar] = useState(
+    () => window.localStorage.getItem('luna-show-synced-lyrics-on-playbar') !== 'false'
+  );
+  const [syncLyricsDisplay, setSyncLyricsDisplay] = useState(
+    () => window.localStorage.getItem('luna-sync-lyrics-display') !== 'false'
+  );
   const [showBrowseSection, setShowBrowseSection] = useState(
     () => window.localStorage.getItem('luna-show-browse') !== 'false'
   );
@@ -269,7 +276,11 @@ const App = () => {
   const [isLibraryLoading, setIsLibraryLoading] = useState(Boolean(window.electronAPI));
   const [initialLibraryLoaded, setInitialLibraryLoaded] = useState(!window.electronAPI);
   const [libraryReconciled, setLibraryReconciled] = useState(!window.electronAPI);
+  const [libraryScanProgress, setLibraryScanProgress] = useState<MusicLibraryScanProgress | null>(
+    null
+  );
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   const [lastPlayedTrackPath, setLastPlayedTrackPath] = useState<string | null>(null);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [trackAccentColor, setTrackAccentColor] = useState<string | null>(null);
@@ -304,11 +315,36 @@ const App = () => {
   const crossfadeStartedRef = useRef(false);
   const crossfadeRequestIdRef = useRef(0);
   const volumeRef = useRef(volume);
+  const playbackNoticeTimeoutRef = useRef<number | null>(null);
+  const unavailableTrackHandlingRef = useRef<string | null>(null);
   const initialLoadStarted = useRef(false);
+  const activeLibraryScanIdRef = useRef<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (playbackNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(playbackNoticeTimeoutRef.current);
+      }
+    },
+    []
+  );
   const closePlaylistDialog = useCallback(() => setPlaylistDialog(null), []);
   const closeTrackMetadataDialog = useCallback(() => setTrackMetadataDialog(null), []);
   const handleOpenTrackMetadata = useCallback((track: Track) => {
     setTrackMetadataDialog(track);
+  }, []);
+
+  const notifyUnavailableTrack = useCallback((track: Track) => {
+    setPlaybackNotice(
+      `“${track.name}” can’t be played because its file is unavailable. Skipping to the next track.`
+    );
+    if (playbackNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(playbackNoticeTimeoutRef.current);
+    }
+    playbackNoticeTimeoutRef.current = window.setTimeout(() => {
+      setPlaybackNotice(null);
+      playbackNoticeTimeoutRef.current = null;
+    }, 7000);
   }, []);
 
   const prepareVisualizerAudio = useCallback((audio: HTMLAudioElement) => {
@@ -428,6 +464,14 @@ const App = () => {
         setShowLyrics(
           settings.showLyrics ?? window.localStorage.getItem('luna-show-lyrics') !== 'false'
         );
+        setShowSyncedLyricsOnPlayBar(
+          settings.showSyncedLyricsOnPlayBar ??
+            window.localStorage.getItem('luna-show-synced-lyrics-on-playbar') !== 'false'
+        );
+        setSyncLyricsDisplay(
+          settings.syncLyricsDisplay ??
+            window.localStorage.getItem('luna-sync-lyrics-display') !== 'false'
+        );
         setIsShuffled(
           settings.isShuffled ?? window.localStorage.getItem('luna-shuffled') === 'true'
         );
@@ -460,6 +504,38 @@ const App = () => {
     };
     mediaQuery.addEventListener('change', updateSystemTheme);
     return () => mediaQuery.removeEventListener('change', updateSystemTheme);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onMusicLibraryScanProgress((progress) => {
+      if (progress.phase === 'discovering') {
+        activeLibraryScanIdRef.current = progress.scanId;
+        setIsLibraryLoading(true);
+        setMusicFolders(progress.folders);
+        setLibraryScanProgress(progress);
+        return;
+      }
+      if (activeLibraryScanIdRef.current !== progress.scanId) return;
+
+      if (progress.tracks.length > 0) {
+        setLibraryTracks((currentTracks) => {
+          const tracksByPath = new Map(currentTracks.map((track) => [track.path, track]));
+          progress.tracks.forEach((track) => tracksByPath.set(track.path, track));
+          return [...tracksByPath.values()];
+        });
+      }
+      setLibraryScanProgress(progress);
+      if (progress.phase === 'complete') {
+        activeLibraryScanIdRef.current = null;
+        setIsLibraryLoading(false);
+        setLibraryError(
+          progress.errors && progress.errors.length > 0
+            ? `${progress.errors.length} music folder item(s) could not be read. Check that the folders are accessible.`
+            : null
+        );
+      }
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -535,6 +611,11 @@ const App = () => {
       String(showArtistImageBackground)
     );
     window.localStorage.setItem('luna-show-lyrics', String(showLyrics));
+    window.localStorage.setItem(
+      'luna-show-synced-lyrics-on-playbar',
+      String(showSyncedLyricsOnPlayBar)
+    );
+    window.localStorage.setItem('luna-sync-lyrics-display', String(syncLyricsDisplay));
     window.localStorage.setItem('luna-shuffled', String(isShuffled));
     window.localStorage.setItem('luna-repeat-mode', repeatMode);
     window.localStorage.setItem('luna-show-browse', String(showBrowseSection));
@@ -553,6 +634,8 @@ const App = () => {
           autoDownloadArtistImages,
           showArtistImageBackground,
           showLyrics,
+          showSyncedLyricsOnPlayBar,
+          syncLyricsDisplay,
           isShuffled,
           repeatMode,
           showBrowseSection,
@@ -575,6 +658,8 @@ const App = () => {
     showBrowseSection,
     showRadioSection,
     showLyrics,
+    showSyncedLyricsOnPlayBar,
+    syncLyricsDisplay,
     showVisualizer,
     autoDownloadArtistImages,
     showArtistImageBackground,
@@ -620,6 +705,8 @@ const App = () => {
       return response;
     } catch (error) {
       console.error('Could not add music folders:', error);
+      activeLibraryScanIdRef.current = null;
+      setLibraryScanProgress(null);
       setLibraryError('Could not add the selected music folders.');
       return null;
     } finally {
@@ -641,6 +728,8 @@ const App = () => {
       return response;
     } catch (error) {
       console.error('Could not rescan the local music library:', error);
+      activeLibraryScanIdRef.current = null;
+      setLibraryScanProgress(null);
       setLibraryError('Could not rescan your music folders.');
       return { folders: [], tracks: [], errors: ['Could not rescan your music folders.'] };
     } finally {
@@ -658,6 +747,8 @@ const App = () => {
       setLibraryReconciled(true);
     } catch (error) {
       console.error(`Could not remove music folder "${folder}":`, error);
+      activeLibraryScanIdRef.current = null;
+      setLibraryScanProgress(null);
       setLibraryError('Could not remove that music folder.');
     } finally {
       setIsLibraryLoading(false);
@@ -684,6 +775,17 @@ const App = () => {
     crossfadeStartedRef.current = false;
   }, []);
 
+  const isLocalTrackAvailable = useCallback(async (track: Track) => {
+    if (track.streamingProvider || !window.electronAPI) return true;
+    try {
+      return await window.electronAPI.isLocalTrackAvailable(track.path);
+    } catch (error) {
+      console.error(`Could not verify the music file "${track.path}":`, error);
+      setLibraryError(`Could not verify whether “${track.name}” is available.`);
+      return true;
+    }
+  }, []);
+
   const playAudioTrack = useCallback(
     async (track: Track) => {
       const audio =
@@ -694,7 +796,7 @@ const App = () => {
             : audioARef.current ?? audioBRef.current;
       if (!audio) {
         setLibraryError('Could not start playback because the audio player is unavailable.');
-        return;
+        return false;
       }
       let source = track.src;
       try {
@@ -707,11 +809,11 @@ const App = () => {
         setLibraryError(
           error instanceof Error ? error.message : `Could not prepare "${track.name}" for playback.`
         );
-        return;
+        return false;
       }
       if (!source) {
         setLibraryError('This track is missing a playable audio file.');
-        return;
+        return false;
       }
       cancelCrossfade();
       [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((otherAudio) => {
@@ -722,6 +824,7 @@ const App = () => {
         otherAudio.volume = 0;
       });
       activeAudioRef.current = audio;
+      unavailableTrackHandlingRef.current = null;
       audio.volume = volumeRef.current;
       const playableTrack = { ...track, src: source };
       setCurrentTrack(playableTrack);
@@ -731,10 +834,13 @@ const App = () => {
       if (track.streamingProvider !== 'audiomack') prepareVisualizerAudio(audio);
       try {
         await audio.play();
+        unavailableTrackHandlingRef.current = null;
         setIsPlaying(true);
+        return true;
       } catch (error) {
         console.error(`Could not play "${track.name}":`, error);
         setIsPlaying(false);
+        if (!track.streamingProvider) return false;
         setLibraryError(
           track.streamingProvider === 'audiomack'
             ? `Could not play "${track.name}" from Audiomack. The stream may be unavailable.`
@@ -742,9 +848,47 @@ const App = () => {
               ? `Could not play "${track.name}" from Jamendo. The stream may be unavailable.`
               : `Could not play "${track.name}". The file may be unavailable or use an unsupported format.`
         );
+        return false;
       }
     },
     [cancelCrossfade, prepareVisualizerAudio]
+  );
+
+  const playQueueFrom = useCallback(
+    async (queue: Track[], startIndex: number) => {
+      for (let offset = 0; offset < queue.length; offset += 1) {
+        const index = startIndex + offset;
+        if (index >= queue.length && repeatMode !== 'all') break;
+        const queueIndex = index % queue.length;
+        const track = queue[queueIndex];
+
+        if (!(await isLocalTrackAvailable(track))) {
+          notifyUnavailableTrack(track);
+          setLibraryError(null);
+          activeAudioRef.current?.pause();
+          continue;
+        }
+
+        setPlayQueueIndex(queueIndex);
+        const didPlay = await playAudioTrack(track);
+        if (didPlay) return true;
+
+        if (!(await isLocalTrackAvailable(track))) {
+          notifyUnavailableTrack(track);
+          setLibraryError(null);
+          continue;
+        }
+        activeAudioRef.current?.pause();
+        setLibraryError(
+          `Could not play “${track.name}”. The file may be unavailable or use an unsupported format.`
+        );
+        return false;
+      }
+      activeAudioRef.current?.pause();
+      setIsPlaying(false);
+      return false;
+    },
+    [isLocalTrackAvailable, notifyUnavailableTrack, playAudioTrack, repeatMode]
   );
 
   const playTrack = useCallback(
@@ -758,10 +902,9 @@ const App = () => {
           ? [orderedTracks[0], ...shuffleTracks(orderedTracks.slice(1))]
           : orderedTracks;
       setPlayQueue(nextQueue);
-      setPlayQueueIndex(0);
-      await playAudioTrack(track);
+      await playQueueFrom(nextQueue, 0);
     },
-    [isShuffled, libraryTracks, playAudioTrack]
+    [isShuffled, libraryTracks, playQueueFrom]
   );
 
   const shufflePlayTracks = useCallback(
@@ -770,20 +913,18 @@ const App = () => {
       const shuffledTracks = shuffleTracks(tracks);
       playQueueBaseRef.current = shuffledTracks;
       setPlayQueue(shuffledTracks);
-      setPlayQueueIndex(0);
-      void playAudioTrack(shuffledTracks[0]);
+      void playQueueFrom(shuffledTracks, 0);
     },
-    [playAudioTrack]
+    [playQueueFrom]
   );
 
   const playQueueAt = useCallback(
     (index: number) => {
       const queuedTrack = playQueue[index];
       if (!queuedTrack) return;
-      setPlayQueueIndex(index);
-      void playAudioTrack(queuedTrack);
+      void playQueueFrom(playQueue, index);
     },
-    [playAudioTrack, playQueue]
+    [playQueue, playQueueFrom]
   );
 
   const playRelativeTrack = useCallback(
@@ -1001,12 +1142,30 @@ const App = () => {
           void playAudioTrack(currentTrack);
           return;
         }
-        audio.currentTime = 0;
-        audio.play().catch((error: unknown) => {
-          console.error('Could not repeat the current track:', error);
-          setIsPlaying(false);
-          setLibraryError('Could not repeat the current track.');
-        });
+        if (currentTrack) {
+          void (async () => {
+            if (!(await isLocalTrackAvailable(currentTrack))) {
+              notifyUnavailableTrack(currentTrack);
+              setLibraryError(null);
+              audio.pause();
+              setIsPlaying(false);
+              const currentIndex = playQueue.findIndex(
+                (track) => track.id === currentTrack.id
+              );
+              const nextIndex = (currentIndex >= 0 ? currentIndex : playQueueIndex) + 1;
+              if (nextIndex < playQueue.length) {
+                playQueueAt(nextIndex);
+              }
+              return;
+            }
+            audio.currentTime = 0;
+            audio.play().catch((error: unknown) => {
+              console.error('Could not repeat the current track:', error);
+              setIsPlaying(false);
+              setLibraryError('Could not repeat the current track.');
+            });
+          })();
+        }
         return;
       }
       if (playQueueIndex + 1 < playQueue.length) {
@@ -1017,7 +1176,77 @@ const App = () => {
         setIsPlaying(false);
       }
     },
-    [currentTrack, playAudioTrack, playQueue.length, playQueueAt, playQueueIndex, repeatMode]
+    [
+      currentTrack,
+      isLocalTrackAvailable,
+      notifyUnavailableTrack,
+      playAudioTrack,
+      playQueue,
+      playQueueAt,
+      playQueueIndex,
+      repeatMode,
+    ]
+  );
+
+  const handleAudioError = useCallback(
+    async (audio: HTMLAudioElement) => {
+      const failedTrack = currentTrack;
+      if (audio !== activeAudioRef.current || !failedTrack) return;
+      setIsPlaying(false);
+      if (failedTrack.streamingProvider) {
+        setLibraryError(
+          failedTrack.streamingProvider === 'audiomack'
+            ? `Audiomack could not stream “${failedTrack.name}”. The stream may have expired or become unavailable.`
+            : failedTrack.streamingProvider === 'jamendo'
+              ? `Jamendo could not stream “${failedTrack.name}”. The track may no longer be available.`
+              : `Could not play “${failedTrack.name}”. The stream may be unavailable.`
+        );
+        return;
+      }
+
+      audio.pause();
+      if (unavailableTrackHandlingRef.current === failedTrack.id) return;
+      unavailableTrackHandlingRef.current = failedTrack.id;
+
+      if (!(await isLocalTrackAvailable(failedTrack))) {
+        if (
+          audio !== activeAudioRef.current ||
+          unavailableTrackHandlingRef.current !== failedTrack.id
+        ) {
+          return;
+        }
+        notifyUnavailableTrack(failedTrack);
+        setLibraryError(null);
+        const currentIndex = playQueue.findIndex((track) => track.id === failedTrack.id);
+        const nextIndex = (currentIndex >= 0 ? currentIndex : playQueueIndex) + 1;
+        if (nextIndex < playQueue.length) {
+          await playQueueFrom(playQueue, nextIndex);
+        } else if (repeatMode === 'all' && playQueue.length > 0) {
+          await playQueueFrom(playQueue, 0);
+        }
+        return;
+      }
+
+      if (
+        audio !== activeAudioRef.current ||
+        unavailableTrackHandlingRef.current !== failedTrack.id
+      ) {
+        return;
+      }
+      unavailableTrackHandlingRef.current = null;
+      setLibraryError(
+        `Could not read “${failedTrack.name}”. The file may be damaged or use an unsupported format.`
+      );
+    },
+    [
+      currentTrack,
+      isLocalTrackAvailable,
+      notifyUnavailableTrack,
+      playQueue,
+      playQueueFrom,
+      playQueueIndex,
+      repeatMode,
+    ]
   );
 
   const handleToggleShuffle = () => {
@@ -1400,6 +1629,7 @@ const App = () => {
                       selectedTrackId={currentTrack?.id ?? null}
                       isPlaying={isPlaying}
                       isLoading={isLibraryLoading}
+                      scanProgress={libraryScanProgress}
                       libraryError={libraryError}
                       isDesktopApp={Boolean(window.electronAPI)}
                       onPlayTrack={playTrack}
@@ -1420,6 +1650,7 @@ const App = () => {
                       selectedTrackId={currentTrack?.id ?? null}
                       isPlaying={isPlaying}
                       isLoading={isLibraryLoading}
+                      scanProgress={libraryScanProgress}
                       libraryError={libraryError}
                       isDesktopApp={Boolean(window.electronAPI)}
                       onPlayTrack={playTrack}
@@ -1574,6 +1805,10 @@ const App = () => {
                       onAutoDownloadArtistImagesChange={handleAutoDownloadArtistImagesChange}
                       showLyrics={showLyrics}
                       onShowLyricsChange={setShowLyrics}
+                      syncLyricsDisplay={syncLyricsDisplay}
+                      onSyncLyricsDisplayChange={setSyncLyricsDisplay}
+                      showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
+                      onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
                       crossfadeSeconds={crossfadeSeconds}
                       onCrossfadeChange={setCrossfadeSeconds}
                       systemAccentColor={systemAccentColor}
@@ -1617,6 +1852,10 @@ const App = () => {
                       }}
                       showLyrics={showLyrics}
                       onShowLyricsChange={setShowLyrics}
+                      syncLyricsDisplay={syncLyricsDisplay}
+                      onSyncLyricsDisplayChange={setSyncLyricsDisplay}
+                      showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
+                      onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
                       crossfadeSeconds={crossfadeSeconds}
                       onCrossfadeChange={setCrossfadeSeconds}
                       systemAccentColor={systemAccentColor}
@@ -1657,18 +1896,7 @@ const App = () => {
         onPlay={(event) => {
           if (event.currentTarget === activeAudioRef.current) setIsPlaying(true);
         }}
-        onError={(event) => {
-          if (event.currentTarget === activeAudioRef.current && currentTrack) {
-            setIsPlaying(false);
-            setLibraryError(
-              currentTrack.streamingProvider === 'audiomack'
-                ? `Audiomack could not stream "${currentTrack.name}". The stream may have expired or become unavailable.`
-                : currentTrack.streamingProvider === 'jamendo'
-                  ? `Jamendo could not stream "${currentTrack.name}". The track may no longer be available.`
-                  : `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
-            );
-          }
-        }}
+        onError={(event) => void handleAudioError(event.currentTarget)}
         hidden
       />
       <audio
@@ -1681,18 +1909,7 @@ const App = () => {
         onPlay={(event) => {
           if (event.currentTarget === activeAudioRef.current) setIsPlaying(true);
         }}
-        onError={(event) => {
-          if (event.currentTarget === activeAudioRef.current && currentTrack) {
-            setIsPlaying(false);
-            setLibraryError(
-              currentTrack.streamingProvider === 'audiomack'
-                ? `Audiomack could not stream "${currentTrack.name}". The stream may have expired or become unavailable.`
-                : currentTrack.streamingProvider === 'jamendo'
-                  ? `Jamendo could not stream "${currentTrack.name}". The track may no longer be available.`
-                  : `Could not read "${currentTrack.name}". The file may have been moved or deleted.`
-            );
-          }
-        }}
+        onError={(event) => void handleAudioError(event.currentTarget)}
         hidden
       />
       <audio
@@ -1715,6 +1932,24 @@ const App = () => {
         }}
         hidden
       />
+      {playbackNotice && (
+        <div className="playback-notice" role="status" aria-live="polite">
+          <span>{playbackNotice}</span>
+          <button
+            type="button"
+            aria-label="Dismiss playback notice"
+            onClick={() => {
+              setPlaybackNotice(null);
+              if (playbackNoticeTimeoutRef.current !== null) {
+                window.clearTimeout(playbackNoticeTimeoutRef.current);
+                playbackNoticeTimeoutRef.current = null;
+              }
+            }}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+      )}
       {currentTrack?.streamingProvider ? (
         <StreamingPlayBar
           track={currentTrack}
@@ -1753,6 +1988,8 @@ const App = () => {
           showVisualizer={showVisualizer}
           showArtistImageBackground={autoDownloadArtistImages && showArtistImageBackground}
           showLyrics={showLyrics}
+          showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
+          syncLyricsDisplay={syncLyricsDisplay}
           playQueue={playQueue}
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}

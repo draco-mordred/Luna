@@ -8,6 +8,16 @@ export interface MusicLibraryResponse {
   playlists?: Playlist[];
 }
 
+export interface MusicLibraryScanProgress {
+  scanId: string;
+  phase: 'discovering' | 'reading' | 'complete';
+  folders: string[];
+  tracks: Track[];
+  scanned: number;
+  total: number;
+  errors?: string[];
+}
+
 export interface TrackMetadataUpdate {
   title: string;
   artist: string;
@@ -50,6 +60,8 @@ export interface AppSettings {
   autoDownloadArtistImages: boolean;
   showArtistImageBackground: boolean;
   showLyrics: boolean;
+  showSyncedLyricsOnPlayBar: boolean;
+  syncLyricsDisplay: boolean;
   isShuffled: boolean;
   repeatMode: 'off' | 'one' | 'all';
   showBrowseSection: boolean;
@@ -68,7 +80,11 @@ declare global {
       toggleWindowMaximize: () => Promise<void>;
       getWindowState: () => Promise<boolean>;
       closeWindow: () => Promise<void>;
+      isLocalTrackAvailable: (trackPath: string) => Promise<boolean>;
       loadMusicLibrary: () => Promise<MusicLibraryResponse>;
+      onMusicLibraryScanProgress: (
+        callback: (progress: MusicLibraryScanProgress) => void
+      ) => () => void;
       loadAppSettings: () => Promise<AppSettings>;
       audiomackHasCredentials: () => Promise<boolean>;
       audiomackSaveCredentials: (consumerKey: string, consumerSecret: string) => Promise<void>;
@@ -91,6 +107,8 @@ declare global {
             | 'autoDownloadArtistImages'
             | 'showArtistImageBackground'
             | 'showLyrics'
+            | 'showSyncedLyricsOnPlayBar'
+            | 'syncLyricsDisplay'
             | 'isShuffled'
             | 'repeatMode'
             | 'showBrowseSection'

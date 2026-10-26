@@ -32,13 +32,21 @@
   align-self: start;
   display: flex;
   flex-direction: column;
-  touch-action: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-y;
   user-select: none;
 }
 
+.alpha-numeric-index::-webkit-scrollbar {
+  display: none;
+}
+
 .alpha-numeric-index-button {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 0 0 18px;
+  min-height: 18px;
   padding: 0;
   border: 0;
   border-radius: 4px;

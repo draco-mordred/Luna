@@ -98,6 +98,8 @@ const DEFAULT_SETTINGS = {
   autoDownloadArtistImages: true,
   showArtistImageBackground: false,
   showLyrics: true,
+  showSyncedLyricsOnPlayBar: true,
+  syncLyricsDisplay: true,
   isShuffled: false,
   repeatMode: 'off',
   showBrowseSection: true,
@@ -119,7 +121,7 @@ const readJsonFile = async (filePath, fallback) => {
 const writeJsonFile = async (filePath, value) => {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   const temporaryPath = `${filePath}.tmp`;
-  await fs.promises.writeFile(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
+  await fs.promises.writeFile(temporaryPath, JSON.stringify(value), 'utf8');
   await fs.promises.rename(temporaryPath, filePath);
 };
 
@@ -317,6 +319,14 @@ const readAppSettings = async () => {
         : false,
     showLyrics:
       typeof saved.showLyrics === 'boolean' ? saved.showLyrics : DEFAULT_SETTINGS.showLyrics,
+    showSyncedLyricsOnPlayBar:
+      typeof saved.showSyncedLyricsOnPlayBar === 'boolean'
+        ? saved.showSyncedLyricsOnPlayBar
+        : DEFAULT_SETTINGS.showSyncedLyricsOnPlayBar,
+    syncLyricsDisplay:
+      typeof saved.syncLyricsDisplay === 'boolean'
+        ? saved.syncLyricsDisplay
+        : DEFAULT_SETTINGS.syncLyricsDisplay,
     isShuffled:
       typeof saved.isShuffled === 'boolean' ? saved.isShuffled : DEFAULT_SETTINGS.isShuffled,
     repeatMode: ['off', 'one', 'all'].includes(saved.repeatMode)
@@ -346,6 +356,8 @@ const readAppSettings = async () => {
     saved.autoDownloadArtistImages !== settings.autoDownloadArtistImages ||
     saved.showArtistImageBackground !== settings.showArtistImageBackground ||
     saved.showLyrics !== settings.showLyrics ||
+    saved.showSyncedLyricsOnPlayBar !== settings.showSyncedLyricsOnPlayBar ||
+    saved.syncLyricsDisplay !== settings.syncLyricsDisplay ||
     saved.isShuffled !== settings.isShuffled ||
     saved.repeatMode !== settings.repeatMode ||
     saved.showBrowseSection !== settings.showBrowseSection ||
@@ -459,6 +471,16 @@ const updateAppSettings = async (patch) => {
     if (typeof patch.showLyrics !== 'boolean')
       throw new TypeError('Show lyrics must be a boolean.');
     next.showLyrics = patch.showLyrics;
+  }
+  if (patch.showSyncedLyricsOnPlayBar !== undefined) {
+    if (typeof patch.showSyncedLyricsOnPlayBar !== 'boolean')
+      throw new TypeError('Show synchronized lyrics on the play bar must be a boolean.');
+    next.showSyncedLyricsOnPlayBar = patch.showSyncedLyricsOnPlayBar;
+  }
+  if (patch.syncLyricsDisplay !== undefined) {
+    if (typeof patch.syncLyricsDisplay !== 'boolean')
+      throw new TypeError('Synchronized lyrics display must be a boolean.');
+    next.syncLyricsDisplay = patch.syncLyricsDisplay;
   }
   if (patch.isShuffled !== undefined) {
     if (typeof patch.isShuffled !== 'boolean')
@@ -618,11 +640,12 @@ const isWithinDirectory = (filePath, directory) => {
   );
 };
 
-const scanMusicFolders = async (folders, cachedTracks = []) => {
+const scanMusicFolders = async (folders, cachedTracks = [], onProgress = () => {}) => {
   const tracks = [];
   const errors = [];
   const unavailableDirectories = [];
   const seenPaths = new Set();
+  const audioPaths = [];
   const cachedByPath = new Map(cachedTracks.map((track) => [track.path, track]));
 
   const shouldReuseCachedTrack = (cachedTrack, stat) =>
@@ -652,69 +675,7 @@ const scanMusicFolders = async (folders, cachedTracks = []) => {
         continue;
       if (seenPaths.has(entryPath)) continue;
       seenPaths.add(entryPath);
-
-      try {
-        const stat = await fs.promises.stat(entryPath);
-        const cachedTrack = cachedByPath.get(entryPath);
-        if (shouldReuseCachedTrack(cachedTrack, stat)) {
-          tracks.push({
-            ...cachedTrack,
-            id: entryPath,
-            path: entryPath,
-            src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
-          });
-          continue;
-        }
-        let metadata = null;
-        try {
-          metadata = await parseFile(entryPath, { duration: true });
-        } catch (error) {
-          console.warn(`Could not read audio metadata for "${entryPath}":`, error.message);
-        }
-
-        const common = metadata?.common ?? {};
-        const filename = path.basename(entry.name, path.extname(entry.name));
-        let albumArt;
-        try {
-          albumArt = await saveEmbeddedArtwork(selectCover(common.picture), entryPath, stat);
-        } catch (error) {
-          console.warn(`Could not cache embedded artwork for "${entryPath}":`, error.message);
-        }
-        const lyricData = extractEmbeddedLyrics(metadata);
-
-        tracks.push({
-          id: entryPath,
-          path: entryPath,
-          src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
-          filename: entry.name,
-          name: common.title || filename,
-          artist: common.artist || 'Unknown Artist',
-          album: common.album || 'Unknown Album',
-          albumArtist: common.albumartist || undefined,
-          albumArt,
-          lyrics: lyricData.lyrics,
-          syncedLyrics: lyricData.syncedLyrics,
-          metadataVersion: 5,
-          duration: metadata?.format?.duration || 0,
-          trackNumber: common.track?.no || undefined,
-          discNumber: common.disk?.no || undefined,
-          year: common.year || undefined,
-          genre: common.genre?.[0] || undefined,
-          composer: Array.isArray(common.composer)
-            ? common.composer[0]
-            : common.composer || undefined,
-          comment: Array.isArray(common.comment)
-            ? common.comment.join('\n')
-            : common.comment || undefined,
-          format: path.extname(entry.name).slice(1).toLowerCase(),
-          size: stat.size,
-          lastModified: stat.mtimeMs,
-        });
-      } catch (error) {
-        seenPaths.delete(entryPath);
-        errors.push(`Cannot index "${entryPath}": ${error.message}`);
-        unavailableDirectories.push(path.dirname(entryPath));
-      }
+      audioPaths.push(entryPath);
     }
   };
 
@@ -722,12 +683,102 @@ const scanMusicFolders = async (folders, cachedTracks = []) => {
     await visitDirectory(folder);
   }
 
+  onProgress({ phase: 'reading', scanned: 0, total: audioPaths.length, tracks: [] });
+  const processAudioPath = async (entryPath, index) => {
+    try {
+      const stat = await fs.promises.stat(entryPath);
+      const cachedTrack = cachedByPath.get(entryPath);
+      if (shouldReuseCachedTrack(cachedTrack, stat)) {
+        tracks[index] = {
+          ...cachedTrack,
+          id: entryPath,
+          path: entryPath,
+          src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
+        };
+        return;
+      }
+      let metadata = null;
+      try {
+        metadata = await parseFile(entryPath, { duration: true });
+      } catch (error) {
+        console.warn(`Could not read audio metadata for "${entryPath}":`, error.message);
+      }
+
+      const common = metadata?.common ?? {};
+      const filename = path.basename(entryPath, path.extname(entryPath));
+      let albumArt;
+      try {
+        albumArt = await saveEmbeddedArtwork(selectCover(common.picture), entryPath, stat);
+      } catch (error) {
+        console.warn(`Could not cache embedded artwork for "${entryPath}":`, error.message);
+      }
+      const lyricData = extractEmbeddedLyrics(metadata);
+
+      tracks[index] = {
+        id: entryPath,
+        path: entryPath,
+        src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
+        filename: path.basename(entryPath),
+        name: common.title || filename,
+        artist: common.artist || 'Unknown Artist',
+        album: common.album || 'Unknown Album',
+        albumArtist: common.albumartist || undefined,
+        albumArt,
+        lyrics: lyricData.lyrics,
+        syncedLyrics: lyricData.syncedLyrics,
+        metadataVersion: 5,
+        duration: metadata?.format?.duration || 0,
+        trackNumber: common.track?.no || undefined,
+        discNumber: common.disk?.no || undefined,
+        year: common.year || undefined,
+        genre: common.genre?.[0] || undefined,
+        composer: Array.isArray(common.composer)
+          ? common.composer[0]
+          : common.composer || undefined,
+        comment: Array.isArray(common.comment)
+          ? common.comment.join('\n')
+          : common.comment || undefined,
+        format: path.extname(entryPath).slice(1).toLowerCase(),
+        size: stat.size,
+        lastModified: stat.mtimeMs,
+      };
+    } catch (error) {
+      seenPaths.delete(entryPath);
+      errors.push(`Cannot index "${entryPath}": ${error.message}`);
+      unavailableDirectories.push(path.dirname(entryPath));
+    }
+  };
+  let nextPathIndex = 0;
+  let scanned = 0;
+  let lastPublishedAt = Date.now();
+  let pendingTracks = [];
+  const publishProgress = (tracks = pendingTracks.splice(0)) => {
+    lastPublishedAt = Date.now();
+    onProgress({ phase: 'reading', scanned, total: audioPaths.length, tracks });
+  };
+  const workerCount = Math.min(4, audioPaths.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextPathIndex < audioPaths.length) {
+        const index = nextPathIndex;
+        nextPathIndex += 1;
+        await processAudioPath(audioPaths[index], index);
+        scanned += 1;
+        if (tracks[index]) pendingTracks.push(tracks[index]);
+        if (pendingTracks.length >= 40 || Date.now() - lastPublishedAt >= 150) {
+          publishProgress();
+        }
+      }
+    })
+  );
+  if (pendingTracks.length > 0 || scanned !== audioPaths.length) publishProgress();
+
   const retainedTracks = cachedTracks.filter(
     (track) =>
       unavailableDirectories.some((directory) => isWithinDirectory(track.path, directory)) &&
       !seenPaths.has(track.path)
   );
-  return { tracks: [...tracks, ...retainedTracks], errors };
+  return { tracks: [...tracks.filter(Boolean), ...retainedTracks], errors };
 };
 
 const removeStaleMetadataCache = async () => {
@@ -760,9 +811,25 @@ const selectMusicFolders = async () => {
 
 const scanAndSaveLibrary = async (folders, cachedTracks = []) => {
   const normalizedFolders = [...new Set(folders)];
-  const { tracks, errors } = await scanMusicFolders(normalizedFolders, cachedTracks);
+  const scanId = crypto.randomUUID();
+  const sendProgress = (progress) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('music-library-scan-progress', {
+      scanId,
+      folders: normalizedFolders,
+      ...progress,
+    });
+  };
+  let scanProgress = { scanned: 0, total: 0 };
+  const reportProgress = (progress) => {
+    scanProgress = { scanned: progress.scanned, total: progress.total };
+    sendProgress(progress);
+  };
+  reportProgress({ phase: 'discovering', scanned: 0, total: 0, tracks: [] });
+  const { tracks, errors } = await scanMusicFolders(normalizedFolders, cachedTracks, reportProgress);
   indexedAudioPaths = new Set(tracks.map((track) => track.path));
   const library = await updateLibraryConfig(() => ({ folders: normalizedFolders, tracks }));
+  sendProgress({ phase: 'complete', ...scanProgress, tracks: [], errors });
   return { ...library, playlists: await readPlaylists(), errors };
 };
 
@@ -912,6 +979,20 @@ ipcMain.handle('load-music-library', async () => {
     }
   }
   return { ...library, playlists, errors: [] };
+});
+
+ipcMain.handle('is-local-track-available', async (_event, trackPath) => {
+  if (typeof trackPath !== 'string' || !indexedAudioPaths.has(trackPath)) return false;
+  try {
+    const handle = await fs.promises.open(trackPath, 'r');
+    await handle.close();
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'EACCES' || error.code === 'EPERM') {
+      return false;
+    }
+    throw error;
+  }
 });
 
 ipcMain.handle('load-app-settings', () => readAppSettings());
@@ -1123,10 +1204,15 @@ ipcMain.on('taskbar-playback-state', (_event, isPlaying) => {
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: 'Luna Music',
+    icon: path.join(
+      app.isPackaged ? process.resourcesPath : __dirname,
+      app.isPackaged ? 'public' : '',
+      process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+    ),
     width: 1200,
     height: 800,
-    minWidth: 640,
-    minHeight: 300,
+    minWidth: 720,
+    minHeight: 640,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

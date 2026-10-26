@@ -120,9 +120,7 @@ Select an emulator or connected Android device in Android Studio and run the app
 
 Android `versionName` follows `package.json`. Its Play Store `versionCode` is derived separately from Luna's month/release/date version fields to remain an increasing integer; Android Play Store releases are not ready until signing and background playback are completed.
 
-### Create a release build
 
-Luna's release version is calculated from the local Git tags, using October 2026 as month 1. The major number advances each month, the minor number runs from 0 to 19 for up to 20 releases that month, and the patch number encodes the local build date as `DDMMYY`. The existing `1.0.1` version is treated as release number 0 for October 2026, so the next October release is `1.1.<date>` and the first November release is `2.0.<date>`. SemVer does not allow leading zeroes in numeric version parts, so a day from 01–09 appears without its first zero in the version (for example, `011126` is stored as `11126` and means 01 November 2026).
 
 Fetch tags before creating a later release, then build:
 

@@ -1,0 +1,7 @@
+Luna Music v1.1.261026
+
+Highlights
+- Luna now follows the Windows system accent color by default, with an option to use a custom accent instead.
+- Centered PlayBar lyrics now use the space remaining between track information and player actions without letting long song information shrink the lyrics area unnecessarily.
+- Added a first-launch-per-version release notes dialog with a summary of previous releases.
+- Improved the compact Play/Pause button size while PlayBar lyrics are visible.

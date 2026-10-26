@@ -1,0 +1,10 @@
+[
+  {
+    "version": "1.0.1",
+    "summary": "Added a custom Luna app icon across the app and Windows installer. Smoothed PlayBar transitions and improved lyric layout to keep lyrics clear of track information and controls. Added synchronized lyrics visibility controls for the PlayBar and Now Playing views."
+  },
+  {
+    "version": "1.0.0",
+    "summary": "Initial Luna Music release with local music playback and library browsing."
+  }
+]

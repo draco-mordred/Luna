@@ -1,6 +1,6 @@
 {
   "name": "luna-player",
-  "version": "1.0.1",
+  "version": "1.1.261026",
   "private": true,
   "main": "public/electron.js",
   "description": "A music player built with React, Electron, and Capacitor.",
@@ -29,12 +29,13 @@
   "scripts": {
     "dev": "node scripts/dev-electron.js",
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "node scripts/check-release-notes.js && react-scripts build",
     "eslint": "eslint ./src",
     "prettier": "prettier --check **",
     "prettier fix": "prettier --write **",
     "release:version": "node scripts/set-release-version.js",
     "release:version:check": "node scripts/set-release-version.js --dry-run",
+    "release:notes:create": "node scripts/create-release-notes.js",
     "release:build": "npm run release:version && npm run electron:build",
     "electron:dev": "concurrently \"npm run start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build && electron-builder",

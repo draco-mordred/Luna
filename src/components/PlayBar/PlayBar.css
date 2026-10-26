@@ -852,6 +852,15 @@ width: min(100%, 800px);
   .now-playing-container,
   .album-art,
   .album-art-mini,
+  .mini-player,
+  .mini-player-control-cluster,
+  .track-info-mini,
+  .mini-lyrics-transport,
+  .mini-synced-lyrics {
+    animation: none !important;
+    transition: none !important;
+  }
+
   .mini-player {
     transform: none !important;
     clip-path: none !important;
@@ -940,6 +949,74 @@ width: min(100%, 800px);
   width: min(28%, 280px);
   height: 56px;
   cursor: pointer;
+  transition:
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    bottom 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mini-player.showing-mini-lyrics .track-info-mini {
+  width: min(30%, 280px);
+  height: 68px;
+  bottom: 6px;
+}
+
+.mini-track-info-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  position: relative;
+  left: -10px;
+  top: -2px;
+}
+
+.mini-lyrics-transport {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(5px);
+  transition:
+    max-height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-bottom 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.track-info-mini.showing-mini-lyrics .mini-lyrics-transport {
+  max-height: 32px;
+  margin-bottom: 3px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mini-lyrics-transport-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 0.95rem;
+}
+
+.mini-lyrics-transport-btn.control-btn.play-pause {
+  width: 32px;
+  height: 32px;
+  color: var(--play-button-accent);
+  border-width: 2px;
+  box-shadow: 0 0 0 1px rgba(var(--play-button-accent-rgb), 0.24);
+}
+
+.mini-lyrics-transport-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.mini-lyrics-transport-btn.control-btn.play-pause .play-pause-icon {
+  width: 13px;
+  height: 13px;
+  overflow: visible;
 }
 
 .album-art-mini {
@@ -981,9 +1058,7 @@ width: min(100%, 800px);
   display: flex;
   flex-direction: column;
   min-width: 0;
-  position: relative;
-  left: -10px;
-  top: -2px;
+  transition: transform 220ms ease;
 }
 
 .track-name-mini {
@@ -1078,6 +1153,10 @@ width: min(100%, 800px);
   gap: 8px;
   transform: translateX(-50%);
   white-space: nowrap;
+  transition:
+    left 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    right 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mini-player-control-cluster > .controls {
@@ -1109,18 +1188,51 @@ width: min(100%, 800px);
   color: var(--text-primary);
   font-weight: 500;
   text-align: center;
+  animation: mini-lyrics-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mini-lyrics-enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .mini-player-control-cluster.showing-mini-lyrics {
-  left: calc(20px + min(28%, 280px) + 12px);
-  right: 180px;
+  left: calc(
+    50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+  );
+  right: auto;
+  width: min(
+    680px,
+    max(
+      0px,
+      calc(100% - var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve))
+    )
+  );
   justify-content: center;
-  transform: none;
+  transform: translateX(-50%);
+}
+
+.mini-player.showing-mini-lyrics .mini-player-control-cluster.showing-mini-lyrics {
+  left: calc(
+    50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+  );
+}
+
+.mini-player.showing-mini-lyrics {
+  --mini-lyrics-left-reserve: calc(20px + min(30%, 280px) + 12px);
+  --mini-lyrics-right-reserve: 192px;
 }
 
 .mini-player-control-cluster.showing-mini-lyrics > .mini-synced-lyrics {
-  flex: 1 1 0%;
-  width: auto;
+  flex: 0 1 100%;
+  width: 100%;
   min-width: 0;
 }
 
@@ -1477,7 +1589,27 @@ width: min(100%, 800px);
   }
 
   .mini-player-control-cluster.showing-mini-lyrics {
-    right: 176px;
+    left: calc(
+      50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+    );
+    width: min(
+      560px,
+      max(
+        0px,
+        calc(100% - var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve))
+      )
+    );
+  }
+
+  .mini-player.showing-mini-lyrics .mini-player-control-cluster.showing-mini-lyrics {
+    left: calc(
+      50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+    );
+  }
+
+  .mini-player.showing-mini-lyrics {
+    --mini-lyrics-left-reserve: calc(12px + min(30%, 280px) + 8px);
+    --mini-lyrics-right-reserve: 176px;
   }
 
   .controls > .control-btn:not(.play-pause),
@@ -1612,8 +1744,32 @@ width: min(100%, 800px);
   }
 
   .mini-player-control-cluster.showing-mini-lyrics {
-    left: calc(12px + 30% + 8px);
-    right: 106px;
+    left: calc(
+      50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+    );
+    width: min(
+      38%,
+      max(
+        0px,
+        calc(100% - var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve))
+      )
+    );
+  }
+
+  .mini-player.showing-mini-lyrics .track-info-mini {
+    left: 12px;
+    width: min(42%, 180px);
+  }
+
+  .mini-player.showing-mini-lyrics {
+    --mini-lyrics-left-reserve: calc(12px + min(42%, 180px) + 8px);
+    --mini-lyrics-right-reserve: 132px;
+  }
+
+  .mini-player.showing-mini-lyrics .mini-player-control-cluster.showing-mini-lyrics {
+    left: calc(
+      50% + (var(--mini-lyrics-left-reserve) - var(--mini-lyrics-right-reserve)) / 2
+    );
   }
 
   .now-playing-header {
@@ -1636,6 +1792,34 @@ width: min(100%, 800px);
     left: 12px;
     width: 30%;
     gap: 8px;
+  }
+
+  .mini-track-info-copy {
+    left: -8px;
+    top: -1px;
+  }
+
+  .mini-lyrics-transport {
+    gap: 1px;
+  }
+
+  .mini-lyrics-transport-btn {
+    width: 22px;
+    height: 24px;
+  }
+
+  .mini-lyrics-transport-btn.control-btn.play-pause {
+    width: 28px;
+    height: 28px;
+  }
+
+  .mini-lyrics-transport-btn.control-btn.play-pause .play-pause-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  .mini-lyrics-transport-btn .material-symbols-outlined {
+    font-size: 1rem;
   }
 
   .album-art-mini {

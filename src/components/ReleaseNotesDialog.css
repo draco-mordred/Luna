@@ -1,0 +1,123 @@
+.release-notes-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(8px);
+}
+
+.release-notes-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: min(760px, 90vh);
+  padding: 32px;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 24px 80px var(--shadow-color);
+}
+
+.release-notes-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.release-notes-eyebrow {
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.release-notes-dialog h2 {
+  padding-right: 42px;
+  font-size: 1.75rem;
+}
+
+.release-notes-content {
+  margin-top: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.release-notes-current {
+  margin: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.release-notes-previous {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.release-notes-previous h3 {
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.release-notes-previous p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.release-notes-previous strong {
+  color: var(--text-primary);
+}
+
+.release-notes-loading,
+.release-notes-error {
+  margin-top: 20px;
+  line-height: 1.5;
+}
+
+.release-notes-error {
+  color: #ff8c8c;
+}
+
+.release-notes-done {
+  align-self: flex-end;
+  margin-top: 24px;
+  padding: 11px 18px;
+  color: var(--text-on-accent);
+  font: inherit;
+  font-weight: 600;
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.release-notes-done:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 520px) {
+  .release-notes-dialog {
+    padding: 26px 22px 22px;
+  }
+}

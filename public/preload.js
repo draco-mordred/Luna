@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('is-local-track-available', trackPath),
   loadMusicLibrary: () => ipcRenderer.invoke('load-music-library'),
   loadAppSettings: () => ipcRenderer.invoke('load-app-settings'),
+  loadReleaseNotes: (version) => ipcRenderer.invoke('load-release-notes', version),
   saveAppSettings: (settings) => ipcRenderer.invoke('save-app-settings', settings),
   audiomackHasCredentials: () => ipcRenderer.invoke('audiomack-has-credentials'),
   audiomackSaveCredentials: (consumerKey, consumerSecret) =>

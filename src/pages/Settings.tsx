@@ -11,6 +11,8 @@ interface SettingsPageProps {
   onThemeChange: (mode: ThemeMode) => void;
   accentColor: string;
   onAccentColorChange: (color: string) => void;
+  useSystemAccentColor: boolean;
+  onUseSystemAccentColorChange: (useSystem: boolean) => void;
   iconStyle: IconStyle;
   onIconStyleChange: (style: IconStyle) => void;
   seekbarStyle: SeekbarStyle;
@@ -56,6 +58,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onThemeChange,
   accentColor,
   onAccentColorChange,
+  useSystemAccentColor,
+  onUseSystemAccentColorChange,
   iconStyle,
   onIconStyleChange,
   seekbarStyle,
@@ -151,15 +155,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 type='color'
                 aria-label='Accent color'
                 value={accentColor}
-                onChange={(event) => onAccentColorChange(event.currentTarget.value)}
+                onChange={(event) => {
+                  onAccentColorChange(event.currentTarget.value);
+                  onUseSystemAccentColorChange(false);
+                }}
               />
               {systemAccentColor && (
                 <button
                   type='button'
-                  className='manage-button'
-                  onClick={() => onAccentColorChange(systemAccentColor)}
+                  className={`manage-button ${useSystemAccentColor ? 'active' : ''}`}
+                  onClick={() => onUseSystemAccentColorChange(true)}
+                  aria-pressed={useSystemAccentColor}
                 >
-                  System accent
+                  {useSystemAccentColor ? 'Using system' : 'Use system'}
                 </button>
               )}
             </div>

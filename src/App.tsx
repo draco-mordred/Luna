@@ -22,6 +22,8 @@ import type {
   VisualizerStyle,
 } from './types/electron';
 import './App.css';
+import ReleaseNotesDialog from './components/ReleaseNotesDialog';
+import packageJson from '../package.json';
 
 const Tracks = lazy(() => import('./pages/Tracks'));
 const Albums = lazy(() => import('./pages/Albums'));
@@ -228,6 +230,9 @@ const App = () => {
   const location = useLocation();
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [accentColor, setAccentColor] = useState(getInitialAccentColor);
+  const [useSystemAccentColor, setUseSystemAccentColor] = useState(
+    () => window.localStorage.getItem('luna-use-system-accent') !== 'false'
+  );
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(getInitialSystemTheme);
   const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(getInitialCrossfadeSeconds);
@@ -260,6 +265,10 @@ const App = () => {
     () => window.localStorage.getItem('luna-show-radio') !== 'false'
   );
   const [settingsLoaded, setSettingsLoaded] = useState(!window.electronAPI);
+  const [hasSeenReleaseNotes, setHasSeenReleaseNotes] = useState(
+    () =>
+      window.localStorage.getItem(`luna-release-notes-seen-${packageJson.version}`) === 'true'
+  );
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
     try {
@@ -437,6 +446,7 @@ const App = () => {
       .then((settings: AppSettings) => {
         setThemeMode(settings.themeMode);
         setAccentColor(settings.accentColor);
+        setUseSystemAccentColor(settings.useSystemAccentColor ?? true);
         setLastPlayedTrackPath(settings.lastPlayedTrackPath);
         setSystemTheme(settings.systemTheme);
         setSystemAccentColor(settings.systemAccentColor);
@@ -594,6 +604,7 @@ const App = () => {
     if (!settingsLoaded) return;
     window.localStorage.setItem('luna-theme', themeMode);
     window.localStorage.setItem('luna-accent', accentColor);
+    window.localStorage.setItem('luna-use-system-accent', String(useSystemAccentColor));
     window.localStorage.setItem(
       'luna-crossfade-seconds',
       String(normalizeCrossfadeSeconds(crossfadeSeconds))
@@ -625,6 +636,7 @@ const App = () => {
         .saveAppSettings({
           themeMode,
           accentColor,
+          useSystemAccentColor,
           lastPlayedTrackPath,
           crossfadeSeconds: normalizeCrossfadeSeconds(crossfadeSeconds),
           iconStyle,
@@ -648,6 +660,7 @@ const App = () => {
     }
   }, [
     accentColor,
+    useSystemAccentColor,
     crossfadeSeconds,
     iconStyle,
     isShuffled,
@@ -1526,11 +1539,16 @@ const App = () => {
     if (!track) return;
     setLibraryError(`“${track.name}” will be suggested less often.`);
   };
+  const handleCloseReleaseNotes = useCallback(() => {
+    window.localStorage.setItem(`luna-release-notes-seen-${packageJson.version}`, 'true');
+    setHasSeenReleaseNotes(true);
+  }, []);
 
   useLayoutEffect(() => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
     const root = document.documentElement;
-    const activeAccent = accentColor;
+    const activeAccent =
+      useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor;
     const rgbString = colorToRgbString(activeAccent);
     const [red, green, blue] = rgbString.split(',').map((part) => Number.parseInt(part.trim(), 10));
 
@@ -1579,6 +1597,7 @@ const App = () => {
     );
   }, [
     accentColor,
+    useSystemAccentColor,
     iconStyle,
     seekbarStyle,
     systemAccentColor,
@@ -1789,8 +1808,12 @@ const App = () => {
                     <Settings
                       themeMode={themeMode}
                       onThemeChange={setThemeMode}
-                      accentColor={accentColor}
+                      accentColor={
+                        useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor
+                      }
                       onAccentColorChange={setAccentColor}
+                      useSystemAccentColor={useSystemAccentColor}
+                      onUseSystemAccentColorChange={setUseSystemAccentColor}
                       iconStyle={iconStyle}
                       onIconStyleChange={setIconStyle}
                       seekbarStyle={seekbarStyle}
@@ -1833,8 +1856,12 @@ const App = () => {
                     <Settings
                       themeMode={themeMode}
                       onThemeChange={setThemeMode}
-                      accentColor={accentColor}
+                      accentColor={
+                        useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor
+                      }
                       onAccentColorChange={setAccentColor}
+                      useSystemAccentColor={useSystemAccentColor}
+                      onUseSystemAccentColorChange={setUseSystemAccentColor}
                       iconStyle={iconStyle}
                       onIconStyleChange={setIconStyle}
                       seekbarStyle={seekbarStyle}
@@ -2012,6 +2039,12 @@ const App = () => {
           track={trackMetadataDialog}
           onClose={closeTrackMetadataDialog}
           onSave={handleSaveTrackMetadata}
+        />
+      )}
+      {!hasSeenReleaseNotes && settingsLoaded && (
+        <ReleaseNotesDialog
+          version={packageJson.version}
+          onClose={handleCloseReleaseNotes}
         />
       )}
     </div>

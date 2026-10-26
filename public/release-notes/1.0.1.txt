@@ -1,0 +1,15 @@
+Luna Music v1.0.1
+
+Highlights
+- Added a custom Luna app icon across the app and Windows installer.
+- Smoothed PlayBar transitions and improved lyric layout to keep lyrics clear of track information and controls.
+- Added synchronized lyrics visibility controls for the PlayBar and Now Playing views.
+- Added Windows system-accent color support, with an option to keep a custom accent instead.
+- Centered PlayBar lyrics responsively and added a first-launch release notes dialog for each app version.
+- Updated the Windows installer with Luna branding, a language selector, install-folder selection, and replacement confirmation.
+- Improved responsive library browsing and the customizable player visualizer.
+
+Notes
+- Local music folder scanning is available in the Electron desktop app.
+- Audiomack streaming requires authorized API credentials and is available in the desktop app.
+- Jamendo access requires a Client ID. Online catalogs and streams remain subject to their providers' terms and licensing.

@@ -8,6 +8,11 @@ export interface MusicLibraryResponse {
   playlists?: Playlist[];
 }
 
+export interface ReleaseNotesData {
+  current: string;
+  previous: Array<{ version: string; summary: string }>;
+}
+
 export interface MusicLibraryScanProgress {
   scanId: string;
   phase: 'discovering' | 'reading' | 'complete';
@@ -51,6 +56,7 @@ export type VisualizerStyle =
 export interface AppSettings {
   themeMode: ThemeMode;
   accentColor: string;
+  useSystemAccentColor: boolean;
   lastPlayedTrackPath: string | null;
   crossfadeSeconds: number;
   iconStyle: IconStyle;
@@ -86,6 +92,7 @@ declare global {
         callback: (progress: MusicLibraryScanProgress) => void
       ) => () => void;
       loadAppSettings: () => Promise<AppSettings>;
+      loadReleaseNotes: (version: string) => Promise<ReleaseNotesData>;
       audiomackHasCredentials: () => Promise<boolean>;
       audiomackSaveCredentials: (consumerKey: string, consumerSecret: string) => Promise<void>;
       audiomackClearCredentials: () => Promise<void>;
@@ -98,6 +105,7 @@ declare global {
             AppSettings,
             | 'themeMode'
             | 'accentColor'
+            | 'useSystemAccentColor'
             | 'lastPlayedTrackPath'
             | 'crossfadeSeconds'
             | 'iconStyle'

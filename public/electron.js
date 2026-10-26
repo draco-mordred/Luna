@@ -91,6 +91,7 @@ const getArtworkPath = (fileName) => path.join(app.getPath('userData'), 'artwork
 const DEFAULT_SETTINGS = {
   themeMode: 'system',
   accentColor: '#ff4444',
+  useSystemAccentColor: true,
   lastPlayedTrackPath: null,
   crossfadeSeconds: 0,
   iconStyle: 'material',
@@ -250,19 +251,26 @@ const readPlaylists = async () => {
 
 const getWindowsAccentColor = () => {
   if (process.platform !== 'win32') return null;
-  try {
-    const output = execFileSync(
-      'reg.exe',
-      ['query', 'HKCU\\Software\\Microsoft\\Windows\\DWM', '/v', 'ColorizationColor'],
-      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
-    );
-    const match = /ColorizationColor\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(output);
-    if (!match) return null;
-    return `#${match[1].slice(-6).padStart(6, '0')}`;
-  } catch (error) {
-    console.warn('Could not read the Windows accent color:', error.message);
-    return null;
+  const registryValues = [
+    ['HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent', 'AccentColorMenu'],
+    ['HKCU\\Software\\Microsoft\\Windows\\DWM', 'ColorizationColor'],
+  ];
+  for (const [key, valueName] of registryValues) {
+    try {
+      const output = execFileSync('reg.exe', ['query', key, '/v', valueName], {
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      const match = new RegExp(`${valueName}\\s+REG_DWORD\\s+0x([0-9a-f]+)`, 'i').exec(output);
+      if (match) return `#${match[1].slice(-6).padStart(6, '0')}`;
+    } catch (error) {
+      if (valueName === 'ColorizationColor') {
+        console.warn('Could not read the Windows accent color:', error.message);
+      }
+    }
   }
+  return null;
 };
 
 const readAppSettings = async () => {
@@ -281,6 +289,11 @@ const readAppSettings = async () => {
     accentColor: /^#[\da-f]{6}$/i.test(saved.accentColor || '')
       ? saved.accentColor
       : systemAccentColor || DEFAULT_SETTINGS.accentColor,
+    useSystemAccentColor:
+      typeof saved.useSystemAccentColor === 'boolean'
+        ? saved.useSystemAccentColor
+        : !/^#[\da-f]{6}$/i.test(saved.accentColor || '') ||
+          saved.accentColor.toLowerCase() === DEFAULT_SETTINGS.accentColor,
     lastPlayedTrackPath:
       typeof saved.lastPlayedTrackPath === 'string' ? saved.lastPlayedTrackPath : null,
     crossfadeSeconds:
@@ -349,6 +362,7 @@ const readAppSettings = async () => {
   if (
     saved.themeMode !== settings.themeMode ||
     saved.accentColor !== settings.accentColor ||
+    saved.useSystemAccentColor !== settings.useSystemAccentColor ||
     (saved.lastPlayedTrackPath ?? null) !== settings.lastPlayedTrackPath ||
     saved.crossfadeSeconds !== settings.crossfadeSeconds ||
     saved.iconStyle !== settings.iconStyle ||
@@ -397,6 +411,11 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Accent color must be a six-digit hexadecimal color.');
     }
     next.accentColor = patch.accentColor;
+  }
+  if (patch.useSystemAccentColor !== undefined) {
+    if (typeof patch.useSystemAccentColor !== 'boolean')
+      throw new TypeError('Use system accent color must be a boolean.');
+    next.useSystemAccentColor = patch.useSystemAccentColor;
   }
   if (patch.lastPlayedTrackPath !== undefined) {
     if (patch.lastPlayedTrackPath !== null && typeof patch.lastPlayedTrackPath !== 'string') {
@@ -999,6 +1018,31 @@ ipcMain.handle('is-local-track-available', async (_event, trackPath) => {
 
 ipcMain.handle('load-app-settings', () => readAppSettings());
 ipcMain.handle('save-app-settings', (_event, patch) => saveAppSettings(patch));
+ipcMain.handle('load-release-notes', async (_event, version) => {
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new TypeError('A valid app version is required to load release notes.');
+  }
+  const notesDirectory = app.isPackaged
+    ? path.join(app.getAppPath(), 'build', 'release-notes')
+    : path.join(__dirname, 'release-notes');
+  const [current, previous] = await Promise.all([
+    fs.promises.readFile(path.join(notesDirectory, `${version}.txt`), 'utf8'),
+    fs.promises.readFile(path.join(notesDirectory, 'previous-releases.json'), 'utf8'),
+  ]);
+  const parsedPrevious = JSON.parse(previous);
+  if (
+    !Array.isArray(parsedPrevious) ||
+    !parsedPrevious.every(
+      (release) =>
+        release &&
+        typeof release.version === 'string' &&
+        typeof release.summary === 'string'
+    )
+  ) {
+    throw new TypeError('The previous release notes index is invalid.');
+  }
+  return { current, previous: parsedPrevious };
+});
 ipcMain.handle('save-playlists', async (_event, playlists) => {
   if (!Array.isArray(playlists)) throw new TypeError('Playlists must be an array.');
   const normalizedPlaylists = playlists.map((playlist) => {

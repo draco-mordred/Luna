@@ -1094,12 +1094,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
       {/* Collapsed View - Mini Player */}
       <div
-        className="mini-player"
+        className={`mini-player ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
         onPointerDown={handleDragStart}
         aria-hidden={state === 'expanded'}
         data-playback-state={isPlaying ? 'playing' : 'paused'}
       >
-        <div className="track-info-mini" onClick={handleAlbumArtClick}>
+        <div
+          className={`track-info-mini ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+          onClick={handleAlbumArtClick}
+        >
           <div className="album-art-mini">
             {track?.albumArt ? (
               <img src={track.albumArt} alt={track.album} />
@@ -1107,9 +1110,59 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <div className="default-art-mini">{DEFAULT_ALBUM_ART}</div>
             )}
           </div>
-          <div className="text-info">
-            <span className="track-name-mini">{track?.name || 'No Track'}</span>
-            <span className="artist-name-mini">{track?.artist || 'Unknown'}</span>
+          <div className="mini-track-info-copy">
+            <div className="mini-lyrics-transport" aria-hidden={!isMiniSyncedLyricsVisible}>
+              <button
+                type="button"
+                className="control-btn mini-lyrics-transport-btn"
+                aria-label="Previous track"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPrevious();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+              >
+                <TransportIcon name="previous" />
+              </button>
+              <button
+                type="button"
+                className="control-btn mini-lyrics-transport-btn play-pause"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPlayPause();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+              >
+                <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  {isPlaying
+                    ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
+                    : <>
+                      <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
+                      <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
+                    </>}
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="control-btn mini-lyrics-transport-btn"
+                aria-label="Next track"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNext();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+              >
+                <TransportIcon name="next" />
+              </button>
+            </div>
+            <div className="text-info">
+              <span className="track-name-mini">{track?.name || 'No Track'}</span>
+              <span className="artist-name-mini">{track?.artist || 'Unknown'}</span>
+            </div>
           </div>
         </div>
         
@@ -1140,7 +1193,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
           className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
         >
           {isMiniSyncedLyricsVisible ? (
-            <MiniSyncedLyrics key={currentSyncedLyricKey} text={currentSyncedLyricText} />
+            <MiniSyncedLyrics text={currentSyncedLyricText} />
           ) : (
             <div className="controls">
               <button

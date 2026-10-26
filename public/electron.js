@@ -17,6 +17,8 @@ const { parseFile, selectCover } = require('music-metadata');
 const { ByteVector, File: TagLibFile, Picture, PictureType } = require('node-taglib-sharp');
 const { extractEmbeddedLyrics } = require('./lyrics');
 
+if (process.platform === 'win32') app.setAppUserModelId('com.avalon.luna');
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'luna-media',

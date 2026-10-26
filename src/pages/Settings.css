@@ -108,7 +108,12 @@
 .settings-main {
   flex: 1;
   padding: 24px;
-  overflow-y: auto;
+  overflow-y: scroll;
+  position: absolute;
+  left: 220px;
+  top: 150px;
+  bottom: 130px;
+  right: 0;
 }
 
 /* Settings Section */
@@ -576,6 +581,9 @@
   
   .settings-main {
     padding: 16px;
+    left: 60px;
+    top: 240px;
+    bottom: 126px;
   }
   
   .setting-item {

@@ -630,7 +630,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
         {/* Main Content */}
         <main className='settings-main'>
-          {sections.find((s) => s.id === activeSection)?.component}
+          <div key={activeSection}>
+            {sections.find((s) => s.id === activeSection)?.component}
+          </div>
         </main>
       </div>
     </div>

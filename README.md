@@ -2,6 +2,23 @@
 
 A minimal, beautiful music player app with Apple Music and Samsung Music inspired UI. Runs on **Electron (desktop)** and **Capacitor (mobile)**.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/tracks.png" alt="Luna desktop library showing the Tracks view and PlayBar" width="49%" />
+  <img src="screenshots/albums.png" alt="Luna desktop library showing the Albums view" width="49%" />
+</p>
+<p align="center">
+  <img src="screenshots/album-tracklist.png" alt="Luna album details and track list" width="49%" />
+  <img src="screenshots/tracks-mobile.png" alt="Luna library and PlayBar on a narrow screen" width="30%" />
+</p>
+
+## Download
+
+Download the latest Windows installer from the [Luna GitHub Releases page](https://github.com/draco-mordred/Luna/releases/latest). In the latest release, download the **`Luna Setup <version>.exe`** asset and run it. The installer includes a language selector, a branded dark setup wizard, and an option to choose the installation folder.
+
+Installers are published as GitHub Release assets rather than committed to the source tree. This keeps large binary files out of Git history while making them available to download alongside each release.
+
 ## Features
 
 - Apple Music layout with Samsung Music "Now Playing" interface
@@ -65,6 +82,24 @@ npm run dev
 ```
 Starts the React development server without opening a browser, then launches the app in an Electron window. The Electron window uses the development server for hot reload; no production build is created. `npm start` remains available when you want the browser version.
 On first launch, choose one or more music folders when prompted. Luna indexes supported audio files recursively and stores the folder list and track metadata in `music-library.json` under Electron's user data directory. On later launches, the cached library appears immediately while Luna checks saved folders in the background for added, changed, or removed tracks. App settings (theme, accent color, and last played track) are stored separately under Electron's user data directory. Windows uses a frameless custom title bar and can use the Windows accent color from **Settings → Appearance**. You can add folders from the Options menu or review saved locations and rescan from **Settings → Library**.
+
+### Build and publish a Windows installer
+
+Build the production app and Windows installers locally:
+
+```bash
+npm install
+npm run electron:build
+```
+
+The installer is written to `dist/` as **`Luna Setup <version>.exe`**, where the version comes from `package.json`. To publish it for users:
+
+1. Commit and push the source changes, including this README and the screenshots.
+2. Open the repository's [Releases page](https://github.com/draco-mordred/Luna/releases) and choose **Draft a new release**.
+3. Create a tag such as `v1.0.1` that matches the app version in `package.json`.
+4. Attach `dist\Luna Setup <version>.exe` to the release, add release notes, and publish it.
+
+The download link above points to the latest published release. Do not add the installer executable to the Git repository; release assets are designed for distributing large downloads.
 
 In the desktop app, right-click a track in **Tracks** and choose **Edit metadata** to change its title, artist, album, album artist, composer, genre, year, track/disc number, comment, embedded album art, or lyrics. Changes are written into the audio file itself. The editor supports MP3, FLAC, M4A/MP4, and OGG/OGA files; other scanned formats remain playable but are not editable. Lyrics can be pasted as plain text or imported from an `.lrc` file, whose timestamps are preserved in the embedded lyrics text. Luna reads embedded lyric tags; unrelated comments, descriptions, and external sidecar files are not treated as lyrics. Text decoding supports Unicode byte-order marks and detected legacy encodings; lyric rendering supports right-to-left text and falls back to fonts available on the system for non-Latin scripts. On Windows, hover over Luna's taskbar icon to access Previous, Play/Pause, and Next controls.
 

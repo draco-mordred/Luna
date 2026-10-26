@@ -95,7 +95,7 @@ const DEFAULT_SETTINGS = {
   crossfadeSeconds: 0,
   iconStyle: 'material',
   seekbarStyle: 'default',
-  visualizerStyle: 'wave-smooth',
+  visualizerStyle: 'bars-alternating',
   showVisualizer: false,
   autoDownloadArtistImages: true,
   showArtistImageBackground: false,

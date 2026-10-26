@@ -11,6 +11,7 @@ import TopNavbar from './components/TopNavbar';
 import WindowTitleBar from './components/WindowTitleBar/WindowTitleBar';
 import type { Playlist, Track } from './services/MusicLibrary';
 import { getAudiomackPlaybackUrl } from './services/audiomack';
+import { isAndroidApp as detectAndroidApp, scanAndroidMusicLibrary } from './services/androidMusicLibrary';
 import type {
   AppSettings,
   IconStyle,
@@ -228,6 +229,7 @@ const getDominantImageColor = (imageUrl: string, fallback: string): Promise<stri
 
 const App = () => {
   const location = useLocation();
+  const isAndroidApp = detectAndroidApp();
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [accentColor, setAccentColor] = useState(getInitialAccentColor);
   const [useSystemAccentColor, setUseSystemAccentColor] = useState(
@@ -549,9 +551,30 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!window.electronAPI || initialLoadStarted.current) return;
+    if (initialLoadStarted.current || (!window.electronAPI && !isAndroidApp)) return;
     initialLoadStarted.current = true;
     setIsLibraryLoading(true);
+    if (isAndroidApp) {
+      scanAndroidMusicLibrary()
+        .then((response) => {
+          applyLibraryResponse(response);
+          setInitialLibraryLoaded(true);
+          setLibraryReconciled(true);
+        })
+        .catch((error: unknown) => {
+          console.error('Could not scan the Android music library:', error);
+          setLibraryError(
+            error instanceof Error
+              ? error.message
+              : 'Could not scan the Android music library. Check Luna’s audio permission.'
+          );
+          setInitialLibraryLoaded(true);
+          setLibraryReconciled(true);
+        })
+        .finally(() => setIsLibraryLoading(false));
+      return;
+    }
+    if (!window.electronAPI) return;
     window.electronAPI
       .loadMusicLibrary()
       .then((response) => {
@@ -585,7 +608,7 @@ const App = () => {
         setLibraryReconciled(true);
       })
       .finally(() => setIsLibraryLoading(false));
-  }, [applyLibraryResponse]);
+  }, [applyLibraryResponse, isAndroidApp]);
 
   useEffect(() => {
     if (!settingsLoaded || !initialLibraryLoaded || !lastPlayedTrackPath) return;
@@ -702,7 +725,51 @@ const App = () => {
     });
   }, [volume]);
 
+  const handleRescanMusicLibrary = useCallback(async () => {
+    if (isAndroidApp) {
+      try {
+        setIsLibraryLoading(true);
+        setLibraryError(null);
+        const response = await scanAndroidMusicLibrary();
+        applyLibraryResponse(response);
+        setLibraryReconciled(true);
+        return response;
+      } catch (error) {
+        console.error('Could not scan the Android music library:', error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Could not scan the Android music library. Check Luna’s audio permission.';
+        setLibraryError(message);
+        return { folders: [], tracks: [], errors: [message] };
+      } finally {
+        setIsLibraryLoading(false);
+      }
+    }
+    if (!window.electronAPI) {
+      setLibraryError('Library scanning is available in the Luna desktop app.');
+      return { folders: [], tracks: [], errors: [] };
+    }
+    try {
+      setIsLibraryLoading(true);
+      setLibraryError(null);
+      const response = await window.electronAPI.rescanMusicLibrary();
+      applyLibraryResponse(response);
+      setLibraryReconciled(true);
+      return response;
+    } catch (error) {
+      console.error('Could not rescan the local music library:', error);
+      activeLibraryScanIdRef.current = null;
+      setLibraryScanProgress(null);
+      setLibraryError('Could not rescan your music folders.');
+      return { folders: [], tracks: [], errors: ['Could not rescan your music folders.'] };
+    } finally {
+      setIsLibraryLoading(false);
+    }
+  }, [applyLibraryResponse, isAndroidApp]);
+
   const handleSelectMusicFolders = useCallback(async () => {
+    if (isAndroidApp) return handleRescanMusicLibrary();
     if (!window.electronAPI) {
       setLibraryError('Folder selection is available in the Luna desktop app.');
       return null;
@@ -725,30 +792,7 @@ const App = () => {
     } finally {
       setIsLibraryLoading(false);
     }
-  }, [applyLibraryResponse]);
-
-  const handleRescanMusicLibrary = useCallback(async () => {
-    if (!window.electronAPI) {
-      setLibraryError('Library scanning is available in the Luna desktop app.');
-      return { folders: [], tracks: [], errors: [] };
-    }
-    try {
-      setIsLibraryLoading(true);
-      setLibraryError(null);
-      const response = await window.electronAPI.rescanMusicLibrary();
-      applyLibraryResponse(response);
-      setLibraryReconciled(true);
-      return response;
-    } catch (error) {
-      console.error('Could not rescan the local music library:', error);
-      activeLibraryScanIdRef.current = null;
-      setLibraryScanProgress(null);
-      setLibraryError('Could not rescan your music folders.');
-      return { folders: [], tracks: [], errors: ['Could not rescan your music folders.'] };
-    } finally {
-      setIsLibraryLoading(false);
-    }
-  }, [applyLibraryResponse]);
+  }, [applyLibraryResponse, handleRescanMusicLibrary, isAndroidApp]);
 
   const handleRemoveMusicFolder = useCallback(async (folder: string) => {
     if (!window.electronAPI) return;
@@ -1631,6 +1675,7 @@ const App = () => {
           {/* Top Navigation */}
           <TopNavbar
             tracks={libraryTracks}
+            isAndroidApp={isAndroidApp}
             onSelectMusicFolders={handleSelectMusicFolders}
             onRescanMusicLibrary={handleRescanMusicLibrary}
           />
@@ -1651,6 +1696,7 @@ const App = () => {
                       scanProgress={libraryScanProgress}
                       libraryError={libraryError}
                       isDesktopApp={Boolean(window.electronAPI)}
+                      isAndroidApp={isAndroidApp}
                       onPlayTrack={playTrack}
                       onShufflePlay={shufflePlayTracks}
                       onQueueTracks={handleQueueTracks}
@@ -1672,6 +1718,7 @@ const App = () => {
                       scanProgress={libraryScanProgress}
                       libraryError={libraryError}
                       isDesktopApp={Boolean(window.electronAPI)}
+                      isAndroidApp={isAndroidApp}
                       onPlayTrack={playTrack}
                       onShufflePlay={shufflePlayTracks}
                       onQueueTracks={handleQueueTracks}
@@ -1838,6 +1885,7 @@ const App = () => {
                       musicFolders={musicFolders}
                       trackCount={libraryTracks.length}
                       isDesktopApp={Boolean(window.electronAPI)}
+                      isAndroidApp={isAndroidApp}
                       onAddMusicFolder={() => {
                         void handleSelectMusicFolders();
                       }}
@@ -1889,6 +1937,7 @@ const App = () => {
                       musicFolders={musicFolders}
                       trackCount={libraryTracks.length}
                       isDesktopApp={Boolean(window.electronAPI)}
+                      isAndroidApp={isAndroidApp}
                       onAddMusicFolder={() => {
                         void handleSelectMusicFolders();
                       }}

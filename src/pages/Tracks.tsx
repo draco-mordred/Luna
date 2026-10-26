@@ -233,6 +233,7 @@ interface TracksPageProps {
   scanProgress: MusicLibraryScanProgress | null;
   libraryError: string | null;
   isDesktopApp: boolean;
+  isAndroidApp: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
@@ -250,6 +251,7 @@ const TracksPage = ({
   scanProgress,
   libraryError,
   isDesktopApp,
+  isAndroidApp,
   onPlayTrack,
   onShufflePlay,
   onQueueTracks,
@@ -382,14 +384,16 @@ const TracksPage = ({
             <p>
               {isDesktopApp
                 ? 'Choose a folder containing your music files to add them to Luna.'
-                : 'Local music folders can be indexed and played in the Luna desktop app.'}
+                : isAndroidApp
+                  ? 'Scan audio files available in your Android media library.'
+                  : 'Local music folders can be indexed and played in the Luna desktop app.'}
             </p>
-            {isDesktopApp && (
+            {(isDesktopApp || isAndroidApp) && (
               <button className='add-music-folder-button' type='button' onClick={onAddMusicFolder}>
                 <span className='material-symbols-outlined' aria-hidden='true'>
-                  folder_open
+                  {isAndroidApp ? 'library_music' : 'folder_open'}
                 </span>
-                Add Music Folder
+                {isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}
               </button>
             )}
           </section>

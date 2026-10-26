@@ -37,6 +37,7 @@ interface SettingsPageProps {
   musicFolders: string[];
   trackCount: number;
   isDesktopApp: boolean;
+  isAndroidApp: boolean;
   onAddMusicFolder: () => void;
   onRescanMusicLibrary: () => void;
   onRemoveMusicFolder: (folder: string) => void;
@@ -84,6 +85,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   musicFolders,
   trackCount,
   isDesktopApp,
+  isAndroidApp,
   onAddMusicFolder,
   onRescanMusicLibrary,
   onRemoveMusicFolder,
@@ -226,11 +228,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className='settings-section-content'>
           <div className='setting-item'>
             <div className='setting-info'>
-              <h3>Music Folders</h3>
+              <h3>{isAndroidApp ? 'Music Library' : 'Music Folders'}</h3>
               <p>
                 {isDesktopApp
                   ? `${musicFolders.length} folder(s) • ${trackCount} tracks indexed`
-                  : 'Folder management is available in the desktop app'}
+                  : isAndroidApp
+                    ? `${trackCount} tracks found in the device audio library`
+                    : 'Folder management is available in the desktop app'}
               </p>
             </div>
             <div className='setting-control'>
@@ -268,12 +272,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           <div className='setting-item'>
             <div className='setting-info'>
               <h3>Rescan Library</h3>
-              <p>Search the saved folders for new, changed, or missing tracks</p>
+              <p>
+                {isAndroidApp
+                  ? 'Find audio files currently available in the device media library'
+                  : 'Search the saved folders for new, changed, or missing tracks'}
+              </p>
             </div>
             <div className='setting-control'>
-              {isDesktopApp && (
+              {(isDesktopApp || isAndroidApp) && (
                 <button type='button' className='manage-button' onClick={onRescanMusicLibrary}>
-                  Rescan
+                {isAndroidApp ? 'Scan device' : 'Rescan'}
                 </button>
               )}
             </div>

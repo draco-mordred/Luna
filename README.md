@@ -28,7 +28,7 @@
   <a href="https://github.com/draco-mordred/Luna/issues">Support</a>
 </p>
 
-Luna is a music player for enjoying a personal music collection in a clean, customizable interface. Browse local tracks and albums, explore artist details, and move from a compact PlayBar to a full Now Playing view with lyrics and visualizations. Luna runs as a desktop app and can also be run in a web browser; access to local music folders requires the desktop app.
+Luna is a music player for enjoying a personal music collection in a clean, customizable interface. Browse local tracks and albums, explore artist details, and move from a compact PlayBar to a full Now Playing view with lyrics and visualizations. Luna runs as a desktop app and can also be run in a web browser. The Electron desktop app scans selected folders; the Android app scans audio indexed by Android's media library.
 
 ## Features
 
@@ -90,6 +90,7 @@ Audiomack streaming requires authorized OAuth credentials and is available in th
 
 - Node.js and npm
 - Windows for building the Windows installer
+- For Android: Android Studio, Android SDK Platform 34 or newer, and JDK 17
 
 ### Run the desktop app in development
 
@@ -105,6 +106,19 @@ npm run electron:build
 ```
 
 The Windows installer is written to `dist/`. Its filename includes the app version from `package.json`. To make a build available to users, publish a GitHub Release and attach the installer executable as a release asset rather than committing the large binary to the repository.
+
+### Build and run the Android app
+
+The Android project uses Capacitor and needs Android Studio, the Android SDK, and JDK 17. Open the generated native project in Android Studio:
+
+```bash
+npm run android:sync
+npm run android:open
+```
+
+Select an emulator or connected Android device in Android Studio and run the app. On its first library scan, Luna asks for Android audio access and lists audio files indexed by Android's media library. The app currently uses the platform's media permission and system-managed `content://` audio URIs. Background playback, lock-screen/media-session controls, and Play Store signing/release setup remain follow-up Android work.
+
+Android `versionName` follows `package.json`. Its Play Store `versionCode` is derived separately from Luna's month/release/date version fields to remain an increasing integer; Android Play Store releases are not ready until signing and background playback are completed.
 
 ### Create a release build
 

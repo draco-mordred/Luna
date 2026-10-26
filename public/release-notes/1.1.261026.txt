@@ -5,3 +5,4 @@ Highlights
 - Centered PlayBar lyrics now use the space remaining between track information and player actions without letting long song information shrink the lyrics area unnecessarily.
 - Added a first-launch-per-version release notes dialog with a summary of previous releases.
 - Improved the compact Play/Pause button size while PlayBar lyrics are visible.
+- Started Android support with a Capacitor project and permission-gated device audio-library scanning.

@@ -7,6 +7,7 @@ import './TopNavbar.css';
 
 interface TopNavbarProps {
   tracks: Track[];
+  isAndroidApp: boolean;
   onSelectMusicFolders: () => Promise<MusicLibraryResponse | null>;
   onRescanMusicLibrary: () => Promise<MusicLibraryResponse>;
 }
@@ -37,7 +38,12 @@ const SECTION_TITLES: Record<Section, string> = {
   playlists: 'Playlists',
 };
 
-const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNavbarProps) => {
+const TopNavbar = ({
+  tracks,
+  isAndroidApp,
+  onSelectMusicFolders,
+  onRescanMusicLibrary,
+}: TopNavbarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -263,8 +269,10 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
                       void onSelectMusicFolders();
                     }}
                   >
-                    <span className="material-symbols-outlined">folder_open</span>
-                    <span>Add Music Folder</span>
+                    <span className="material-symbols-outlined">
+                      {isAndroidApp ? 'library_music' : 'folder_open'}
+                    </span>
+                    <span>{isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}</span>
                   </button>
                 </li>
                 <li className="menu-item">
@@ -276,7 +284,7 @@ const TopNavbar = ({ tracks, onSelectMusicFolders, onRescanMusicLibrary }: TopNa
                     }}
                   >
                     <span className="material-symbols-outlined">refresh</span>
-                    <span>Rescan Library</span>
+                    <span>{isAndroidApp ? 'Scan Device Library' : 'Rescan Library'}</span>
                   </button>
                 </li>
                 <li className="menu-item divider">

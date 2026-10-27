@@ -21,6 +21,7 @@ import type {
   ThemeMode,
   TrackMetadataUpdate,
   VisualizerStyle,
+  WindowMaterial,
 } from './types/electron';
 import './App.css';
 import ReleaseNotesDialog from './components/ReleaseNotesDialog';
@@ -231,6 +232,10 @@ const App = () => {
   const location = useLocation();
   const isAndroidApp = detectAndroidApp();
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
+  const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
+  const [supportsWindowMaterial, setSupportsWindowMaterial] = useState(false);
+  const [windowMaterialAppliedAtLaunch, setWindowMaterialAppliedAtLaunch] =
+    useState<WindowMaterial>('default');
   const [accentColor, setAccentColor] = useState(getInitialAccentColor);
   const [useSystemAccentColor, setUseSystemAccentColor] = useState(
     () => window.localStorage.getItem('luna-use-system-accent') !== 'false'
@@ -257,6 +262,8 @@ const App = () => {
   const [showSyncedLyricsOnPlayBar, setShowSyncedLyricsOnPlayBar] = useState(
     () => window.localStorage.getItem('luna-show-synced-lyrics-on-playbar') !== 'false'
   );
+  const [openNowPlayingRequest, setOpenNowPlayingRequest] = useState(0);
+  const [toggleLyricsRequest, setToggleLyricsRequest] = useState(0);
   const [syncLyricsDisplay, setSyncLyricsDisplay] = useState(
     () => window.localStorage.getItem('luna-sync-lyrics-display') !== 'false'
   );
@@ -447,6 +454,11 @@ const App = () => {
       .loadAppSettings()
       .then((settings: AppSettings) => {
         setThemeMode(settings.themeMode);
+        setWindowMaterial(settings.windowMaterial ?? 'default');
+        setSupportsWindowMaterial(settings.supportsWindowMaterial ?? false);
+        setWindowMaterialAppliedAtLaunch(
+          settings.windowMaterialAppliedAtLaunch ?? 'default'
+        );
         setAccentColor(settings.accentColor);
         setUseSystemAccentColor(settings.useSystemAccentColor ?? true);
         setLastPlayedTrackPath(settings.lastPlayedTrackPath);
@@ -516,6 +528,19 @@ const App = () => {
     };
     mediaQuery.addEventListener('change', updateSystemTheme);
     return () => mediaQuery.removeEventListener('change', updateSystemTheme);
+  }, []);
+
+  useEffect(() => {
+    if (window.electronAPI?.platform !== 'win32') return undefined;
+    const root = document.documentElement;
+    root.dataset.windowFocused = String(document.hasFocus());
+    const unsubscribe = window.electronAPI.onWindowFocusChanged((isFocused) => {
+      root.dataset.windowFocused = String(isFocused);
+    });
+    return () => {
+      unsubscribe();
+      delete root.dataset.windowFocused;
+    };
   }, []);
 
   useEffect(() => {
@@ -626,6 +651,7 @@ const App = () => {
   useEffect(() => {
     if (!settingsLoaded) return;
     window.localStorage.setItem('luna-theme', themeMode);
+    window.localStorage.setItem('luna-window-material', windowMaterial);
     window.localStorage.setItem('luna-accent', accentColor);
     window.localStorage.setItem('luna-use-system-accent', String(useSystemAccentColor));
     window.localStorage.setItem(
@@ -658,6 +684,7 @@ const App = () => {
       window.electronAPI
         .saveAppSettings({
           themeMode,
+          windowMaterial,
           accentColor,
           useSystemAccentColor,
           lastPlayedTrackPath,
@@ -684,6 +711,7 @@ const App = () => {
   }, [
     accentColor,
     useSystemAccentColor,
+    windowMaterial,
     crossfadeSeconds,
     iconStyle,
     isShuffled,
@@ -963,6 +991,56 @@ const App = () => {
     },
     [isShuffled, libraryTracks, playQueueFrom]
   );
+
+  const playTrackRef = useRef(playTrack);
+  playTrackRef.current = playTrack;
+  const openAudioFilesQueueRef = useRef(Promise.resolve());
+
+  const handleOpenAudioFiles = useCallback((filePaths: string[]) => {
+    const processFiles = async () => {
+      const api = window.electronAPI;
+      if (!api || filePaths.length === 0) return;
+      try {
+        const response = await api.loadOpenAudioFiles(filePaths);
+        if (response.tracks.length > 0) {
+          await playTrackRef.current(response.tracks[0], response.tracks);
+        }
+        if (response.errors.length > 0) {
+          setLibraryError(
+            `${response.errors.length} opened file(s) could not be played. ${response.errors[0]}`
+          );
+        }
+      } catch (error) {
+        console.error('Could not open audio files:', error);
+        setLibraryError(
+          error instanceof Error ? error.message : 'Could not open the selected audio files.'
+        );
+      }
+    };
+    openAudioFilesQueueRef.current = openAudioFilesQueueRef.current.then(processFiles);
+  }, []);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api || !initialLibraryLoaded) return;
+    let isActive = true;
+    const unsubscribe = api.onOpenAudioFiles((filePaths) => {
+      void handleOpenAudioFiles(filePaths);
+    });
+    api
+      .activateOpenAudioFiles()
+      .then((filePaths) => {
+        if (isActive && filePaths.length > 0) void handleOpenAudioFiles(filePaths);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not activate audio-file opening:', error);
+        setLibraryError('Could not receive audio files opened through Windows.');
+      });
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
+  }, [handleOpenAudioFiles, initialLibraryLoaded]);
 
   const shufflePlayTracks = useCallback(
     (tracks: Track[]) => {
@@ -1306,7 +1384,7 @@ const App = () => {
     ]
   );
 
-  const handleToggleShuffle = () => {
+  const handleToggleShuffle = useCallback(() => {
     const nextShuffle = !isShuffled;
     setIsShuffled(nextShuffle);
     if (playQueue.length > 1) {
@@ -1324,12 +1402,64 @@ const App = () => {
         setPlayQueue([...currentQueue, ...unshuffledUpcoming]);
       }
     }
-  };
-  const handleToggleRepeat = () => {
+  }, [isShuffled, playQueue, playQueueIndex]);
+  const handleToggleRepeat = useCallback(() => {
     const modes: ('off' | 'one' | 'all')[] = ['off', 'one', 'all'];
     const currentIndex = modes.indexOf(repeatMode);
     setRepeatMode(modes[(currentIndex + 1) % modes.length]);
-  };
+  }, [repeatMode]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isEditable = target instanceof HTMLElement && (
+        target.isContentEditable ||
+        target.closest('input, textarea, select, [role="textbox"], [contenteditable="true"]') !== null
+      );
+      if (isEditable || event.repeat) return;
+
+      if (!event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key === ' ') {
+        event.preventDefault();
+        handlePlayPause();
+        return;
+      }
+
+      if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
+
+      switch (event.key.toLowerCase()) {
+        case 'n':
+          event.preventDefault();
+          handleNext();
+          break;
+        case 'b':
+          event.preventDefault();
+          handlePrevious();
+          break;
+        case 'm':
+          event.preventDefault();
+          handleToggleShuffle();
+          break;
+        case 'r':
+          event.preventDefault();
+          handleToggleRepeat();
+          break;
+        case 'p':
+          event.preventDefault();
+          setOpenNowPlayingRequest((request) => request + 1);
+          break;
+        case 'l':
+          event.preventDefault();
+          setToggleLyricsRequest((request) => request + 1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleNext, handlePlayPause, handlePrevious, handleToggleRepeat, handleToggleShuffle]);
+
   const handleDeleteTrackFromLibrary = (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => {
@@ -1587,6 +1717,20 @@ const App = () => {
     window.localStorage.setItem(`luna-release-notes-seen-${packageJson.version}`, 'true');
     setHasSeenReleaseNotes(true);
   }, []);
+  const handleRestartForWindowMaterial = useCallback(() => {
+    if (!window.electronAPI) return;
+    void window.electronAPI.restartApp(windowMaterial).catch((error: unknown) => {
+      console.error('Could not restart Luna:', error);
+      setLibraryError('Could not restart Luna to apply the window appearance setting.');
+    });
+  }, [windowMaterial]);
+  const handleOpenWindowsDefaultApps = useCallback(() => {
+    if (!window.electronAPI) return;
+    void window.electronAPI.openWindowsDefaultApps().catch((error: unknown) => {
+      console.error('Could not open Windows Default apps settings:', error);
+      setLibraryError('Could not open Windows Default apps settings.');
+    });
+  }, []);
 
   useLayoutEffect(() => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
@@ -1597,6 +1741,10 @@ const App = () => {
     const [red, green, blue] = rgbString.split(',').map((part) => Number.parseInt(part.trim(), 10));
 
     root.setAttribute('data-theme', resolvedTheme);
+    root.setAttribute(
+      'data-window-material',
+      windowMaterialAppliedAtLaunch
+    );
     root.setAttribute('data-icon-style', iconStyle);
     root.setAttribute('data-seekbar-style', seekbarStyle);
     root.style.setProperty('--accent', activeAccent);
@@ -1648,6 +1796,7 @@ const App = () => {
     systemTheme,
     themeMode,
     trackAccentColor,
+    windowMaterialAppliedAtLaunch,
   ]);
 
   // Toggle sidebar
@@ -1658,7 +1807,8 @@ const App = () => {
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {window.electronAPI?.platform === 'win32' && <WindowTitleBar />}
+      {window.electronAPI?.platform === 'win32' &&
+        windowMaterialAppliedAtLaunch === 'default' && <WindowTitleBar />}
       <div className='app-container'>
         {/* Sidebar */}
         <Sidebar
@@ -1895,6 +2045,15 @@ const App = () => {
                       onShowBrowseSectionChange={setShowBrowseSection}
                       showRadioSection={showRadioSection}
                       onShowRadioSectionChange={setShowRadioSection}
+                      isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
+                      supportsWindowMaterial={supportsWindowMaterial}
+                      windowMaterial={windowMaterial}
+                      onWindowMaterialChange={setWindowMaterial}
+                      materialRestartRequired={
+                        windowMaterial !== windowMaterialAppliedAtLaunch
+                      }
+                      onRestartApp={handleRestartForWindowMaterial}
+                      onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
                     />
                   }
                 />
@@ -1951,6 +2110,15 @@ const App = () => {
                       onShowBrowseSectionChange={setShowBrowseSection}
                       showRadioSection={showRadioSection}
                       onShowRadioSectionChange={setShowRadioSection}
+                      isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
+                      supportsWindowMaterial={supportsWindowMaterial}
+                      windowMaterial={windowMaterial}
+                      onWindowMaterialChange={setWindowMaterial}
+                      materialRestartRequired={
+                        windowMaterial !== windowMaterialAppliedAtLaunch
+                      }
+                      onRestartApp={handleRestartForWindowMaterial}
+                      onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
                     />
                   }
                 />
@@ -2070,6 +2238,8 @@ const App = () => {
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
           onQueueTracks={handleQueueTracks}
+          openNowPlayingRequest={openNowPlayingRequest}
+          toggleLyricsRequest={toggleLyricsRequest}
         />
       )}
       {playlistDialog && (

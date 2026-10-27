@@ -1,4 +1,17 @@
 /* Global Styles */
+html[data-window-focused]::after {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  border: 1px solid var(--border);
+  content: "";
+  pointer-events: none;
+}
+
+html[data-window-focused='true']::after {
+  border-color: var(--system-accent);
+}
+
 :root {
   color-scheme: dark;
   --playbar-collapsed-height: 126.4px;
@@ -117,6 +130,98 @@
     --shadow-color: rgba(0, 0, 0, 0.16);
     --titlebar-hover-icon: #111111;
   }
+}
+
+html[data-window-material='mica'][data-theme='dark'] {
+  --bg-primary: rgba(25, 27, 32, 0.62);
+  --bg-secondary: rgba(32, 34, 40, 0.76);
+  --bg-tertiary: rgba(48, 50, 58, 0.86);
+  --border: rgba(255, 255, 255, 0.13);
+  --hover: rgba(255, 255, 255, 0.09);
+  --active: rgba(255, 255, 255, 0.14);
+  --surface-subtle: rgba(255, 255, 255, 0.045);
+  --surface-muted: rgba(255, 255, 255, 0.08);
+  --surface-strong: rgba(255, 255, 255, 0.13);
+  --playbar-start: rgba(39, 41, 48, 0.82);
+  --playbar-end: rgba(28, 30, 36, 0.88);
+  --shadow-color: rgba(0, 0, 0, 0.28);
+}
+
+html[data-window-material='mica'][data-theme='light'] {
+  --bg-primary: rgba(244, 246, 250, 0.66);
+  --bg-secondary: rgba(252, 253, 255, 0.78);
+  --bg-tertiary: rgba(234, 237, 243, 0.88);
+  --border: rgba(35, 40, 52, 0.13);
+  --hover: rgba(35, 40, 52, 0.07);
+  --active: rgba(35, 40, 52, 0.11);
+  --surface-subtle: rgba(35, 40, 52, 0.035);
+  --surface-muted: rgba(35, 40, 52, 0.065);
+  --surface-strong: rgba(35, 40, 52, 0.1);
+  --playbar-start: rgba(252, 253, 255, 0.88);
+  --playbar-end: rgba(238, 241, 247, 0.92);
+  --shadow-color: rgba(35, 40, 52, 0.14);
+}
+
+html[data-window-material='frosty'][data-theme='dark'] {
+  --bg-primary: rgba(17, 17, 17, 0.38);
+  --bg-secondary: rgba(26, 26, 26, 0.52);
+  --bg-tertiary: rgba(42, 42, 42, 0.68);
+}
+
+html[data-window-material='frosty'][data-theme='light'] {
+  --bg-primary: rgba(245, 245, 247, 0.42);
+  --bg-secondary: rgba(255, 255, 255, 0.58);
+  --bg-tertiary: rgba(229, 229, 234, 0.72);
+}
+
+html[data-window-material='mica'] body,
+html[data-window-material='mica'] #root,
+html[data-window-material='mica'] .app,
+html[data-window-material='frosty'] body,
+html[data-window-material='frosty'] #root,
+html[data-window-material='frosty'] .app {
+  background: transparent;
+}
+
+html[data-window-material='mica'] .sidebar,
+html[data-window-material='mica'] .top-navbar,
+html[data-window-material='mica'] .main-content,
+html[data-window-material='mica'] .page-content,
+html[data-window-material='mica'] .settings-page,
+html[data-window-material='mica'] .play-bar {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-window-material='mica'] .sidebar {
+  top: 0;
+  height: calc(100vh - var(--playbar-collapsed-height));
+}
+
+html[data-window-material='mica'] .top-navbar {
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  border-bottom-color: var(--border);
+}
+
+html[data-window-material='mica'] .play-bar {
+  background: linear-gradient(180deg, var(--playbar-start), var(--playbar-end));
+  border-top: 1px solid var(--border);
+}
+
+html[data-window-material='mica'] .settings-page,
+html[data-window-material='mica'] .main-content {
+  background: var(--bg-primary);
+}
+
+html[data-window-material='mica'] .setting-item,
+html[data-window-material='mica'] .about-highlight {
+  background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+  border-color: var(--border);
+}
+
+html[data-window-material='frosty'] .sidebar {
+  top: 0;
+  height: calc(100vh - var(--playbar-collapsed-height));
 }
 
 * {

@@ -47,6 +47,8 @@ interface PlayBarProps {
   playQueueIndex: number;
   onQueueSelect: (index: number) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  openNowPlayingRequest: number;
+  toggleLyricsRequest: number;
 }
 
 const DEFAULT_ALBUM_ART = (
@@ -328,6 +330,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
   playQueueIndex,
   onQueueSelect,
   onQueueTracks,
+  openNowPlayingRequest,
+  toggleLyricsRequest,
 }) => {
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
@@ -354,6 +358,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
   const dragFrameRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
+  const lastLyricsShortcutRequestRef = useRef(toggleLyricsRequest);
   const visualizerLocationRef = useRef<string | null>(null);
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
@@ -384,6 +389,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
     setShowLyrics(visible);
     if (syncLyricsDisplay) setShowMiniSyncedLyrics(visible);
   };
+
+  useEffect(() => {
+    if (openNowPlayingRequest > 0) setState('expanded');
+  }, [openNowPlayingRequest]);
+
+  useEffect(() => {
+    if (toggleLyricsRequest === lastLyricsShortcutRequestRef.current) return;
+    lastLyricsShortcutRequestRef.current = toggleLyricsRequest;
+    if (!lyricsEnabled || !track?.lyrics?.trim()) return;
+    const nextVisibility = !showLyrics;
+    setShowLyrics(nextVisibility);
+    if (syncLyricsDisplay) setShowMiniSyncedLyrics(nextVisibility);
+    setShowLyricsHint(false);
+  }, [lyricsEnabled, showLyrics, syncLyricsDisplay, toggleLyricsRequest, track?.lyrics]);
 
   useEffect(() => {
     const syncPlaybackPosition = () => {
@@ -1111,54 +1130,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
           <div className="mini-track-info-copy">
-            <div className="mini-lyrics-transport" aria-hidden={!isMiniSyncedLyricsVisible}>
-              <button
-                type="button"
-                className="control-btn mini-lyrics-transport-btn"
-                aria-label="Previous track"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPrevious();
-                }}
-                disabled={!track || !isMiniSyncedLyricsVisible}
-                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-              >
-                <TransportIcon name="previous" />
-              </button>
-              <button
-                type="button"
-                className="control-btn mini-lyrics-transport-btn play-pause"
-                aria-label={isPlaying ? 'Pause' : 'Play'}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPlayPause();
-                }}
-                disabled={!track || !isMiniSyncedLyricsVisible}
-                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-              >
-                <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  {isPlaying
-                    ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
-                    : <>
-                      <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
-                      <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
-                    </>}
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="control-btn mini-lyrics-transport-btn"
-                aria-label="Next track"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onNext();
-                }}
-                disabled={!track || !isMiniSyncedLyricsVisible}
-                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-              >
-                <TransportIcon name="next" />
-              </button>
-            </div>
             <div className="text-info">
               <span className="track-name-mini">{track?.name || 'No Track'}</span>
               <span className="artist-name-mini">{track?.artist || 'Unknown'}</span>
@@ -1235,6 +1206,57 @@ const PlayBar: React.FC<PlayBarProps> = ({
         </div>
 
         <div className="mini-player-actions">
+          <div
+            className="mini-lyrics-transport"
+            aria-hidden={!isMiniSyncedLyricsVisible}
+          >
+            <button
+              type="button"
+              className="control-btn mini-lyrics-transport-btn"
+              aria-label="Previous track"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPrevious();
+              }}
+              disabled={!track || !isMiniSyncedLyricsVisible}
+              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+            >
+              <TransportIcon name="previous" />
+            </button>
+            <button
+              type="button"
+              className="control-btn mini-lyrics-transport-btn play-pause"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              onClick={(event) => {
+                event.stopPropagation();
+                onPlayPause();
+              }}
+              disabled={!track || !isMiniSyncedLyricsVisible}
+              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+            >
+              <svg className="play-pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+                {isPlaying
+                  ? <path className="pause-icon-glyph" d="M8 6.5v11M16 6.5v11" />
+                  : <>
+                    <path className="play-icon-glyph default-play-icon-glyph" d="M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z" />
+                    <path className="play-icon-glyph vlc-play-icon-glyph" d="M7 4 20 12 7 20Z" />
+                  </>}
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="control-btn mini-lyrics-transport-btn"
+              aria-label="Next track"
+              onClick={(event) => {
+                event.stopPropagation();
+                onNext();
+              }}
+              disabled={!track || !isMiniSyncedLyricsVisible}
+              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+            >
+              <TransportIcon name="next" />
+            </button>
+          </div>
           {lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && (
             <button
               type="button"

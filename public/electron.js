@@ -7,9 +7,11 @@ const {
   nativeTheme,
   nativeImage,
   safeStorage,
+  shell,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
@@ -27,7 +29,11 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow;
+let windowMaterialAppliedAtLaunch = 'default';
 let indexedAudioPaths = new Set();
+const openedAudioPaths = new Set();
+let pendingOpenAudioPaths = [];
+let rendererReadyForAudioFiles = false;
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
   '.m4a',
@@ -50,6 +56,20 @@ const AUDIO_EXTENSIONS = new Set([
   '.aiff',
   '.aifc',
 ]);
+const getAudioFilePaths = (argumentsList) =>
+  argumentsList
+    .filter((argument) => typeof argument === 'string')
+    .filter((argument) => AUDIO_EXTENSIONS.has(path.extname(argument).toLowerCase()))
+    .map((filePath) => path.resolve(filePath));
+const queueOpenAudioFiles = (filePaths) => {
+  const audioFilePaths = getAudioFilePaths(filePaths);
+  if (audioFilePaths.length === 0) return;
+  if (rendererReadyForAudioFiles && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('open-audio-files', audioFilePaths);
+    return;
+  }
+  pendingOpenAudioPaths.push(...audioFilePaths);
+};
 const AUDIO_MIME_TYPES = {
   '.aac': 'audio/aac',
   '.aif': 'audio/aiff',
@@ -81,6 +101,27 @@ const EDITABLE_ARTWORK_MIME_TYPES = new Set([
   'image/bmp',
 ]);
 
+const initialOpenAudioPaths = getAudioFilePaths(process.argv.slice(app.isPackaged ? 1 : 2));
+pendingOpenAudioPaths.push(...initialOpenAudioPaths);
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    queueOpenAudioFiles(commandLine.slice(1));
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    queueOpenAudioFiles([filePath]);
+  });
+}
+
 const getLibraryPath = () => path.join(app.getPath('userData'), 'music-library.json');
 const getPlaylistsPath = () => path.join(app.getPath('userData'), 'playlists.json');
 const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.ini');
@@ -88,6 +129,16 @@ const getLegacySettingsPath = () => path.join(app.getPath('userData'), 'app-sett
 const getAudiomackCredentialsPath = () =>
   path.join(app.getPath('userData'), 'audiomack-credentials.bin');
 const getArtworkPath = (fileName) => path.join(app.getPath('userData'), 'artwork', fileName);
+const supportsWindowMaterial =
+  process.platform === 'win32' && Number.parseInt(os.release().split('.')[2] || '0', 10) >= 22621;
+const normalizeWindowMaterial = (settings) => {
+  const savedMaterial = ['default', 'mica', 'frosty'].includes(settings.windowMaterial)
+    ? settings.windowMaterial
+    : settings.useMicaMaterial === true
+      ? 'mica'
+      : 'default';
+  return supportsWindowMaterial ? savedMaterial : 'default';
+};
 const DEFAULT_SETTINGS = {
   themeMode: 'system',
   accentColor: '#ff4444',
@@ -107,6 +158,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'off',
   showBrowseSection: true,
   showRadioSection: true,
+  windowMaterial: 'default',
 };
 let appSettingsWriteQueue = Promise.resolve();
 let settingsFlushInProgress = false;
@@ -212,6 +264,10 @@ const persistSettings = (settings) => {
   delete persisted.systemTheme;
   delete persisted.systemAccentColor;
   delete persisted.platform;
+  delete persisted.supportsMica;
+  delete persisted.supportsWindowMaterial;
+  delete persisted.windowMaterialAppliedAtLaunch;
+  delete persisted.useMicaMaterial;
   return writeIniFile(getSettingsPath(), persisted);
 };
 
@@ -355,9 +411,12 @@ const readAppSettings = async () => {
       typeof saved.showRadioSection === 'boolean'
         ? saved.showRadioSection
         : DEFAULT_SETTINGS.showRadioSection,
+    windowMaterial: normalizeWindowMaterial(saved),
     systemTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
     systemAccentColor,
     platform: process.platform,
+    supportsWindowMaterial,
+    windowMaterialAppliedAtLaunch,
   };
   if (
     saved.themeMode !== settings.themeMode ||
@@ -377,7 +436,9 @@ const readAppSettings = async () => {
     saved.isShuffled !== settings.isShuffled ||
     saved.repeatMode !== settings.repeatMode ||
     saved.showBrowseSection !== settings.showBrowseSection ||
-    saved.showRadioSection !== settings.showRadioSection
+    saved.showRadioSection !== settings.showRadioSection ||
+    saved.windowMaterial !== settings.windowMaterial ||
+    (saved.useMicaMaterial !== undefined && saved.windowMaterial === undefined)
   ) {
     await persistSettings({ ...saved, ...settings });
   }
@@ -522,6 +583,15 @@ const updateAppSettings = async (patch) => {
       next[key] = patch[key];
     }
   }
+  if (patch.windowMaterial !== undefined) {
+    if (!['default', 'mica', 'frosty'].includes(patch.windowMaterial)) {
+      throw new TypeError('Invalid app window material.');
+    }
+    if (!supportsWindowMaterial && patch.windowMaterial !== 'default') {
+      throw new Error('Window materials require Windows 11 version 22H2 or newer.');
+    }
+    next.windowMaterial = patch.windowMaterial;
+  }
   await persistSettings(next);
   return readAppSettings();
 };
@@ -661,6 +731,71 @@ const isWithinDirectory = (filePath, directory) => {
   );
 };
 
+const readAudioTrack = async (entryPath, cachedTrack) => {
+  const stat = await fs.promises.stat(entryPath);
+  if (!stat.isFile()) throw new Error('The selected path is not a file.');
+  if (
+    cachedTrack &&
+    cachedTrack.metadataVersion >= 5 &&
+    cachedTrack.size === stat.size &&
+    cachedTrack.lastModified === stat.mtimeMs &&
+    typeof cachedTrack.path === 'string'
+  ) {
+    return {
+      ...cachedTrack,
+      id: entryPath,
+      path: entryPath,
+      src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
+    };
+  }
+
+  let metadata = null;
+  try {
+    metadata = await parseFile(entryPath, { duration: true });
+  } catch (error) {
+    console.warn(`Could not read audio metadata for "${entryPath}":`, error.message);
+  }
+
+  const common = metadata?.common ?? {};
+  const filename = path.basename(entryPath, path.extname(entryPath));
+  let albumArt;
+  try {
+    albumArt = await saveEmbeddedArtwork(selectCover(common.picture), entryPath, stat);
+  } catch (error) {
+    console.warn(`Could not cache embedded artwork for "${entryPath}":`, error.message);
+  }
+  const lyricData = extractEmbeddedLyrics(metadata);
+
+  return {
+    id: entryPath,
+    path: entryPath,
+    src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
+    filename: path.basename(entryPath),
+    name: common.title || filename,
+    artist: common.artist || 'Unknown Artist',
+    album: common.album || 'Unknown Album',
+    albumArtist: common.albumartist || undefined,
+    albumArt,
+    lyrics: lyricData.lyrics,
+    syncedLyrics: lyricData.syncedLyrics,
+    metadataVersion: 5,
+    duration: metadata?.format?.duration || 0,
+    trackNumber: common.track?.no || undefined,
+    discNumber: common.disk?.no || undefined,
+    year: common.year || undefined,
+    genre: common.genre?.[0] || undefined,
+    composer: Array.isArray(common.composer)
+      ? common.composer[0]
+      : common.composer || undefined,
+    comment: Array.isArray(common.comment)
+      ? common.comment.join('\n')
+      : common.comment || undefined,
+    format: path.extname(entryPath).slice(1).toLowerCase(),
+    size: stat.size,
+    lastModified: stat.mtimeMs,
+  };
+};
+
 const scanMusicFolders = async (folders, cachedTracks = [], onProgress = () => {}) => {
   const tracks = [];
   const errors = [];
@@ -668,13 +803,6 @@ const scanMusicFolders = async (folders, cachedTracks = [], onProgress = () => {
   const seenPaths = new Set();
   const audioPaths = [];
   const cachedByPath = new Map(cachedTracks.map((track) => [track.path, track]));
-
-  const shouldReuseCachedTrack = (cachedTrack, stat) =>
-    cachedTrack &&
-    cachedTrack.metadataVersion >= 5 &&
-    cachedTrack.size === stat.size &&
-    cachedTrack.lastModified === stat.mtimeMs &&
-    typeof cachedTrack.path === 'string';
 
   const visitDirectory = async (directory) => {
     let entries;
@@ -707,62 +835,7 @@ const scanMusicFolders = async (folders, cachedTracks = [], onProgress = () => {
   onProgress({ phase: 'reading', scanned: 0, total: audioPaths.length, tracks: [] });
   const processAudioPath = async (entryPath, index) => {
     try {
-      const stat = await fs.promises.stat(entryPath);
-      const cachedTrack = cachedByPath.get(entryPath);
-      if (shouldReuseCachedTrack(cachedTrack, stat)) {
-        tracks[index] = {
-          ...cachedTrack,
-          id: entryPath,
-          path: entryPath,
-          src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
-        };
-        return;
-      }
-      let metadata = null;
-      try {
-        metadata = await parseFile(entryPath, { duration: true });
-      } catch (error) {
-        console.warn(`Could not read audio metadata for "${entryPath}":`, error.message);
-      }
-
-      const common = metadata?.common ?? {};
-      const filename = path.basename(entryPath, path.extname(entryPath));
-      let albumArt;
-      try {
-        albumArt = await saveEmbeddedArtwork(selectCover(common.picture), entryPath, stat);
-      } catch (error) {
-        console.warn(`Could not cache embedded artwork for "${entryPath}":`, error.message);
-      }
-      const lyricData = extractEmbeddedLyrics(metadata);
-
-      tracks[index] = {
-        id: entryPath,
-        path: entryPath,
-        src: `luna-media://track/${Buffer.from(entryPath).toString('base64url')}`,
-        filename: path.basename(entryPath),
-        name: common.title || filename,
-        artist: common.artist || 'Unknown Artist',
-        album: common.album || 'Unknown Album',
-        albumArtist: common.albumartist || undefined,
-        albumArt,
-        lyrics: lyricData.lyrics,
-        syncedLyrics: lyricData.syncedLyrics,
-        metadataVersion: 5,
-        duration: metadata?.format?.duration || 0,
-        trackNumber: common.track?.no || undefined,
-        discNumber: common.disk?.no || undefined,
-        year: common.year || undefined,
-        genre: common.genre?.[0] || undefined,
-        composer: Array.isArray(common.composer)
-          ? common.composer[0]
-          : common.composer || undefined,
-        comment: Array.isArray(common.comment)
-          ? common.comment.join('\n')
-          : common.comment || undefined,
-        format: path.extname(entryPath).slice(1).toLowerCase(),
-        size: stat.size,
-        lastModified: stat.mtimeMs,
-      };
+      tracks[index] = await readAudioTrack(entryPath, cachedByPath.get(entryPath));
     } catch (error) {
       seenPaths.delete(entryPath);
       errors.push(`Cannot index "${entryPath}": ${error.message}`);
@@ -848,7 +921,7 @@ const scanAndSaveLibrary = async (folders, cachedTracks = []) => {
   };
   reportProgress({ phase: 'discovering', scanned: 0, total: 0, tracks: [] });
   const { tracks, errors } = await scanMusicFolders(normalizedFolders, cachedTracks, reportProgress);
-  indexedAudioPaths = new Set(tracks.map((track) => track.path));
+  indexedAudioPaths = new Set([...tracks.map((track) => track.path), ...openedAudioPaths]);
   const library = await updateLibraryConfig(() => ({ folders: normalizedFolders, tracks }));
   sendProgress({ phase: 'complete', ...scanProgress, tracks: [], errors });
   return { ...library, playlists: await readPlaylists(), errors };
@@ -989,10 +1062,11 @@ const saveTrackMetadataToFile = async (trackPath, metadata) => {
 ipcMain.handle('load-music-library', async () => {
   const library = await readLibraryConfig();
   const playlists = await readPlaylists();
-  indexedAudioPaths = new Set(
-    library.tracks.filter((track) => typeof track.path === 'string').map((track) => track.path)
-  );
-  if (library.folders.length === 0) {
+  indexedAudioPaths = new Set([
+    ...library.tracks.filter((track) => typeof track.path === 'string').map((track) => track.path),
+    ...openedAudioPaths,
+  ]);
+  if (library.folders.length === 0 && pendingOpenAudioPaths.length === 0) {
     const selectedFolders = await selectMusicFolders();
     if (selectedFolders.length > 0) {
       const initialLibrary = await scanAndSaveLibrary(selectedFolders, library.tracks);
@@ -1000,6 +1074,41 @@ ipcMain.handle('load-music-library', async () => {
     }
   }
   return { ...library, playlists, errors: [] };
+});
+
+ipcMain.handle('activate-open-audio-files', () => {
+  rendererReadyForAudioFiles = true;
+  const filePaths = pendingOpenAudioPaths;
+  pendingOpenAudioPaths = [];
+  return filePaths;
+});
+
+ipcMain.handle('load-open-audio-files', async (_event, filePaths) => {
+  if (!Array.isArray(filePaths) || filePaths.length > 100) {
+    throw new TypeError('Open between 1 and 100 audio files at a time.');
+  }
+  const tracks = [];
+  const errors = [];
+  for (const filePath of filePaths) {
+    if (typeof filePath !== 'string') {
+      errors.push('An opened file path was invalid.');
+      continue;
+    }
+    const resolvedPath = path.resolve(filePath);
+    if (!AUDIO_EXTENSIONS.has(path.extname(resolvedPath).toLowerCase())) {
+      errors.push(`"${path.basename(resolvedPath)}" is not a supported audio format.`);
+      continue;
+    }
+    try {
+      const track = await readAudioTrack(resolvedPath);
+      openedAudioPaths.add(resolvedPath);
+      indexedAudioPaths.add(resolvedPath);
+      tracks.push(track);
+    } catch (error) {
+      errors.push(`Could not open "${path.basename(resolvedPath)}": ${error.message}`);
+    }
+  }
+  return { tracks, errors };
 });
 
 ipcMain.handle('is-local-track-available', async (_event, trackPath) => {
@@ -1018,6 +1127,20 @@ ipcMain.handle('is-local-track-available', async (_event, trackPath) => {
 
 ipcMain.handle('load-app-settings', () => readAppSettings());
 ipcMain.handle('save-app-settings', (_event, patch) => saveAppSettings(patch));
+ipcMain.handle('open-windows-default-apps', async () => {
+  if (process.platform !== 'win32') {
+    throw new Error('Windows Default apps settings are only available on Windows.');
+  }
+  await shell.openExternal('ms-settings:defaultapps?registeredAppUser=Luna%20Music');
+});
+ipcMain.handle('restart-app', async (_event, windowMaterial) => {
+  if (!['default', 'mica', 'frosty'].includes(windowMaterial)) {
+    throw new TypeError('Invalid app window material.');
+  }
+  await saveAppSettings({ windowMaterial });
+  app.relaunch();
+  app.quit();
+});
 ipcMain.handle('load-release-notes', async (_event, version) => {
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
     throw new TypeError('A valid app version is required to load release notes.');
@@ -1247,7 +1370,11 @@ ipcMain.on('taskbar-playback-state', (_event, isPlaying) => {
   if (typeof isPlaying === 'boolean') setTaskbarPlaybackState(isPlaying);
 });
 
-function createWindow() {
+async function createWindow() {
+  rendererReadyForAudioFiles = false;
+  const savedSettings = await readSettingsFile();
+  windowMaterialAppliedAtLaunch = normalizeWindowMaterial(savedSettings);
+  const usesWindowMaterial = windowMaterialAppliedAtLaunch !== 'default';
   mainWindow = new BrowserWindow({
     title: 'Luna Music',
     icon: path.join(
@@ -1265,8 +1392,12 @@ function createWindow() {
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
     },
-    frame: process.platform !== 'win32',
-    backgroundColor: '#111111',
+    frame: process.platform !== 'win32' || usesWindowMaterial,
+    transparent: false,
+    ...(usesWindowMaterial
+      ? { backgroundMaterial: windowMaterialAppliedAtLaunch === 'mica' ? 'mica' : 'acrylic' }
+      : {}),
+    backgroundColor: '#191a1f',
   });
 
   if (!app.isPackaged || process.env.NODE_ENV === 'development') {
@@ -1278,13 +1409,16 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    rendererReadyForAudioFiles = false;
   });
   if (process.platform === 'win32') setTaskbarPlaybackState(false);
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window-state-changed', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window-state-changed', false));
+  mainWindow.on('focus', () => mainWindow?.webContents.send('window-focus-changed', true));
+  mainWindow.on('blur', () => mainWindow?.webContents.send('window-focus-changed', false));
 }
 
-app.whenReady().then(() => {
+if (hasSingleInstanceLock) app.whenReady().then(async () => {
   nativeTheme.themeSource = 'system';
   void removeStaleMetadataCache();
   nativeTheme.on('updated', () => {
@@ -1381,7 +1515,7 @@ app.whenReady().then(() => {
     const fileStream = fs.createReadStream(filePath, { start, end });
     return new Response(Readable.toWeb(fileStream), { status, headers });
   });
-  createWindow();
+  await createWindow();
 });
 
 app.on('window-all-closed', () => {
@@ -1409,7 +1543,9 @@ app.on('before-quit', (event) => {
 
 app.on('activate', () => {
   if (mainWindow === null) {
-    createWindow();
+    void createWindow().catch((error) => {
+      console.error('Could not recreate the application window:', error);
+    });
   }
 });
 

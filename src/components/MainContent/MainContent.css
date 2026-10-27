@@ -4,7 +4,7 @@
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: #111111;
+  background: var(--bg-primary);
 }
 
 .content-header {

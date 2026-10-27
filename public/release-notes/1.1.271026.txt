@@ -1,0 +1,6 @@
+Luna Music v1.1.271026
+
+Highlights
+- Added Windows 11 Default, Mica, and Frosty (Acrylic glass) app background materials, applied after restarting Luna.
+- Refined the PlayBar layout with responsive track information and lyrics controls, and corrected the Apple-style volume slider thumb alignment.
+- Resolved Node.js and webpack-dev-server deprecation warnings during development.

@@ -1,5 +1,9 @@
 [
   {
+    "version": "1.1.261026",
+    "summary": "Luna now follows the Windows system accent color by default, with an option to use a custom accent instead. Centered PlayBar lyrics now use the space remaining between track information and player actions without letting long song information shrink the lyrics area unnecessarily. Added a first-launch-per-version releas"
+  },
+  {
     "version": "1.0.1",
     "summary": "Added a custom Luna app icon across the app and Windows installer. Smoothed PlayBar transitions and improved lyric layout to keep lyrics clear of track information and controls. Added synchronized lyrics visibility controls for the PlayBar and Now Playing views."
   },

@@ -8,6 +8,11 @@ export interface MusicLibraryResponse {
   playlists?: Playlist[];
 }
 
+export interface OpenAudioFilesResponse {
+  tracks: Track[];
+  errors: string[];
+}
+
 export interface ReleaseNotesData {
   current: string;
   previous: Array<{ version: string; summary: string }>;
@@ -40,6 +45,7 @@ export interface TrackMetadataUpdate {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type WindowMaterial = 'default' | 'mica' | 'frosty';
 export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
 export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
 export type VisualizerStyle =
@@ -72,9 +78,12 @@ export interface AppSettings {
   repeatMode: 'off' | 'one' | 'all';
   showBrowseSection: boolean;
   showRadioSection: boolean;
+  windowMaterial: WindowMaterial;
   systemTheme: 'light' | 'dark';
   systemAccentColor: string | null;
   platform: string;
+  supportsWindowMaterial: boolean;
+  windowMaterialAppliedAtLaunch: WindowMaterial;
 }
 
 declare global {
@@ -86,11 +95,16 @@ declare global {
       toggleWindowMaximize: () => Promise<void>;
       getWindowState: () => Promise<boolean>;
       closeWindow: () => Promise<void>;
+      restartApp: (windowMaterial: WindowMaterial) => Promise<void>;
       isLocalTrackAvailable: (trackPath: string) => Promise<boolean>;
+      activateOpenAudioFiles: () => Promise<string[]>;
+      loadOpenAudioFiles: (filePaths: string[]) => Promise<OpenAudioFilesResponse>;
+      openWindowsDefaultApps: () => Promise<void>;
       loadMusicLibrary: () => Promise<MusicLibraryResponse>;
       onMusicLibraryScanProgress: (
         callback: (progress: MusicLibraryScanProgress) => void
       ) => () => void;
+      onOpenAudioFiles: (callback: (filePaths: string[]) => void) => () => void;
       loadAppSettings: () => Promise<AppSettings>;
       loadReleaseNotes: (version: string) => Promise<ReleaseNotesData>;
       audiomackHasCredentials: () => Promise<boolean>;
@@ -121,6 +135,7 @@ declare global {
             | 'repeatMode'
             | 'showBrowseSection'
             | 'showRadioSection'
+            | 'windowMaterial'
           >
         >
       ) => Promise<AppSettings>;
@@ -132,6 +147,7 @@ declare global {
         metadata: TrackMetadataUpdate
       ) => Promise<MusicLibraryResponse>;
       onWindowStateChanged: (callback: (isMaximized: boolean) => void) => () => void;
+      onWindowFocusChanged: (callback: (isFocused: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
       setTaskbarPlaybackState: (isPlaying: boolean) => void;
       onTaskbarPrevious: (callback: () => void) => () => void;

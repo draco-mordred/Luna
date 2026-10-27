@@ -1,7 +1,13 @@
 import { memo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { IconStyle, SeekbarStyle, VisualizerStyle } from '../types/electron';
+import type {
+  IconStyle,
+  SeekbarStyle,
+  VisualizerStyle,
+  WindowMaterial,
+} from '../types/electron';
 import packageMetadata from '../../package.json';
+import ReleaseNotesDialog from '../components/ReleaseNotesDialog';
 import './Settings.css';
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -45,6 +51,13 @@ interface SettingsPageProps {
   onShowBrowseSectionChange: (show: boolean) => void;
   showRadioSection: boolean;
   onShowRadioSectionChange: (show: boolean) => void;
+  isWindowsDesktopApp: boolean;
+  supportsWindowMaterial: boolean;
+  windowMaterial: WindowMaterial;
+  onWindowMaterialChange: (material: WindowMaterial) => void;
+  materialRestartRequired: boolean;
+  onRestartApp: () => void;
+  onOpenWindowsDefaultApps: () => void;
 }
 
 type SettingsSection = {
@@ -93,9 +106,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onShowBrowseSectionChange,
   showRadioSection,
   onShowRadioSectionChange,
+  isWindowsDesktopApp,
+  supportsWindowMaterial,
+  windowMaterial,
+  onWindowMaterialChange,
+  materialRestartRequired,
+  onRestartApp,
+  onOpenWindowsDefaultApps,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [showAboutReleaseNotes, setShowAboutReleaseNotes] = useState(false);
   const [activeSection, setActiveSection] = useState(() =>
     location.pathname.replace(/\/+$/, '').endsWith('/about') ? 'about' : 'appearance'
   );
@@ -195,6 +216,68 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </select>
             </div>
           </div>
+          {isWindowsDesktopApp && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>App background material</h3>
+                <p>
+                  {supportsWindowMaterial
+                    ? materialRestartRequired
+                      ? 'Restart Luna to apply this change'
+                      : 'Mica adds a subtle wallpaper tint; Frosty uses a stronger Acrylic blur'
+                    : 'Requires Windows 11 version 22H2 or newer'}
+                </p>
+              </div>
+              <div className='setting-control window-material-control'>
+                <select
+                  className='appearance-select'
+                  aria-label='App background material'
+                  value={windowMaterial}
+                  onChange={(event) =>
+                    onWindowMaterialChange(event.currentTarget.value as WindowMaterial)
+                  }
+                >
+                  <option value='default'>Default</option>
+                  <option value='mica' disabled={!supportsWindowMaterial}>
+                    Mica
+                  </option>
+                  <option value='frosty' disabled={!supportsWindowMaterial}>
+                    Frosty
+                  </option>
+                </select>
+                {supportsWindowMaterial && materialRestartRequired && (
+                  <button
+                    type='button'
+                    className='manage-button'
+                    onClick={onRestartApp}
+                  >
+                    Restart now
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {isWindowsDesktopApp && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>Default audio player</h3>
+                <p>
+                  Install Luna with the Windows setup installer to register it, then choose it
+                  for supported formats in Windows Default apps. Windows requires you to confirm
+                  each format.
+                </p>
+              </div>
+              <div className='setting-control default-audio-player-control'>
+                <button
+                  type='button'
+                  className='manage-button'
+                  onClick={onOpenWindowsDefaultApps}
+                >
+                  Open Windows Default Apps
+                </button>
+              </div>
+            </div>
+          )}
           <div className='setting-item'>
             <div className='setting-info'>
               <h3>Song Seekbar Style</h3>
@@ -541,16 +624,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className='settings-section-content about-content'>
           <div className='about-hero'>
             <div className='about-logo'>
-              <span className='material-symbols-outlined' aria-hidden='true'>
-                music_note
-              </span>
+              <img
+                src={window.electronAPI ? `${process.env.PUBLIC_URL}/icon.png` : '/icon.png'}
+                alt='Luna Music app icon'
+              />
             </div>
             <div className='about-heading'>
               <p className='about-eyebrow'>YOUR MUSIC, YOUR WAY</p>
               <h2>Luna Music</h2>
-              <p className='version'>Version {packageMetadata.version}</p>
+              <div className='about-version-row'>
+                <p className='version'>Version {packageMetadata.version}</p>
+                <button
+                  type='button'
+                  className='about-release-notes-button'
+                  onClick={() => setShowAboutReleaseNotes(true)}
+                >
+                  View release notes
+                </button>
+              </div>
             </div>
           </div>
+          {showAboutReleaseNotes && (
+            <ReleaseNotesDialog
+              version={packageMetadata.version}
+              onClose={() => setShowAboutReleaseNotes(false)}
+            />
+          )}
           <p className='about-description'>
             A personal music player for your local library. Enjoy your collection with a
             customizable player, synchronized lyrics, and an audio visualizer.

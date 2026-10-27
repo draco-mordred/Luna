@@ -75,6 +75,10 @@ Visit [GitHub Releases](https://github.com/draco-mordred/Luna/releases/latest) a
 
 Luna indexes supported audio files in selected folders. In the desktop app, right-click a track to edit supported metadata and embedded lyrics. Changes are written to the audio file itself. MP3, FLAC, M4A/MP4, and OGG/OGA files support metadata editing; other supported library formats may still be playable.
 
+On supported Windows 11 versions, choose **Default**, **Mica**, or **Frosty** in **Settings → Appearance → App background material**. Mica uses Windows' subtle wallpaper-tinted material, while Frosty uses Acrylic for a stronger frosted-glass blur. Both material modes use Windows' native window frame and rounded corners; Luna must restart to apply a selection.
+
+The Windows setup installer registers Luna for the audio formats it supports. To make Luna the default, open **Settings → Appearance → Default audio player**, then choose Luna for each desired format in Windows **Default apps**. Windows requires the user to confirm default-app choices. Opening an associated file launches Luna and plays it; when multiple files are opened together, Luna queues them in the selected order. The portable build does not register file associations.
+
 ## Privacy and online services
 
 Your local music library is indexed on your device. Online features are optional and use third-party services:
@@ -132,6 +136,8 @@ npm run release:build
 Each version needs a plain-text file at `public/release-notes/<version>.txt`. When preparing a release, add the completed change and bug-fix summary to this file; the app shows it on the first launch of that version, followed by brief summaries from `public/release-notes/previous-releases.json`, and remembers when the dialog is dismissed. Creating a new release notes file also refreshes previous-version summaries from archived notes. The build checks that the current version's notes exist and are not left as the starter placeholder. To start a notes file after updating the version, run `npm run release:notes:create`, then edit the generated file before building.
 
 The release build updates `package.json` and `package-lock.json`, then builds the Electron installers. If the version was advanced and its notes file is not ready, create and complete that file, then run `npm run electron:build`. It does not create a Git commit, tag, or GitHub Release; commit the version change and notes, create and push a matching `v<version>` tag, and attach the installer from `dist/` to a GitHub Release. For a preview without changing files, use `npm run release:version:check`.
+
+Copilot must only run version and release-notes scripts when release preparation or a version preview is explicitly requested. The repository Copilot instructions document this workflow, and a pre-tool hook asks for approval before release scripts or Electron build/package commands run. Enable Copilot hooks in VS Code for this safeguard to run; it applies to Copilot tool calls, not commands you run yourself in a terminal.
 
 ## Support
 

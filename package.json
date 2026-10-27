@@ -1,6 +1,6 @@
 {
   "name": "luna-player",
-  "version": "1.1.261026",
+  "version": "1.1.271026",
   "private": true,
   "main": "public/electron.js",
   "description": "A music player built with React, Electron, and Capacitor.",
@@ -31,6 +31,7 @@
     "dev": "node scripts/dev-electron.js",
     "start": "react-scripts start",
     "build": "node scripts/check-release-notes.js && react-scripts build",
+    "postinstall": "patch-package",
     "eslint": "eslint ./src",
     "prettier": "prettier --check **",
     "prettier fix": "prettier --write **",
@@ -85,6 +86,7 @@
     "eslint-plugin-prettier": "^5.5.6",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "patch-package": "^8.0.1",
     "prettier": "^3.8.4",
     "typescript-eslint": "^8.61.0",
     "wait-on": "^7.0.1"

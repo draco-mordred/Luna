@@ -28,6 +28,7 @@ import type {
   IconStyle,
   MusicLibraryResponse,
   MusicLibraryScanProgress,
+  PlayerWindowMode,
   SeekbarStyle,
   ThemeMode,
   TrackMetadataUpdate,
@@ -331,6 +332,12 @@ const App = () => {
   );
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(getInitialSystemTheme);
   const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
+  const [playerWindowMode, setPlayerWindowMode] = useState<PlayerWindowMode>('normal');
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [lyricOffsetSteps, setLyricOffsetSteps] = useState(() => {
+    const savedOffset = Number(window.localStorage.getItem('luna-lyrics-offset-steps'));
+    return Number.isInteger(savedOffset) ? Math.max(-5, Math.min(5, savedOffset)) : 0;
+  });
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(getInitialCrossfadeSeconds);
   const [iconStyle, setIconStyle] = useState<IconStyle>(getInitialIconStyle);
   const [seekbarStyle, setSeekbarStyle] = useState<SeekbarStyle>(getInitialSeekbarStyle);
@@ -676,6 +683,15 @@ const App = () => {
   useEffect(() => {
     if (!window.electronAPI) return;
     window.electronAPI
+      .getWindowMode()
+      .then(setPlayerWindowMode)
+      .catch((error: unknown) => console.error('Could not read the player window mode:', error));
+    return window.electronAPI.onWindowModeChanged(setPlayerWindowMode);
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    window.electronAPI
       .loadAppSettings()
       .then((settings: AppSettings) => {
         setThemeMode(settings.themeMode);
@@ -687,6 +703,7 @@ const App = () => {
         setLastPlayedTrackPath(settings.lastPlayedTrackPath);
         setSystemTheme(settings.systemTheme);
         setSystemAccentColor(settings.systemAccentColor);
+        setAlwaysOnTop(settings.alwaysOnTop ?? false);
         setCrossfadeSeconds(
           settings.crossfadeSeconds === undefined
             ? getInitialCrossfadeSeconds()
@@ -927,6 +944,8 @@ const App = () => {
     window.localStorage.setItem('luna-window-material', windowMaterial);
     window.localStorage.setItem('luna-accent', accentColor);
     window.localStorage.setItem('luna-use-system-accent', String(useSystemAccentColor));
+    window.localStorage.setItem('luna-always-on-top', String(alwaysOnTop));
+    window.localStorage.setItem('luna-lyrics-offset-steps', String(lyricOffsetSteps));
     window.localStorage.setItem(
       'luna-crossfade-seconds',
       String(normalizeCrossfadeSeconds(crossfadeSeconds))
@@ -957,6 +976,7 @@ const App = () => {
           windowMaterial,
           accentColor,
           useSystemAccentColor,
+          alwaysOnTop,
           lastPlayedTrackPath,
           crossfadeSeconds: normalizeCrossfadeSeconds(crossfadeSeconds),
           iconStyle,
@@ -984,6 +1004,8 @@ const App = () => {
     androidMaterialYouEnabled,
     isAndroidApp,
     useSystemAccentColor,
+    alwaysOnTop,
+    lyricOffsetSteps,
     windowMaterial,
     crossfadeSeconds,
     iconStyle,
@@ -2071,6 +2093,38 @@ const App = () => {
       setLibraryError('Could not open Windows Default apps settings.');
     });
   }, []);
+  const handleAlwaysOnTopChange = useCallback((enabled: boolean) => {
+    setAlwaysOnTop(enabled);
+    void window.electronAPI?.setAlwaysOnTop(enabled).catch((error: unknown) => {
+      console.error('Could not update always-on-top behavior:', error);
+      setLibraryError('Could not update the always-on-top setting.');
+    });
+  }, []);
+  const enterPlayerMode = useCallback(async (mode: 'mini' | 'fullscreen') => {
+    const api = window.electronAPI;
+    if (!api) return;
+    try {
+      if (mode === 'mini') await api.enterMiniPlayer();
+      else await api.enterFullscreenPlayer();
+      setPlayerWindowMode(mode);
+      setOpenNowPlayingRequest((request) => request + 1);
+    } catch (error) {
+      console.error(`Could not enter ${mode} player mode:`, error);
+      setLibraryError(`Could not enter ${mode} player mode.`);
+    }
+  }, []);
+  const exitPlayerMode = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api) return;
+    try {
+      await api.exitPlayerMode();
+      setPlayerWindowMode('normal');
+      window.dispatchEvent(new Event('luna-collapse-now-playing'));
+    } catch (error) {
+      console.error('Could not exit the player mode:', error);
+      setLibraryError('Could not return to the normal player window.');
+    }
+  }, []);
 
   useLayoutEffect(() => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
@@ -2090,14 +2144,17 @@ const App = () => {
     root.setAttribute('data-window-material', windowMaterialAppliedAtLaunch);
     root.setAttribute('data-icon-style', iconStyle);
     root.setAttribute('data-seekbar-style', seekbarStyle);
+    root.setAttribute('data-player-window-mode', playerWindowMode);
     root.style.setProperty('--accent', activeAccent);
     root.style.setProperty('--accent-rgb', `${red}, ${green}, ${blue}`);
     root.style.setProperty('--accent-muted', `rgba(${red}, ${green}, ${blue}, 0.12)`);
-    const systemRgb = colorToRgbString(systemAccentColor ?? activeAccent)
+    const appliedSystemAccent =
+      useSystemAccentColor && systemAccentColor ? systemAccentColor : activeAccent;
+    const systemRgb = colorToRgbString(appliedSystemAccent)
       .split(',')
       .slice(0, 3)
       .map((part) => Number.parseInt(part.trim(), 10));
-    root.style.setProperty('--system-accent', systemAccentColor ?? activeAccent);
+    root.style.setProperty('--system-accent', appliedSystemAccent);
     root.style.setProperty('--system-accent-rgb', systemRgb.join(', '));
 
     const playerAccent = trackAccentColor ?? activeAccent;
@@ -2218,6 +2275,7 @@ const App = () => {
     themeMode,
     trackAccentColor,
     windowMaterialAppliedAtLaunch,
+    playerWindowMode,
   ]);
 
   // Toggle sidebar
@@ -2231,9 +2289,10 @@ const App = () => {
           exiting={initialLibraryLoaded && androidAppearanceLoaded}
         />
       )}
-      {window.electronAPI?.platform === 'win32' && windowMaterialAppliedAtLaunch === 'default' && (
-        <WindowTitleBar />
-      )}
+      {window.electronAPI?.platform === 'win32' &&
+        (windowMaterialAppliedAtLaunch === 'default' || playerWindowMode !== 'normal') && (
+          <WindowTitleBar />
+        )}
       <div className='app-container'>
         {/* Sidebar */}
         <Sidebar
@@ -2470,6 +2529,8 @@ const App = () => {
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
                           isDesktopApp={Boolean(window.electronAPI)}
+                          alwaysOnTop={alwaysOnTop}
+                          onAlwaysOnTopChange={handleAlwaysOnTopChange}
                           isAndroidApp={isAndroidApp}
                           androidBackgroundPlaybackEnabled={androidBackgroundPlaybackEnabled}
                           onAndroidBackgroundPlaybackChange={setAndroidBackgroundPlaybackEnabled}
@@ -2543,6 +2604,8 @@ const App = () => {
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
                           isDesktopApp={Boolean(window.electronAPI)}
+                          alwaysOnTop={alwaysOnTop}
+                          onAlwaysOnTopChange={handleAlwaysOnTopChange}
                           isAndroidApp={isAndroidApp}
                           androidBackgroundPlaybackEnabled={androidBackgroundPlaybackEnabled}
                           onAndroidBackgroundPlaybackChange={setAndroidBackgroundPlaybackEnabled}
@@ -2666,6 +2729,15 @@ const App = () => {
           onNext={handleNext}
           onVolumeChange={handleVolumeChange}
           onSeek={handleSeek}
+          isDesktopApp={Boolean(window.electronAPI)}
+          playerWindowMode={playerWindowMode}
+          onEnterMiniPlayer={() => void enterPlayerMode('mini')}
+          onEnterFullscreenPlayer={() => void enterPlayerMode('fullscreen')}
+          onExitPlayerMode={() => void exitPlayerMode()}
+          isShuffled={isShuffled}
+          onToggleShuffle={handleToggleShuffle}
+          repeatMode={repeatMode}
+          onToggleRepeat={handleToggleRepeat}
         />
       ) : (
         <PlayBar
@@ -2701,6 +2773,13 @@ const App = () => {
           onQueueTracks={handleQueueTracks}
           openNowPlayingRequest={openNowPlayingRequest}
           toggleLyricsRequest={toggleLyricsRequest}
+          isDesktopApp={Boolean(window.electronAPI)}
+          playerWindowMode={playerWindowMode}
+          lyricOffsetSteps={lyricOffsetSteps}
+          onLyricOffsetStepsChange={setLyricOffsetSteps}
+          onEnterMiniPlayer={() => void enterPlayerMode('mini')}
+          onEnterFullscreenPlayer={() => void enterPlayerMode('fullscreen')}
+          onExitPlayerMode={() => void exitPlayerMode()}
         />
       )}
       {playlistDialog && (

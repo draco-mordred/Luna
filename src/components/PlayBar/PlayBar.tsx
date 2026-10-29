@@ -5,7 +5,7 @@ import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
 import './PlayBar.css';
-import type { VisualizerStyle } from '../../types/electron';
+import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
 import type { Track } from '../../services/MusicLibrary';
 
 const COLLAPSED_HEIGHT = 126.4;
@@ -62,6 +62,13 @@ interface PlayBarProps {
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
   openNowPlayingRequest: number;
   toggleLyricsRequest: number;
+  isDesktopApp: boolean;
+  playerWindowMode: PlayerWindowMode;
+  lyricOffsetSteps: number;
+  onLyricOffsetStepsChange: (steps: number) => void;
+  onEnterMiniPlayer: () => void;
+  onEnterFullscreenPlayer: () => void;
+  onExitPlayerMode: () => void;
 }
 
 const DEFAULT_ALBUM_ART = (
@@ -352,6 +359,43 @@ const MiniSyncedLyrics = memo<{ text: string }>(({ text }) => {
   );
 });
 
+const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text, className }) => {
+  const elementRef = useRef<HTMLDivElement>(null);
+  const isOverflowingRef = useRef(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) return undefined;
+    const updateOverflow = () => {
+      const textContent = element.firstElementChild;
+      if (!(textContent instanceof HTMLElement)) return;
+      const nextIsOverflowing = textContent.getBoundingClientRect().width > element.clientWidth + 1;
+      if (nextIsOverflowing === isOverflowingRef.current) return;
+      isOverflowingRef.current = nextIsOverflowing;
+      setIsOverflowing(nextIsOverflowing);
+    };
+    const frame = window.requestAnimationFrame(updateOverflow);
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(element);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [text]);
+
+  return (
+    <div
+      ref={elementRef}
+      className={`player-mode-marquee ${className} ${isOverflowing ? 'is-overflowing' : ''}`}
+      title={text}
+    >
+      <span>{text}</span>
+      {isOverflowing && <span aria-hidden='true'>{text}</span>}
+    </div>
+  );
+};
+
 const PlayBar: React.FC<PlayBarProps> = ({
   track,
   activeAudio,
@@ -385,11 +429,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onQueueTracks,
   openNowPlayingRequest,
   toggleLyricsRequest,
+  isDesktopApp,
+  playerWindowMode,
+  lyricOffsetSteps,
+  onLyricOffsetStepsChange,
+  onEnterMiniPlayer,
+  onEnterFullscreenPlayer,
+  onExitPlayerMode,
 }) => {
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: trackArtworkUrl } = useAndroidAlbumArtwork(track, true);
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
-    enabled: showArtistImageBackground,
+    enabled: showArtistImageBackground || playerWindowMode !== 'normal',
+    allowDownload: showArtistImageBackground,
   });
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
@@ -406,6 +458,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [playbackPosition, setPlaybackPosition] = useState({ currentTime: 0, duration: 0 });
   const currentTime = playbackPosition.currentTime;
   const duration = playbackPosition.duration || track?.duration || 0;
+  const lyricsPlaybackTime = Math.max(0, currentTime - lyricOffsetSteps * 0.1);
   const playBarRef = useRef<HTMLDivElement>(null);
   const dragStartYRef = useRef<number | null>(null);
   const dragStartHeightRef = useRef(COLLAPSED_HEIGHT);
@@ -446,6 +499,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
     setShowLyrics(visible);
     if (syncLyricsDisplay) setShowMiniSyncedLyrics(visible);
   };
+  const handleCollapse = () => {
+    currentHeightRef.current = getExpandedHeight();
+    setState('collapsed');
+    setIsDragging(false);
+  };
 
   useEffect(() => {
     if (openNowPlayingRequest > 0) setState('expanded');
@@ -456,8 +514,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
       if (state === 'expanded') handleCollapse();
     };
     window.addEventListener('luna-android-collapse-now-playing', collapseNowPlaying);
-    return () =>
+    window.addEventListener('luna-collapse-now-playing', collapseNowPlaying);
+    return () => {
       window.removeEventListener('luna-android-collapse-now-playing', collapseNowPlaying);
+      window.removeEventListener('luna-collapse-now-playing', collapseNowPlaying);
+    };
   }, [state]);
 
   useEffect(() => {
@@ -584,7 +645,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
     let currentIndex = 0;
     while (low <= high) {
       const middle = Math.floor((low + high) / 2);
-      if (lines[middle].time <= currentTime) {
+      if (lines[middle].time <= lyricsPlaybackTime) {
         currentIndex = middle;
         low = middle + 1;
       } else {
@@ -597,7 +658,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       currentIndex -= 1;
     }
     return currentIndex;
-  }, [currentTime, track?.syncedLyrics]);
+  }, [lyricsPlaybackTime, track?.syncedLyrics]);
 
   const currentSyncedLyric = track?.syncedLyrics?.[currentSyncedLyricIndex];
   const currentSyncedLyricText = useMemo(() => {
@@ -737,12 +798,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
     handleLyricsToggle();
   };
 
-  const handleCollapse = () => {
-    currentHeightRef.current = getExpandedHeight();
-    setState('collapsed');
-    setIsDragging(false);
-  };
-
   const isLongTrackTitle = (track?.name?.length ?? 0) > 28;
 
   const handleTrackMenuAction = (
@@ -830,6 +885,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
         return 'repeat';
     }
   };
+  const lyricOffsetLabel = `${lyricOffsetSteps > 0 ? '+' : ''}${(lyricOffsetSteps * 0.1).toFixed(1)}s`;
 
   const expandProgress = isDragging
     ? getExpandProgress(currentHeightRef.current)
@@ -857,7 +913,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
         className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}`}
         onPointerDown={handleDragStart}
       >
-        {artistBackgroundImage && (
+        {playerWindowMode !== 'normal' && (
+          <div className='player-mode-background' aria-hidden='true'>
+            {(artistBackgroundImage || trackArtworkUrl) && (
+              <img src={artistBackgroundImage || trackArtworkUrl || ''} alt='' />
+            )}
+            <div className='player-mode-background-overlay' />
+          </div>
+        )}
+        {artistBackgroundImage && playerWindowMode === 'normal' && (
           <div className='now-playing-artist-background' aria-hidden='true'>
             <img src={artistBackgroundImage} alt='' />
             <div className='now-playing-artist-background-overlay' />
@@ -867,14 +931,40 @@ const PlayBar: React.FC<PlayBarProps> = ({
           <button
             type='button'
             className='now-playing-close'
-            aria-label='Close Now Playing'
-            onClick={handleCollapse}
+            aria-label={playerWindowMode === 'normal' ? 'Close Now Playing' : 'Exit player mode'}
+            onClick={playerWindowMode === 'normal' ? handleCollapse : onExitPlayerMode}
           >
             <span className='material-symbols-outlined' aria-hidden='true'>
-              keyboard_arrow_down
+              {playerWindowMode === 'normal' ? 'keyboard_arrow_down' : 'close_fullscreen'}
             </span>
           </button>
           <span>Now Playing</span>
+          {isDesktopApp && playerWindowMode === 'normal' && (
+            <div className='now-playing-mode-actions'>
+              <button
+                type='button'
+                className='now-playing-mode-button'
+                aria-label='Enter mini player mode'
+                title='Enter mini player mode'
+                onClick={onEnterMiniPlayer}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  picture_in_picture_alt
+                </span>
+              </button>
+              <button
+                type='button'
+                className='now-playing-mode-button'
+                aria-label='Enter fullscreen player mode'
+                title='Enter fullscreen player mode'
+                onClick={onEnterFullscreenPlayer}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  fullscreen
+                </span>
+              </button>
+            </div>
+          )}
           <button
             type='button'
             className={`now-playing-queue-toggle ${showPlayQueue ? 'active' : ''}`}
@@ -1023,6 +1113,37 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     </span>
                     {showSyncedLyrics ? 'Synced' : 'Plain'}
                   </button>
+                )}
+                {showSyncedLyrics && Boolean(track.syncedLyrics?.length) && (
+                  <div className='lyrics-delay-controls' aria-label='Synchronized lyrics timing'>
+                    <button
+                      type='button'
+                      className='lyrics-delay-button'
+                      aria-label='Show synchronized lyrics 0.1 seconds earlier'
+                      title='Show lyrics earlier'
+                      disabled={lyricOffsetSteps <= -5}
+                      onClick={() => onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        fast_rewind
+                      </span>
+                    </button>
+                    <span aria-live='polite' title='Positive values delay lyrics'>
+                      {lyricOffsetLabel}
+                    </span>
+                    <button
+                      type='button'
+                      className='lyrics-delay-button'
+                      aria-label='Delay synchronized lyrics by 0.1 seconds'
+                      title='Delay lyrics'
+                      disabled={lyricOffsetSteps >= 5}
+                      onClick={() => onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        fast_forward
+                      </span>
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -1229,6 +1350,104 @@ const PlayBar: React.FC<PlayBarProps> = ({
             </button>
           </div>
         </div>
+        {playerWindowMode !== 'normal' && (
+          <div className='player-mode-dock'>
+            <div className='player-mode-dock-info'>
+              <PlayerModeMarquee
+                className='player-mode-dock-title'
+                text={track?.name || 'No Track Selected'}
+              />
+              <PlayerModeMarquee
+                className='player-mode-dock-subtitle'
+                text={`${track?.artist || 'Unknown Artist'} · ${track?.album || 'Unknown Album'}`}
+              />
+            </div>
+            <div className='player-mode-dock-controls'>
+              <button
+                type='button'
+                className={`control-btn ${isShuffled ? 'active' : ''}`}
+                aria-label='Toggle shuffle'
+                aria-pressed={isShuffled}
+                onClick={handleShuffle}
+                disabled={!track}
+              >
+                <TransportIcon name='shuffle' />
+              </button>
+              <button
+                type='button'
+                className='control-btn'
+                aria-label='Previous track'
+                onClick={onPrevious}
+                disabled={!track}
+              >
+                <TransportIcon name='previous' />
+              </button>
+              <button
+                type='button'
+                className='control-btn play-pause'
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+                onClick={onPlayPause}
+                disabled={!track}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {isPlaying ? 'pause' : 'play_arrow'}
+                </span>
+              </button>
+              <button
+                type='button'
+                className='control-btn'
+                aria-label='Next track'
+                onClick={onNext}
+                disabled={!track}
+              >
+                <TransportIcon name='next' />
+              </button>
+              <button
+                type='button'
+                className={`control-btn ${repeatMode !== 'off' ? 'active' : ''}`}
+                aria-label='Toggle repeat'
+                aria-pressed={repeatMode !== 'off'}
+                onClick={handleRepeat}
+                disabled={!track}
+              >
+                <TransportIcon name={getRepeatIcon()} />
+              </button>
+              {lyricsEnabled && hasSyncedLyrics && (
+                <button
+                  type='button'
+                  className={`control-btn ${showLyrics ? 'active' : ''}`}
+                  aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                  aria-pressed={showLyrics}
+                  onClick={handleLyricsToggle}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    lyrics
+                  </span>
+                </button>
+              )}
+            </div>
+            <button type='button' className='player-mode-exit' onClick={onExitPlayerMode}>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                close_fullscreen
+              </span>
+              Exit player mode
+            </button>
+            <div className='player-mode-dock-progress'>
+              <span>{formatTime(currentTime)}</span>
+              <input
+                aria-label='Track progress'
+                type='range'
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={Math.min(currentTime, duration)}
+                onChange={(event) => seekTo(event.currentTarget.valueAsNumber)}
+                disabled={!track}
+              />
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Collapsed View - Mini Player */}
@@ -1481,6 +1700,32 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
 
+          {isDesktopApp && (
+            <>
+              <button
+                type='button'
+                className='control-btn player-mode-entry'
+                aria-label='Enter mini player mode'
+                title='Enter mini player mode'
+                onClick={onEnterMiniPlayer}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  picture_in_picture_alt
+                </span>
+              </button>
+              <button
+                type='button'
+                className='control-btn player-mode-entry'
+                aria-label='Enter fullscreen player mode'
+                title='Enter fullscreen player mode'
+                onClick={onEnterFullscreenPlayer}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  fullscreen
+                </span>
+              </button>
+            </>
+          )}
           <button
             className='control-btn expand-btn'
             onClick={handleAlbumArtClick}

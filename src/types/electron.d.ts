@@ -84,7 +84,10 @@ export interface AppSettings {
   platform: string;
   supportsWindowMaterial: boolean;
   windowMaterialAppliedAtLaunch: WindowMaterial;
+  alwaysOnTop: boolean;
 }
+
+export type PlayerWindowMode = 'normal' | 'mini' | 'fullscreen';
 
 declare global {
   interface Window {
@@ -94,6 +97,11 @@ declare global {
       maximizeWindow: () => Promise<void>;
       toggleWindowMaximize: () => Promise<void>;
       getWindowState: () => Promise<boolean>;
+      getWindowMode: () => Promise<PlayerWindowMode>;
+      enterMiniPlayer: () => Promise<void>;
+      enterFullscreenPlayer: () => Promise<void>;
+      exitPlayerMode: () => Promise<void>;
+      setAlwaysOnTop: (enabled: boolean) => Promise<void>;
       closeWindow: () => Promise<void>;
       restartApp: (windowMaterial: WindowMaterial) => Promise<void>;
       isLocalTrackAvailable: (trackPath: string) => Promise<boolean>;
@@ -136,6 +144,7 @@ declare global {
             | 'showBrowseSection'
             | 'showRadioSection'
             | 'windowMaterial'
+            | 'alwaysOnTop'
           >
         >
       ) => Promise<AppSettings>;
@@ -147,6 +156,7 @@ declare global {
         metadata: TrackMetadataUpdate
       ) => Promise<MusicLibraryResponse>;
       onWindowStateChanged: (callback: (isMaximized: boolean) => void) => () => void;
+      onWindowModeChanged: (callback: (mode: PlayerWindowMode) => void) => () => void;
       onWindowFocusChanged: (callback: (isFocused: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
       onSystemAccentColorChanged: (callback: (color: string) => void) => () => void;

@@ -152,6 +152,10 @@
   color: var(--system-accent);
 }
 
+.nav-button.active .nav-icon {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
 .nav-icon {
   font-family: 'Material Symbols Outlined';
   font-feature-settings: 'liga';

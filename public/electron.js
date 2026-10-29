@@ -30,6 +30,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow;
+let playerWindowMode = 'normal';
+let normalWindowBounds = null;
+let normalWindowWasMaximized = false;
 let windowMaterialAppliedAtLaunch = 'default';
 let indexedAudioPaths = new Set();
 const openedAudioPaths = new Set();
@@ -160,6 +163,7 @@ const DEFAULT_SETTINGS = {
   showBrowseSection: true,
   showRadioSection: true,
   windowMaterial: 'default',
+  alwaysOnTop: false,
 };
 let appSettingsWriteQueue = Promise.resolve();
 let settingsFlushInProgress = false;
@@ -446,6 +450,8 @@ const readAppSettings = async () => {
         ? saved.showRadioSection
         : DEFAULT_SETTINGS.showRadioSection,
     windowMaterial: normalizeWindowMaterial(saved),
+    alwaysOnTop:
+      typeof saved.alwaysOnTop === 'boolean' ? saved.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
     systemTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
     systemAccentColor,
     platform: process.platform,
@@ -472,6 +478,7 @@ const readAppSettings = async () => {
     saved.showBrowseSection !== settings.showBrowseSection ||
     saved.showRadioSection !== settings.showRadioSection ||
     saved.windowMaterial !== settings.windowMaterial ||
+    saved.alwaysOnTop !== settings.alwaysOnTop ||
     (saved.useMicaMaterial !== undefined && saved.windowMaterial === undefined)
   ) {
     await persistSettings({ ...saved, ...settings });
@@ -608,10 +615,7 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Invalid repeat mode.');
     next.repeatMode = patch.repeatMode;
   }
-  for (const key of [
-    'showBrowseSection',
-    'showRadioSection',
-  ]) {
+  for (const key of ['showBrowseSection', 'showRadioSection']) {
     if (patch[key] !== undefined) {
       if (typeof patch[key] !== 'boolean') throw new TypeError(`${key} must be a boolean.`);
       next[key] = patch[key];
@@ -625,6 +629,13 @@ const updateAppSettings = async (patch) => {
       throw new Error('Window materials require Windows 11 version 22H2 or newer.');
     }
     next.windowMaterial = patch.windowMaterial;
+  }
+  if (patch.alwaysOnTop !== undefined) {
+    if (typeof patch.alwaysOnTop !== 'boolean') {
+      throw new TypeError('Always on top must be a boolean.');
+    }
+    next.alwaysOnTop = patch.alwaysOnTop;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(patch.alwaysOnTop);
   }
   await persistSettings(next);
   return readAppSettings();
@@ -660,8 +671,9 @@ const readAudiomackCredentials = async () => {
 };
 
 const encodeOAuthComponent = (value) =>
-  encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`
   );
 
 const signedAudiomackRequest = async (method, endpoint, parameters = {}) => {
@@ -680,10 +692,7 @@ const signedAudiomackRequest = async (method, endpoint, parameters = {}) => {
     oauth_timestamp: String(Math.floor(Date.now() / 1000)),
     oauth_version: '1.0',
   };
-  const normalizedParameters = [
-    ...url.searchParams.entries(),
-    ...Object.entries(oauthParameters),
-  ]
+  const normalizedParameters = [...url.searchParams.entries(), ...Object.entries(oauthParameters)]
     .map(([key, value]) => [encodeOAuthComponent(key), encodeOAuthComponent(value)])
     .sort(([firstKey, firstValue], [secondKey, secondValue]) =>
       firstKey === secondKey
@@ -704,10 +713,7 @@ const signedAudiomackRequest = async (method, endpoint, parameters = {}) => {
     encodeOAuthComponent(normalizedParameters),
   ].join('&');
   const signingKey = `${encodeOAuthComponent(credentials.consumerSecret)}&`;
-  const signature = crypto
-    .createHmac('sha1', signingKey)
-    .update(signatureBase)
-    .digest('base64');
+  const signature = crypto.createHmac('sha1', signingKey).update(signatureBase).digest('base64');
   const authorizationParameters = {
     ...oauthParameters,
     oauth_signature: signature,
@@ -818,9 +824,7 @@ const readAudioTrack = async (entryPath, cachedTrack) => {
     discNumber: common.disk?.no || undefined,
     year: common.year || undefined,
     genre: common.genre?.[0] || undefined,
-    composer: Array.isArray(common.composer)
-      ? common.composer[0]
-      : common.composer || undefined,
+    composer: Array.isArray(common.composer) ? common.composer[0] : common.composer || undefined,
     comment: Array.isArray(common.comment)
       ? common.comment.join('\n')
       : common.comment || undefined,
@@ -954,7 +958,11 @@ const scanAndSaveLibrary = async (folders, cachedTracks = []) => {
     sendProgress(progress);
   };
   reportProgress({ phase: 'discovering', scanned: 0, total: 0, tracks: [] });
-  const { tracks, errors } = await scanMusicFolders(normalizedFolders, cachedTracks, reportProgress);
+  const { tracks, errors } = await scanMusicFolders(
+    normalizedFolders,
+    cachedTracks,
+    reportProgress
+  );
   indexedAudioPaths = new Set([...tracks.map((track) => track.path), ...openedAudioPaths]);
   const library = await updateLibraryConfig(() => ({ folders: normalizedFolders, tracks }));
   sendProgress({ phase: 'complete', ...scanProgress, tracks: [], errors });
@@ -1191,9 +1199,7 @@ ipcMain.handle('load-release-notes', async (_event, version) => {
     !Array.isArray(parsedPrevious) ||
     !parsedPrevious.every(
       (release) =>
-        release &&
-        typeof release.version === 'string' &&
-        typeof release.summary === 'string'
+        release && typeof release.version === 'string' && typeof release.summary === 'string'
     )
   ) {
     throw new TypeError('The previous release notes index is invalid.');
@@ -1230,6 +1236,44 @@ ipcMain.handle('save-playlists', async (_event, playlists) => {
   return normalizedPlaylists;
 });
 ipcMain.handle('get-window-state', () => Boolean(mainWindow && mainWindow.isMaximized()));
+ipcMain.handle('get-window-mode', () => playerWindowMode);
+ipcMain.handle('enter-mini-player', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (playerWindowMode === 'normal') {
+    normalWindowBounds = mainWindow.getBounds();
+    normalWindowWasMaximized = mainWindow.isMaximized();
+  }
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  mainWindow.setFullScreen(false);
+  mainWindow.setResizable(true);
+  mainWindow.setMinimumSize(480, 420);
+  mainWindow.setSize(640, 560);
+  mainWindow.center();
+  playerWindowMode = 'mini';
+  mainWindow.webContents.send('window-mode-changed', playerWindowMode);
+});
+ipcMain.handle('enter-fullscreen-player', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (playerWindowMode === 'normal') {
+    normalWindowBounds = mainWindow.getBounds();
+    normalWindowWasMaximized = mainWindow.isMaximized();
+  }
+  mainWindow.setResizable(true);
+  mainWindow.setFullScreen(true);
+  playerWindowMode = 'fullscreen';
+  mainWindow.webContents.send('window-mode-changed', playerWindowMode);
+});
+ipcMain.handle('exit-player-mode', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setFullScreen(false);
+  mainWindow.setMinimumSize(720, 640);
+  if (normalWindowBounds) mainWindow.setBounds(normalWindowBounds);
+  if (normalWindowWasMaximized) mainWindow.maximize();
+  normalWindowBounds = null;
+  normalWindowWasMaximized = false;
+  playerWindowMode = 'normal';
+  mainWindow.webContents.send('window-mode-changed', playerWindowMode);
+});
 ipcMain.handle('toggle-window-maximize', () => {
   if (!mainWindow) return;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -1368,6 +1412,10 @@ ipcMain.handle('maximize-window', () => {
 ipcMain.handle('close-window', () => {
   if (mainWindow) mainWindow.close();
 });
+ipcMain.handle('set-always-on-top', (_event, enabled) => {
+  if (typeof enabled !== 'boolean') throw new TypeError('Always on top must be a boolean.');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(enabled);
+});
 
 const taskbarIconDirectory = app.isPackaged
   ? path.join(process.resourcesPath, 'public')
@@ -1420,6 +1468,7 @@ async function createWindow() {
     height: 800,
     minWidth: 720,
     minHeight: 640,
+    alwaysOnTop: savedSettings.alwaysOnTop === true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1444,6 +1493,9 @@ async function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     rendererReadyForAudioFiles = false;
+    playerWindowMode = 'normal';
+    normalWindowBounds = null;
+    normalWindowWasMaximized = false;
   });
   if (process.platform === 'win32') setTaskbarPlaybackState(false);
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window-state-changed', true));
@@ -1452,112 +1504,113 @@ async function createWindow() {
   mainWindow.on('blur', () => mainWindow?.webContents.send('window-focus-changed', false));
 }
 
-if (hasSingleInstanceLock) app.whenReady().then(async () => {
-  nativeTheme.themeSource = 'system';
-  if (process.platform === 'win32') {
-    systemPreferences.on('accent-color-changed', (_event, rgbaColor) => {
-      const accentColor =
-        getWindowsAccentColorFromRegistry() ?? normalizeWindowsAccentColor(rgbaColor);
-      if (accentColor) mainWindow?.webContents.send('system-accent-color-changed', accentColor);
+if (hasSingleInstanceLock)
+  app.whenReady().then(async () => {
+    nativeTheme.themeSource = 'system';
+    if (process.platform === 'win32') {
+      systemPreferences.on('accent-color-changed', (_event, rgbaColor) => {
+        const accentColor =
+          getWindowsAccentColorFromRegistry() ?? normalizeWindowsAccentColor(rgbaColor);
+        if (accentColor) mainWindow?.webContents.send('system-accent-color-changed', accentColor);
+      });
+    }
+    void removeStaleMetadataCache();
+    nativeTheme.on('updated', () => {
+      mainWindow?.webContents.send(
+        'system-theme-changed',
+        nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+      );
     });
-  }
-  void removeStaleMetadataCache();
-  nativeTheme.on('updated', () => {
-    mainWindow?.webContents.send(
-      'system-theme-changed',
-      nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-    );
-  });
-  protocol.handle('luna-media', async (request) => {
-    const mediaUrl = new URL(request.url);
-    const requestPath = mediaUrl.pathname;
-    if (mediaUrl.hostname === 'artwork') {
-      const fileName = requestPath.slice(1);
-      if (!/^[a-f\d]{64}\.(?:jpg|png|gif|webp|bmp)$/i.test(fileName)) {
-        return new Response('Invalid artwork path.', { status: 400 });
-      }
-      try {
-        const artwork = await fs.promises.readFile(getArtworkPath(fileName));
-        const extension = path.extname(fileName).toLowerCase();
-        const contentType = Object.entries(ARTWORK_MIME_TYPES).find(
-          ([, supportedExtension]) => `.${supportedExtension}` === extension
-        )?.[0];
-        if (!contentType) return new Response('Unsupported artwork format.', { status: 415 });
-        return new Response(request.method === 'HEAD' ? null : artwork, {
-          headers: {
-            'Content-Type': contentType,
-            'Content-Length': String(artwork.length),
-            'X-Content-Type-Options': 'nosniff',
-          },
-        });
-      } catch (error) {
-        if (error.code !== 'ENOENT') {
-          console.error(`Could not access cached artwork "${fileName}":`, error);
-          return new Response('Could not read cached artwork.', { status: 500 });
+    protocol.handle('luna-media', async (request) => {
+      const mediaUrl = new URL(request.url);
+      const requestPath = mediaUrl.pathname;
+      if (mediaUrl.hostname === 'artwork') {
+        const fileName = requestPath.slice(1);
+        if (!/^[a-f\d]{64}\.(?:jpg|png|gif|webp|bmp)$/i.test(fileName)) {
+          return new Response('Invalid artwork path.', { status: 400 });
         }
-        return new Response('Artwork is not available.', { status: 404 });
+        try {
+          const artwork = await fs.promises.readFile(getArtworkPath(fileName));
+          const extension = path.extname(fileName).toLowerCase();
+          const contentType = Object.entries(ARTWORK_MIME_TYPES).find(
+            ([, supportedExtension]) => `.${supportedExtension}` === extension
+          )?.[0];
+          if (!contentType) return new Response('Unsupported artwork format.', { status: 415 });
+          return new Response(request.method === 'HEAD' ? null : artwork, {
+            headers: {
+              'Content-Type': contentType,
+              'Content-Length': String(artwork.length),
+              'X-Content-Type-Options': 'nosniff',
+            },
+          });
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            console.error(`Could not access cached artwork "${fileName}":`, error);
+            return new Response('Could not read cached artwork.', { status: 500 });
+          }
+          return new Response('Artwork is not available.', { status: 404 });
+        }
       }
-    }
 
-    const encodedPath = requestPath.slice(1);
-    const filePath = Buffer.from(encodedPath, 'base64url').toString();
-    if (!indexedAudioPaths.has(filePath)) {
-      return new Response('Audio file is not in the indexed music library.', { status: 404 });
-    }
+      const encodedPath = requestPath.slice(1);
+      const filePath = Buffer.from(encodedPath, 'base64url').toString();
+      if (!indexedAudioPaths.has(filePath)) {
+        return new Response('Audio file is not in the indexed music library.', { status: 404 });
+      }
 
-    let stat;
-    try {
-      stat = await fs.promises.stat(filePath);
-    } catch (error) {
-      console.error(`Could not access indexed audio file "${filePath}":`, error);
-      return new Response('Audio file is no longer available.', { status: 404 });
-    }
+      let stat;
+      try {
+        stat = await fs.promises.stat(filePath);
+      } catch (error) {
+        console.error(`Could not access indexed audio file "${filePath}":`, error);
+        return new Response('Audio file is no longer available.', { status: 404 });
+      }
 
-    const headers = new Headers({
-      'Accept-Ranges': 'bytes',
-      'Content-Type':
-        AUDIO_MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      const headers = new Headers({
+        'Accept-Ranges': 'bytes',
+        'Content-Type':
+          AUDIO_MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      });
+      const range = request.headers.get('range');
+      let start = 0;
+      let end = stat.size - 1;
+      let status = 200;
+
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (!match || (!match[1] && !match[2])) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${stat.size}` },
+          });
+        }
+
+        if (!match[1]) {
+          const suffixLength = Number(match[2]);
+          start = Math.max(0, stat.size - suffixLength);
+        } else {
+          start = Number(match[1]);
+          if (match[2]) end = Math.min(Number(match[2]), end);
+        }
+
+        if (start >= stat.size || start > end) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${stat.size}` },
+          });
+        }
+        status = 206;
+        headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+      }
+
+      headers.set('Content-Length', String(end - start + 1));
+      if (request.method === 'HEAD') return new Response(null, { status, headers });
+
+      const fileStream = fs.createReadStream(filePath, { start, end });
+      return new Response(Readable.toWeb(fileStream), { status, headers });
     });
-    const range = request.headers.get('range');
-    let start = 0;
-    let end = stat.size - 1;
-    let status = 200;
-
-    if (range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      if (!match || (!match[1] && !match[2])) {
-        return new Response(null, {
-          status: 416,
-          headers: { 'Content-Range': `bytes */${stat.size}` },
-        });
-      }
-
-      if (!match[1]) {
-        const suffixLength = Number(match[2]);
-        start = Math.max(0, stat.size - suffixLength);
-      } else {
-        start = Number(match[1]);
-        if (match[2]) end = Math.min(Number(match[2]), end);
-      }
-
-      if (start >= stat.size || start > end) {
-        return new Response(null, {
-          status: 416,
-          headers: { 'Content-Range': `bytes */${stat.size}` },
-        });
-      }
-      status = 206;
-      headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
-    }
-
-    headers.set('Content-Length', String(end - start + 1));
-    if (request.method === 'HEAD') return new Response(null, { status, headers });
-
-    const fileStream = fs.createReadStream(filePath, { start, end });
-    return new Response(Readable.toWeb(fileStream), { status, headers });
+    await createWindow();
   });
-  await createWindow();
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

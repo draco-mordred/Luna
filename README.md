@@ -33,9 +33,9 @@ Luna is a music player for enjoying a personal music collection in a clean, cust
 ## Features
 
 - **Your local library:** Scan music folders, browse tracks and albums, and organize your listening with search, playlists, shuffle, repeat, and a play queue.
-- **A player that stays close:** Keep playback in the bottom PlayBar or expand it into Now Playing. The player adapts to different window sizes and supports mouse and touch interactions.
-- **Lyrics your way:** Display embedded plain or timestamped lyrics, switch between plain and synchronized modes, and choose whether lyric visibility stays in sync between the PlayBar and Now Playing.
-- **Personalized playback:** Choose themes, accent colors, transport icon styles, seek bar designs, and audio visualizer styles.
+- **A player that stays close:** Keep playback in the bottom PlayBar or expand it into Now Playing. In the Electron app, switch to a resizable mini player or a fullscreen player, and optionally keep Luna above other windows.
+- **Lyrics your way:** Display embedded plain or timestamped lyrics, switch between plain and synchronized modes, adjust synchronized lyric timing in five steps in either direction, and share the timing across Now Playing and the PlayBar.
+- **Personalized playback:** Choose themes, accent colors, transport icon styles, seek bar designs, and audio visualizer styles. On Windows, use the system accent color throughout active navigation, player controls, and the current track.
 - **Rich track details:** View album artwork and metadata, edit supported audio tags and embedded lyrics, and explore artist images and biographies.
 - **Discover more music:** Connect to Jamendo or Audiomack for online catalog search and streaming. These integrations may require API credentials and are subject to each provider's access rules and terms.
 - **Desktop integration:** On Windows, use playback controls from the taskbar preview and install Luna through the branded setup wizard.

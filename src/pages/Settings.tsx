@@ -39,6 +39,8 @@ interface SettingsPageProps {
   musicFolders: string[];
   trackCount: number;
   isDesktopApp: boolean;
+  alwaysOnTop: boolean;
+  onAlwaysOnTopChange: (enabled: boolean) => void;
   isAndroidApp: boolean;
   androidBackgroundPlaybackEnabled: boolean;
   onAndroidBackgroundPlaybackChange: (enabled: boolean) => void;
@@ -104,6 +106,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   musicFolders,
   trackCount,
   isDesktopApp,
+  alwaysOnTop,
+  onAlwaysOnTopChange,
   isAndroidApp,
   androidBackgroundPlaybackEnabled,
   onAndroidBackgroundPlaybackChange,
@@ -184,6 +188,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
           </div>
+          {isDesktopApp && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>Always on top</h3>
+                <p>Keep Luna above other windows, including in player modes</p>
+              </div>
+              <div className='setting-control'>
+                <label className='toggle-switch'>
+                  <input
+                    type='checkbox'
+                    checked={alwaysOnTop}
+                    onChange={(event) => onAlwaysOnTopChange(event.currentTarget.checked)}
+                    aria-label='Keep Luna always on top'
+                  />
+                  <span className='toggle-slider'></span>
+                </label>
+              </div>
+            </div>
+          )}
           {isAndroidApp && (
             <div
               className={`setting-item ${

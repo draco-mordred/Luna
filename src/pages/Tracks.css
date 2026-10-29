@@ -217,6 +217,16 @@
   color: var(--system-accent);
 }
 
+.track-item.playing {
+  background: color-mix(in srgb, var(--system-accent) 18%, var(--bg-secondary));
+  box-shadow: inset 3px 0 var(--system-accent);
+}
+
+.track-item.playing .track-art-thumb .material-symbols-outlined {
+  color: var(--system-accent);
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
 .track-list-header {
   padding: 0 8px 12px;
   border-bottom: 1px solid var(--border);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AppIcon from '../AppIcon';
 
 const WindowTitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -28,7 +29,7 @@ const WindowTitleBar = () => {
   return (
     <header className='window-titlebar' onDoubleClick={toggleMaximize}>
       <div className='window-titlebar-brand'>
-        <span className='material-symbols-outlined' aria-hidden='true'>music_note</span>
+        <AppIcon className='window-titlebar-icon' />
         <span>Luna Music</span>
       </div>
       <div className='window-titlebar-controls' onDoubleClick={(event) => event.stopPropagation()}>

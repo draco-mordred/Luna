@@ -113,18 +113,24 @@ The Windows installer is written to `dist/`. Its filename includes the app versi
 
 ### Build and run the Android app
 
-The Android project uses Capacitor and needs Android Studio, the Android SDK, and JDK 17. Open the generated native project in Android Studio:
+The Android project uses Capacitor, Android SDK Platform 34 or newer, and JDK 17. Set Android Studio's Gradle JDK to JDK 17: **File → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK**. If Android Studio selects a newer Java runtime and reports a Gradle compatibility error, select the installed JDK 17 and sync the project again. This Gradle JDK selection is machine-specific and should not be committed.
+
+Open the generated native project in Android Studio:
 
 ```bash
 npm run android:sync
 npm run android:open
 ```
 
-Select an emulator or connected Android device in Android Studio and run the app. On its first library scan, Luna asks for Android audio access and lists audio files indexed by Android's media library. The app currently uses the platform's media permission and system-managed `content://` audio URIs. Background playback, lock-screen/media-session controls, and Play Store signing/release setup remain follow-up Android work.
+The Android launcher uses the Luna desktop icon. At startup, Android shows its native splash before Luna displays a centered logo and app name with a loading animation selected for the device's Android API level. Luna launches in immersive mode; swipe from an edge to temporarily reveal the system bars. On Android 12 and newer, Settings → Appearance offers an optional wallpaper-derived Material You accent color; older Android versions continue using Luna's selected accent.
+
+Select an emulator or connected Android device in Android Studio and run the app. On its first library scan, Luna asks for Android audio access and lists audio files indexed by Android's media library. The app caches the track library in IndexedDB for faster startup, then refreshes it in the background after one minute. Album artwork is loaded as needed. Android playback settings can enable a foreground media-playback service, notification transport controls, and lock-screen media controls. Android notification permission is requested when needed. Device manufacturers may still impose battery-management limits; Luna does not silently request exemption from those system policies. Play Store signing and release setup remain follow-up Android work.
+
+On Android, the About page shows the device model and Android version when available, and navigation uses a mobile bottom bar. Album artwork is read through Android's media library. Embedded plain lyrics are extracted from ID3 `USLT` frames in MP3 files; synchronized lyrics are supported from ID3 `SYLT` frames and timestamped `USLT` text.
+
+Artist artwork and biographies use Wikipedia when available, with Wikimedia Commons as a trusted fallback source for images missing from Wikipedia. Android launcher icons use a zoomed-out adaptive foreground to keep the logo within launcher masks.
 
 Android `versionName` follows `package.json`. Its Play Store `versionCode` is derived separately from Luna's month/release/date version fields to remain an increasing integer; Android Play Store releases are not ready until signing and background playback are completed.
-
-
 
 Fetch tags before creating a later release, then build:
 

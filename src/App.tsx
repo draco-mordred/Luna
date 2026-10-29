@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import PlayBar from './components/PlayBar';
 import StreamingPlayBar from './components/StreamingPlayBar';
 import Sidebar from './components/Sidebar';
@@ -11,7 +11,18 @@ import TopNavbar from './components/TopNavbar';
 import WindowTitleBar from './components/WindowTitleBar/WindowTitleBar';
 import type { Playlist, Track } from './services/MusicLibrary';
 import { getAudiomackPlaybackUrl } from './services/audiomack';
-import { isAndroidApp as detectAndroidApp, scanAndroidMusicLibrary } from './services/androidMusicLibrary';
+import {
+  getAndroidAppearance,
+  getAndroidDeviceInfo,
+  isAndroidApp as detectAndroidApp,
+  clearAndroidNowPlaying,
+  listenForAndroidMediaControls,
+  loadAndroidMusicLibraryCache,
+  saveAndroidMusicLibraryCache,
+  scanAndroidMusicLibrary,
+  updateAndroidNowPlaying,
+} from './services/androidMusicLibrary';
+import type { AndroidAppearance, AndroidDeviceInfo } from './services/androidMusicLibrary';
 import type {
   AppSettings,
   IconStyle,
@@ -25,6 +36,8 @@ import type {
 } from './types/electron';
 import './App.css';
 import ReleaseNotesDialog from './components/ReleaseNotesDialog';
+import AndroidStartupSplash from './components/AndroidStartupSplash';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
 import packageJson from '../package.json';
 
 const Tracks = lazy(() => import('./pages/Tracks'));
@@ -45,6 +58,40 @@ const SectionPlaceholder = ({ title }: { title: string }) => (
   </section>
 );
 
+const AndroidBottomNav = ({ pathname }: { pathname: string }) => {
+  const isLibraryRoute = ['/', '/tracks', '/composer', '/genres'].some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+  const items = [
+    { to: '/tracks', label: 'Library', icon: 'library_music' },
+    { to: '/albums', label: 'Albums', icon: 'album' },
+    { to: '/artists', label: 'Artists', icon: 'person' },
+    { to: '/playlists', label: 'Playlists', icon: 'queue_music' },
+    { to: '/search', label: 'Search', icon: 'search' },
+  ];
+
+  return (
+    <nav className='android-bottom-nav' aria-label='Main navigation'>
+      {items.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          className={({ isActive }) =>
+            `android-bottom-nav-item${
+              isActive || (item.to === '/tracks' && isLibraryRoute) ? ' active' : ''
+            }`
+          }
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            {item.icon}
+          </span>
+          <span>{item.label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+};
+
 const getInitialThemeMode = (): ThemeMode => {
   const savedTheme = window.localStorage.getItem('luna-theme');
 
@@ -61,6 +108,13 @@ const getInitialAccentColor = (): string => {
   return savedAccent && /^#[\da-f]{6}$/i.test(savedAccent) ? savedAccent : '#ff4444';
 };
 
+const getInitialVolume = (): number => {
+  const savedVolume = window.localStorage.getItem('luna-volume');
+  if (savedVolume === null) return 0.7;
+  const parsedVolume = Number(savedVolume);
+  return Number.isFinite(parsedVolume) ? Math.max(0, Math.min(1, parsedVolume)) : 0.7;
+};
+
 const normalizeCrossfadeSeconds = (value: unknown): number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10 ? value : 0;
 
@@ -74,6 +128,24 @@ const shuffleTracks = (tracks: Track[]): Track[] => {
     [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
   }
   return shuffled;
+};
+
+const mergeAndroidTracks = (existingTracks: Track[], scannedTracks: Track[]): Track[] => {
+  const tracksByPath = new Map(existingTracks.map((track) => [track.path, track]));
+  scannedTracks.forEach((track) => {
+    const previousTrack = tracksByPath.get(track.path);
+    tracksByPath.set(
+      track.path,
+      previousTrack?.albumArt && !track.albumArt
+        ? { ...track, albumArt: previousTrack.albumArt }
+        : track
+    );
+  });
+  return [...tracksByPath.values()].sort(
+    (first, second) =>
+      first.name.localeCompare(second.name, undefined, { sensitivity: 'base' }) ||
+      first.artist.localeCompare(second.artist, undefined, { sensitivity: 'base' })
+  );
 };
 
 const getInitialCrossfadeSeconds = (): number => {
@@ -230,8 +302,25 @@ const getDominantImageColor = (imageUrl: string, fallback: string): Promise<stri
 
 const App = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const isAndroidApp = detectAndroidApp();
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
+  const [androidAppearance, setAndroidAppearance] = useState<AndroidAppearance | null>(null);
+  const [androidDeviceInfo, setAndroidDeviceInfo] = useState<AndroidDeviceInfo | null>(null);
+  const [androidAppearanceLoaded, setAndroidAppearanceLoaded] = useState(!isAndroidApp);
+  const [androidAppearanceError, setAndroidAppearanceError] = useState<string | null>(null);
+  const [androidMaterialYouEnabled, setAndroidMaterialYouEnabled] = useState(
+    () => isAndroidApp && window.localStorage.getItem('luna-android-material-you') !== 'false'
+  );
+  const [androidBackgroundPlaybackEnabled, setAndroidBackgroundPlaybackEnabled] = useState(
+    () =>
+      isAndroidApp && window.localStorage.getItem('luna-android-background-playback') !== 'false'
+  );
+  const [androidLockScreenControlsEnabled, setAndroidLockScreenControlsEnabled] = useState(
+    () =>
+      isAndroidApp && window.localStorage.getItem('luna-android-lock-screen-controls') !== 'false'
+  );
+  const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(isAndroidApp);
   const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
   const [supportsWindowMaterial, setSupportsWindowMaterial] = useState(false);
   const [windowMaterialAppliedAtLaunch, setWindowMaterialAppliedAtLaunch] =
@@ -275,10 +364,13 @@ const App = () => {
   );
   const [settingsLoaded, setSettingsLoaded] = useState(!window.electronAPI);
   const [hasSeenReleaseNotes, setHasSeenReleaseNotes] = useState(
-    () =>
-      window.localStorage.getItem(`luna-release-notes-seen-${packageJson.version}`) === 'true'
+    () => window.localStorage.getItem(`luna-release-notes-seen-${packageJson.version}`) === 'true'
   );
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
+  const libraryTracksRef = useRef(libraryTracks);
+  useLayoutEffect(() => {
+    libraryTracksRef.current = libraryTracks;
+  }, [libraryTracks]);
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
     try {
       const savedPlaylists = window.localStorage.getItem('luna-playlists');
@@ -292,7 +384,9 @@ const App = () => {
   const [trackMetadataDialog, setTrackMetadataDialog] = useState<Track | null>(null);
   const [musicFolders, setMusicFolders] = useState<string[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(Boolean(window.electronAPI));
-  const [initialLibraryLoaded, setInitialLibraryLoaded] = useState(!window.electronAPI);
+  const [initialLibraryLoaded, setInitialLibraryLoaded] = useState(
+    !window.electronAPI && !isAndroidApp
+  );
   const [libraryReconciled, setLibraryReconciled] = useState(!window.electronAPI);
   const [libraryScanProgress, setLibraryScanProgress] = useState<MusicLibraryScanProgress | null>(
     null
@@ -303,7 +397,7 @@ const App = () => {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [trackAccentColor, setTrackAccentColor] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.7);
+  const [volume, setVolume] = useState(getInitialVolume);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const screenWidth = window.screen?.width ?? window.innerWidth;
@@ -337,6 +431,77 @@ const App = () => {
   const unavailableTrackHandlingRef = useRef<string | null>(null);
   const initialLoadStarted = useRef(false);
   const activeLibraryScanIdRef = useRef<string | null>(null);
+  const playbackNotificationUnavailableRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    const handleAndroidBack = () => {
+      if (document.querySelector('.now-playing.visible')) {
+        window.dispatchEvent(new Event('luna-android-collapse-now-playing'));
+        return;
+      }
+
+      const historyIndex = window.history.state?.idx;
+      if (typeof historyIndex === 'number' && historyIndex > 0) {
+        navigate(-1);
+      } else if (location.pathname !== '/tracks') {
+        navigate('/tracks', { replace: true });
+      }
+    };
+    window.addEventListener('luna-android-back', handleAndroidBack);
+    return () => window.removeEventListener('luna-android-back', handleAndroidBack);
+  }, [isAndroidApp, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!isAndroidApp) return;
+    if (!currentTrack || !androidBackgroundPlaybackEnabled) {
+      void clearAndroidNowPlaying().catch((error: unknown) => {
+        console.error('Could not clear the Android Now Playing notification:', error);
+      });
+      return;
+    }
+    playbackNotificationUnavailableRef.current = false;
+    let active = true;
+    let intervalId: number | null = null;
+    const updatePlaybackState = async () => {
+      if (!active || playbackNotificationUnavailableRef.current) return;
+      const position = activeAudioRef.current?.currentTime ?? 0;
+      try {
+        await updateAndroidNowPlaying(
+          currentTrack,
+          isPlaying,
+          position,
+          androidBackgroundPlaybackEnabled,
+          androidLockScreenControlsEnabled
+        );
+      } catch (error: unknown) {
+        playbackNotificationUnavailableRef.current = true;
+        console.error('Could not update Android playback controls:', error);
+        setLibraryError(
+          error instanceof Error && error.message.includes('PERMISSION_DENIED')
+            ? 'Allow Luna notifications to use Android playback and lock-screen controls.'
+            : 'Could not start Android background playback controls.'
+        );
+      }
+    };
+    void updatePlaybackState().then(() => {
+      if (active && isPlaying && !playbackNotificationUnavailableRef.current) {
+        intervalId = window.setInterval(() => {
+          void updatePlaybackState();
+        }, 1000);
+      }
+    });
+    return () => {
+      active = false;
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+  }, [
+    androidBackgroundPlaybackEnabled,
+    androidLockScreenControlsEnabled,
+    currentTrack,
+    isAndroidApp,
+    isPlaying,
+  ]);
 
   useEffect(
     () => () => {
@@ -346,6 +511,66 @@ const App = () => {
     },
     []
   );
+  useEffect(() => {
+    if (!isAndroidApp) return;
+
+    let active = true;
+    getAndroidAppearance()
+      .then((appearance) => {
+        if (!active) return;
+        setAndroidAppearance(appearance);
+        if (!appearance.supportsMaterialYou) {
+          setAndroidMaterialYouEnabled(false);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Could not read Android appearance settings:', error);
+        if (active) {
+          setAndroidAppearanceError(
+            'Could not read wallpaper colors. Luna will keep using its selected accent.'
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setAndroidAppearanceLoaded(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAndroidApp]);
+
+  useEffect(() => {
+    if (!isAndroidApp) return;
+    let active = true;
+    getAndroidDeviceInfo()
+      .then((deviceInfo) => {
+        if (active) setAndroidDeviceInfo(deviceInfo);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not read Android device information:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAndroidApp]);
+
+  useEffect(() => {
+    if (
+      !isAndroidApp ||
+      !androidStartupSplashVisible ||
+      !initialLibraryLoaded ||
+      !androidAppearanceLoaded
+    ) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAndroidStartupSplashVisible(false);
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [androidAppearanceLoaded, androidStartupSplashVisible, initialLibraryLoaded, isAndroidApp]);
+
   const closePlaylistDialog = useCallback(() => setPlaylistDialog(null), []);
   const closeTrackMetadataDialog = useCallback(() => setTrackMetadataDialog(null), []);
   const handleOpenTrackMetadata = useCallback((track: Track) => {
@@ -456,9 +681,7 @@ const App = () => {
         setThemeMode(settings.themeMode);
         setWindowMaterial(settings.windowMaterial ?? 'default');
         setSupportsWindowMaterial(settings.supportsWindowMaterial ?? false);
-        setWindowMaterialAppliedAtLaunch(
-          settings.windowMaterialAppliedAtLaunch ?? 'default'
-        );
+        setWindowMaterialAppliedAtLaunch(settings.windowMaterialAppliedAtLaunch ?? 'default');
         setAccentColor(settings.accentColor);
         setUseSystemAccentColor(settings.useSystemAccentColor ?? true);
         setLastPlayedTrackPath(settings.lastPlayedTrackPath);
@@ -532,6 +755,11 @@ const App = () => {
 
   useEffect(() => {
     if (window.electronAPI?.platform !== 'win32') return undefined;
+    return window.electronAPI.onSystemAccentColorChanged(setSystemAccentColor);
+  }, []);
+
+  useEffect(() => {
+    if (window.electronAPI?.platform !== 'win32') return undefined;
     const root = document.documentElement;
     root.dataset.windowFocused = String(document.hasFocus());
     const unsubscribe = window.electronAPI.onWindowFocusChanged((isFocused) => {
@@ -580,14 +808,44 @@ const App = () => {
     initialLoadStarted.current = true;
     setIsLibraryLoading(true);
     if (isAndroidApp) {
-      scanAndroidMusicLibrary()
-        .then((response) => {
+      let active = true;
+      void (async () => {
+        try {
+          let cachedLibrary: Awaited<ReturnType<typeof loadAndroidMusicLibraryCache>> = null;
+          let cacheWarning: string | null = null;
+          try {
+            cachedLibrary = await loadAndroidMusicLibraryCache();
+          } catch (error) {
+            console.error('Could not read the Android music library cache:', error);
+            cacheWarning =
+              'Luna could not read its saved library and is scanning your device again.';
+          }
+          if (!active) return;
+          if (cachedLibrary?.tracks.length) {
+            applyLibraryResponse(cachedLibrary);
+            setInitialLibraryLoaded(true);
+            setLibraryReconciled(true);
+            setIsLibraryLoading(false);
+            return;
+          }
+
+          const response = await scanAndroidMusicLibrary();
+          if (!active) return;
           applyLibraryResponse(response);
+          if (cacheWarning) setLibraryError(cacheWarning);
           setInitialLibraryLoaded(true);
           setLibraryReconciled(true);
-        })
-        .catch((error: unknown) => {
-          console.error('Could not scan the Android music library:', error);
+          try {
+            await saveAndroidMusicLibraryCache(response);
+          } catch (error) {
+            console.error('Could not save the Android music library cache:', error);
+            setLibraryError(
+              'Your music was scanned, but Luna could not save the library for faster startup.'
+            );
+          }
+        } catch (error: unknown) {
+          if (!active) return;
+          console.error('Could not load or scan the Android music library:', error);
           setLibraryError(
             error instanceof Error
               ? error.message
@@ -595,9 +853,13 @@ const App = () => {
           );
           setInitialLibraryLoaded(true);
           setLibraryReconciled(true);
-        })
-        .finally(() => setIsLibraryLoading(false));
-      return;
+        } finally {
+          if (active) setIsLibraryLoading(false);
+        }
+      })();
+      return () => {
+        active = false;
+      };
     }
     if (!window.electronAPI) return;
     window.electronAPI
@@ -649,8 +911,19 @@ const App = () => {
   }, [initialLibraryLoaded, lastPlayedTrackPath, libraryReconciled, libraryTracks, settingsLoaded]);
 
   useEffect(() => {
-    if (!settingsLoaded) return;
+    if (!settingsLoaded || (isAndroidApp && !androidAppearanceLoaded)) return;
     window.localStorage.setItem('luna-theme', themeMode);
+    if (isAndroidApp) {
+      window.localStorage.setItem('luna-android-material-you', String(androidMaterialYouEnabled));
+      window.localStorage.setItem(
+        'luna-android-background-playback',
+        String(androidBackgroundPlaybackEnabled)
+      );
+      window.localStorage.setItem(
+        'luna-android-lock-screen-controls',
+        String(androidLockScreenControlsEnabled)
+      );
+    }
     window.localStorage.setItem('luna-window-material', windowMaterial);
     window.localStorage.setItem('luna-accent', accentColor);
     window.localStorage.setItem('luna-use-system-accent', String(useSystemAccentColor));
@@ -666,10 +939,7 @@ const App = () => {
       'luna-auto-download-artist-images',
       String(autoDownloadArtistImages)
     );
-    window.localStorage.setItem(
-      'luna-show-artist-background',
-      String(showArtistImageBackground)
-    );
+    window.localStorage.setItem('luna-show-artist-background', String(showArtistImageBackground));
     window.localStorage.setItem('luna-show-lyrics', String(showLyrics));
     window.localStorage.setItem(
       'luna-show-synced-lyrics-on-playbar',
@@ -710,6 +980,9 @@ const App = () => {
     }
   }, [
     accentColor,
+    androidAppearanceLoaded,
+    androidMaterialYouEnabled,
+    isAndroidApp,
     useSystemAccentColor,
     windowMaterial,
     crossfadeSeconds,
@@ -724,6 +997,8 @@ const App = () => {
     showLyrics,
     showSyncedLyricsOnPlayBar,
     syncLyricsDisplay,
+    androidBackgroundPlaybackEnabled,
+    androidLockScreenControlsEnabled,
     showVisualizer,
     autoDownloadArtistImages,
     showArtistImageBackground,
@@ -747,54 +1022,78 @@ const App = () => {
 
   useEffect(() => {
     volumeRef.current = clampVolume(volume);
+    window.localStorage.setItem('luna-volume', String(clampVolume(volume)));
     if (crossfadeFrameRef.current !== null) return;
     [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((audio) => {
       if (audio) audio.volume = audio === activeAudioRef.current ? volume : 0;
     });
   }, [volume]);
 
-  const handleRescanMusicLibrary = useCallback(async () => {
-    if (isAndroidApp) {
+  const handleRescanMusicLibrary = useCallback(
+    async (background = false) => {
+      if (isAndroidApp) {
+        try {
+          if (!background) setIsLibraryLoading(true);
+          setLibraryError(null);
+          const response = await scanAndroidMusicLibrary();
+          const mergedResponse = {
+            ...response,
+            tracks: mergeAndroidTracks(libraryTracksRef.current, response.tracks),
+          };
+          applyLibraryResponse(mergedResponse);
+          setLibraryReconciled(true);
+          try {
+            await saveAndroidMusicLibraryCache(mergedResponse);
+          } catch (error) {
+            console.error('Could not update the Android music library cache:', error);
+            setLibraryError(
+              'The music library was refreshed, but Luna could not update its startup cache.'
+            );
+          }
+          return mergedResponse;
+        } catch (error) {
+          console.error('Could not scan the Android music library:', error);
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Could not scan the Android music library. Check Luna’s audio permission.';
+          setLibraryError(message);
+          return { folders: [], tracks: [], errors: [message] };
+        } finally {
+          if (!background) setIsLibraryLoading(false);
+        }
+      }
+      if (!window.electronAPI) {
+        setLibraryError('Library scanning is available in the Luna desktop app.');
+        return { folders: [], tracks: [], errors: [] };
+      }
       try {
         setIsLibraryLoading(true);
         setLibraryError(null);
-        const response = await scanAndroidMusicLibrary();
+        const response = await window.electronAPI.rescanMusicLibrary();
         applyLibraryResponse(response);
         setLibraryReconciled(true);
         return response;
       } catch (error) {
-        console.error('Could not scan the Android music library:', error);
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Could not scan the Android music library. Check Luna’s audio permission.';
-        setLibraryError(message);
-        return { folders: [], tracks: [], errors: [message] };
+        console.error('Could not rescan the local music library:', error);
+        activeLibraryScanIdRef.current = null;
+        setLibraryScanProgress(null);
+        setLibraryError('Could not rescan your music folders.');
+        return { folders: [], tracks: [], errors: ['Could not rescan your music folders.'] };
       } finally {
         setIsLibraryLoading(false);
       }
-    }
-    if (!window.electronAPI) {
-      setLibraryError('Library scanning is available in the Luna desktop app.');
-      return { folders: [], tracks: [], errors: [] };
-    }
-    try {
-      setIsLibraryLoading(true);
-      setLibraryError(null);
-      const response = await window.electronAPI.rescanMusicLibrary();
-      applyLibraryResponse(response);
-      setLibraryReconciled(true);
-      return response;
-    } catch (error) {
-      console.error('Could not rescan the local music library:', error);
-      activeLibraryScanIdRef.current = null;
-      setLibraryScanProgress(null);
-      setLibraryError('Could not rescan your music folders.');
-      return { folders: [], tracks: [], errors: ['Could not rescan your music folders.'] };
-    } finally {
-      setIsLibraryLoading(false);
-    }
-  }, [applyLibraryResponse, isAndroidApp]);
+    },
+    [applyLibraryResponse, isAndroidApp]
+  );
+
+  useEffect(() => {
+    if (!isAndroidApp || !initialLibraryLoaded) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      void handleRescanMusicLibrary(true);
+    }, 60_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [handleRescanMusicLibrary, initialLibraryLoaded, isAndroidApp]);
 
   const handleSelectMusicFolders = useCallback(async () => {
     if (isAndroidApp) return handleRescanMusicLibrary();
@@ -822,23 +1121,26 @@ const App = () => {
     }
   }, [applyLibraryResponse, handleRescanMusicLibrary, isAndroidApp]);
 
-  const handleRemoveMusicFolder = useCallback(async (folder: string) => {
-    if (!window.electronAPI) return;
-    try {
-      setIsLibraryLoading(true);
-      setLibraryError(null);
-      const response = await window.electronAPI.removeMusicFolder(folder);
-      applyLibraryResponse(response);
-      setLibraryReconciled(true);
-    } catch (error) {
-      console.error(`Could not remove music folder "${folder}":`, error);
-      activeLibraryScanIdRef.current = null;
-      setLibraryScanProgress(null);
-      setLibraryError('Could not remove that music folder.');
-    } finally {
-      setIsLibraryLoading(false);
-    }
-  }, [applyLibraryResponse]);
+  const handleRemoveMusicFolder = useCallback(
+    async (folder: string) => {
+      if (!window.electronAPI) return;
+      try {
+        setIsLibraryLoading(true);
+        setLibraryError(null);
+        const response = await window.electronAPI.removeMusicFolder(folder);
+        applyLibraryResponse(response);
+        setLibraryReconciled(true);
+      } catch (error) {
+        console.error(`Could not remove music folder "${folder}":`, error);
+        activeLibraryScanIdRef.current = null;
+        setLibraryScanProgress(null);
+        setLibraryError('Could not remove that music folder.');
+      } finally {
+        setIsLibraryLoading(false);
+      }
+    },
+    [applyLibraryResponse]
+  );
 
   const handleAutoDownloadArtistImagesChange = useCallback((enabled: boolean) => {
     setAutoDownloadArtistImages(enabled);
@@ -877,8 +1179,8 @@ const App = () => {
         track.streamingProvider === 'audiomack'
           ? audiomackAudioRef.current
           : activeAudioRef.current !== audiomackAudioRef.current
-            ? activeAudioRef.current ?? audioARef.current ?? audioBRef.current
-            : audioARef.current ?? audioBRef.current;
+            ? (activeAudioRef.current ?? audioARef.current ?? audioBRef.current)
+            : (audioARef.current ?? audioBRef.current);
       if (!audio) {
         setLibraryError('Could not start playback because the audio player is unavailable.');
         return false;
@@ -1170,13 +1472,46 @@ const App = () => {
     (time: number) => {
       if (!Number.isFinite(time)) return;
       const audio = activeAudioRef.current;
-      const duration = audio && Number.isFinite(audio.duration)
-        ? audio.duration
-        : currentTrack?.duration ?? 0;
+      const duration =
+        audio && Number.isFinite(audio.duration) ? audio.duration : (currentTrack?.duration ?? 0);
       if (audio) audio.currentTime = Math.max(0, Math.min(duration, time));
     },
     [currentTrack?.duration]
   );
+
+  useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    let active = true;
+    let removeListener: (() => Promise<void>) | undefined;
+    listenForAndroidMediaControls((event) => {
+      if (!active) return;
+      if (event.control === 'play') {
+        if (!isPlaying) handlePlayPause();
+      } else if (event.control === 'pause') {
+        if (isPlaying) handlePlayPause();
+      } else if (event.control === 'next') {
+        handleNext();
+      } else if (event.control === 'previous') {
+        handlePrevious();
+      } else if (event.control === 'seek' && Number.isFinite(event.position)) {
+        handleSeek(event.position ?? 0);
+      }
+    })
+      .then((listener) => {
+        if (!active) {
+          void listener.remove();
+          return;
+        }
+        removeListener = () => listener.remove();
+      })
+      .catch((error: unknown) => {
+        console.error('Could not listen for Android playback controls:', error);
+      });
+    return () => {
+      active = false;
+      if (removeListener) void removeListener();
+    };
+  }, [handleNext, handlePlayPause, handlePrevious, handleSeek, isAndroidApp, isPlaying]);
 
   const beginCrossfade = useCallback(
     async (outgoing: HTMLAudioElement, nextTrack: Track) => {
@@ -1284,9 +1619,7 @@ const App = () => {
               setLibraryError(null);
               audio.pause();
               setIsPlaying(false);
-              const currentIndex = playQueue.findIndex(
-                (track) => track.id === currentTrack.id
-              );
+              const currentIndex = playQueue.findIndex((track) => track.id === currentTrack.id);
               const nextIndex = (currentIndex >= 0 ? currentIndex : playQueueIndex) + 1;
               if (nextIndex < playQueue.length) {
                 playQueueAt(nextIndex);
@@ -1412,13 +1745,20 @@ const App = () => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      const isEditable = target instanceof HTMLElement && (
-        target.isContentEditable ||
-        target.closest('input, textarea, select, [role="textbox"], [contenteditable="true"]') !== null
-      );
+      const isEditable =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, [role="textbox"], [contenteditable="true"]') !==
+            null);
       if (isEditable || event.repeat) return;
 
-      if (!event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key === ' ') {
+      if (
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.key === ' '
+      ) {
         event.preventDefault();
         handlePlayPause();
         return;
@@ -1735,16 +2075,19 @@ const App = () => {
   useLayoutEffect(() => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
     const root = document.documentElement;
+    root.setAttribute('data-android-app', String(isAndroidApp));
+    const materialColors =
+      isAndroidApp && androidMaterialYouEnabled && androidAppearance?.supportsMaterialYou
+        ? androidAppearance.colors
+        : undefined;
     const activeAccent =
-      useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor;
+      materialColors?.primary ??
+      (useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor);
     const rgbString = colorToRgbString(activeAccent);
     const [red, green, blue] = rgbString.split(',').map((part) => Number.parseInt(part.trim(), 10));
 
     root.setAttribute('data-theme', resolvedTheme);
-    root.setAttribute(
-      'data-window-material',
-      windowMaterialAppliedAtLaunch
-    );
+    root.setAttribute('data-window-material', windowMaterialAppliedAtLaunch);
     root.setAttribute('data-icon-style', iconStyle);
     root.setAttribute('data-seekbar-style', seekbarStyle);
     root.style.setProperty('--accent', activeAccent);
@@ -1787,9 +2130,87 @@ const App = () => {
       '--play-button-accent-rgb',
       `${buttonRed}, ${buttonGreen}, ${buttonBlue}`
     );
+    if (materialColors?.primary) {
+      const materialRgb = colorToRgbString(materialColors.primary)
+        .split(',')
+        .map((part) => Number.parseInt(part.trim(), 10));
+      const onSurfaceRgb = materialColors.onSurface
+        ? colorToRgbString(materialColors.onSurface)
+        : null;
+      const onSurfaceVariantRgb = materialColors.onSurfaceVariant
+        ? colorToRgbString(materialColors.onSurfaceVariant)
+        : null;
+      const materialOutline = materialColors.outlineVariant ?? materialColors.outline;
+      root.setAttribute('data-android-material-you', 'true');
+      root.style.setProperty('--accent', materialColors.primary);
+      root.style.setProperty('--accent-rgb', materialRgb.join(', '));
+      root.style.setProperty('--accent-muted', `rgba(${materialRgb.join(', ')}, 0.12)`);
+      root.style.setProperty('--system-accent', materialColors.primary);
+      root.style.setProperty('--system-accent-rgb', materialRgb.join(', '));
+      root.style.setProperty('--play-button-accent', materialColors.primary);
+      root.style.setProperty('--play-button-accent-rgb', materialRgb.join(', '));
+      if (materialColors.surface) {
+        root.style.setProperty('--bg-primary', materialColors.surface);
+        root.style.setProperty(
+          '--bg-secondary',
+          materialColors.surfaceVariant ?? materialColors.surface
+        );
+        root.style.setProperty(
+          '--bg-tertiary',
+          materialColors.surfaceVariant ?? materialColors.surface
+        );
+      }
+      if (materialColors.onSurface) {
+        root.style.setProperty('--text-primary', materialColors.onSurface);
+      }
+      if (materialColors.onSurfaceVariant) {
+        root.style.setProperty('--text-secondary', materialColors.onSurfaceVariant);
+        root.style.setProperty('--text-tertiary', `rgba(${onSurfaceVariantRgb}, 0.72)`);
+      }
+      if (materialOutline) {
+        root.style.setProperty('--border', materialOutline);
+      }
+      if (materialColors.onSurface) {
+        root.style.setProperty('--hover', `rgba(${onSurfaceRgb}, 0.08)`);
+        root.style.setProperty('--active', `rgba(${onSurfaceRgb}, 0.12)`);
+        root.style.setProperty('--surface-subtle', `rgba(${onSurfaceRgb}, 0.04)`);
+        root.style.setProperty('--surface-muted', `rgba(${onSurfaceRgb}, 0.08)`);
+        root.style.setProperty('--surface-strong', `rgba(${onSurfaceRgb}, 0.12)`);
+      }
+      if (materialColors.onPrimary) {
+        root.style.setProperty('--text-on-accent', materialColors.onPrimary);
+      }
+    } else {
+      root.removeAttribute('data-android-material-you');
+      [
+        '--accent',
+        '--accent-rgb',
+        '--accent-muted',
+        '--bg-primary',
+        '--bg-secondary',
+        '--bg-tertiary',
+        '--border',
+        '--hover',
+        '--active',
+        '--surface-subtle',
+        '--surface-muted',
+        '--surface-strong',
+        '--system-accent',
+        '--system-accent-rgb',
+        '--text-primary',
+        '--text-secondary',
+        '--text-tertiary',
+        '--text-on-accent',
+        '--play-button-accent',
+        '--play-button-accent-rgb',
+      ].forEach((property) => root.style.removeProperty(property));
+    }
   }, [
     accentColor,
+    androidAppearance,
+    androidMaterialYouEnabled,
     useSystemAccentColor,
+    isAndroidApp,
     iconStyle,
     seekbarStyle,
     systemAccentColor,
@@ -1800,15 +2221,19 @@ const App = () => {
   ]);
 
   // Toggle sidebar
-  const toggleSidebar = useCallback(
-    () => setSidebarCollapsed((collapsed) => !collapsed),
-    []
-  );
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((collapsed) => !collapsed), []);
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {window.electronAPI?.platform === 'win32' &&
-        windowMaterialAppliedAtLaunch === 'default' && <WindowTitleBar />}
+      {isAndroidApp && androidStartupSplashVisible && (
+        <AndroidStartupSplash
+          apiLevel={androidAppearance?.apiLevel ?? null}
+          exiting={initialLibraryLoaded && androidAppearanceLoaded}
+        />
+      )}
+      {window.electronAPI?.platform === 'win32' && windowMaterialAppliedAtLaunch === 'default' && (
+        <WindowTitleBar />
+      )}
       <div className='app-container'>
         {/* Sidebar */}
         <Sidebar
@@ -1829,300 +2254,334 @@ const App = () => {
             onSelectMusicFolders={handleSelectMusicFolders}
             onRescanMusicLibrary={handleRescanMusicLibrary}
           />
+          {isAndroidApp && <AndroidBottomNav pathname={location.pathname} />}
 
           {/* Page Content */}
           <main className='page-content'>
             <div key={location.pathname} className='page-transition'>
-              <Suspense fallback={<div className='page-loading' role='status'>Loading page…</div>}>
-                <Routes>
-                <Route
-                  path='/'
-                  element={
-                    <Tracks
-                      tracks={libraryTracks}
-                      selectedTrackId={currentTrack?.id ?? null}
-                      isPlaying={isPlaying}
-                      isLoading={isLibraryLoading}
-                      scanProgress={libraryScanProgress}
-                      libraryError={libraryError}
-                      isDesktopApp={Boolean(window.electronAPI)}
-                      isAndroidApp={isAndroidApp}
-                      onPlayTrack={playTrack}
-                      onShufflePlay={shufflePlayTracks}
-                      onQueueTracks={handleQueueTracks}
-                      playlists={playlists}
-                      onAddTracksToPlaylist={handleAddTracksToPlaylist}
-                      onEditTrack={handleOpenTrackMetadata}
-                      onAddMusicFolder={handleSelectMusicFolders}
-                    />
-                  }
-                />
-                <Route
-                  path='/tracks'
-                  element={
-                    <Tracks
-                      tracks={libraryTracks}
-                      selectedTrackId={currentTrack?.id ?? null}
-                      isPlaying={isPlaying}
-                      isLoading={isLibraryLoading}
-                      scanProgress={libraryScanProgress}
-                      libraryError={libraryError}
-                      isDesktopApp={Boolean(window.electronAPI)}
-                      isAndroidApp={isAndroidApp}
-                      onPlayTrack={playTrack}
-                      onShufflePlay={shufflePlayTracks}
-                      onQueueTracks={handleQueueTracks}
-                      playlists={playlists}
-                      onAddTracksToPlaylist={handleAddTracksToPlaylist}
-                      onEditTrack={handleOpenTrackMetadata}
-                      onAddMusicFolder={handleSelectMusicFolders}
-                    />
-                  }
-                />
-                <Route
-                  path='/albums'
-                  element={
-                    <Albums
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onShufflePlay={shufflePlayTracks}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/albums/detail'
-                  element={
-                    <CollectionDetails
-                      type='album'
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/artists'
-                  element={
-                    <Artists
-                      tracks={libraryTracks}
-                      autoDownloadArtistImages={autoDownloadArtistImages}
-                      onPlayTrack={playTrack}
-                      onShufflePlay={shufflePlayTracks}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/artists/detail'
-                  element={
-                    <CollectionDetails
-                      type='artist'
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/genres'
-                  element={
-                    <Genres
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/genres/detail'
-                  element={
-                    <CollectionDetails
-                      type='genre'
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/composer'
-                  element={
-                    <Composer
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/playlists/:playlistId?'
-                  element={
-                    <PlaylistsPage
-                      playlists={playlists}
-                      tracks={libraryTracks}
-                      onCreatePlaylist={handleCreatePlaylist}
-                      onDeletePlaylist={handleDeletePlaylist}
-                      onAddTracks={handleAddTracksToPlaylist}
-                      onRemoveTrack={handleRemoveTrackFromPlaylist}
-                      onPlayTrack={playTrack}
-                      onShufflePlay={shufflePlayTracks}
-                      onPlaylistAction={handlePlaylistAction}
-                      message={libraryError}
-                    />
-                  }
-                />
-                <Route path='/browse' element={<SectionPlaceholder title='Browse' />} />
-                <Route
-                  path='/radio'
-                  element={
-                    <RadioPage
-                      currentTrack={currentTrack}
-                      isPlaying={isPlaying}
-                      onPlayTrack={playTrack}
-                      onPlayPause={handlePlayPause}
-                    />
-                  }
-                />
-                <Route path='/jamendo' element={<Navigate to='/radio?tab=jamendo' replace />} />
-                <Route
-                  path='/audiomack'
-                  element={<Navigate to='/radio?tab=audiomack' replace />}
-                />
-                <Route
-                  path='/search'
-                  element={
-                    <Search
-                      tracks={libraryTracks}
-                      onPlayTrack={playTrack}
-                      onQueueTracks={handleQueueTracks}
-                    />
-                  }
-                />
-                <Route
-                  path='/settings'
-                  element={
-                    <Settings
-                      themeMode={themeMode}
-                      onThemeChange={setThemeMode}
-                      accentColor={
-                        useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor
+              <Suspense
+                fallback={
+                  <div className='page-loading' role='status'>
+                    Loading page…
+                  </div>
+                }
+              >
+                <RouteErrorBoundary>
+                  <Routes>
+                    <Route
+                      path='/'
+                      element={
+                        <Tracks
+                          tracks={libraryTracks}
+                          selectedTrackId={currentTrack?.id ?? null}
+                          isPlaying={isPlaying}
+                          isLoading={isLibraryLoading}
+                          scanProgress={libraryScanProgress}
+                          libraryError={libraryError}
+                          isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidApp={isAndroidApp}
+                          onPlayTrack={playTrack}
+                          onShufflePlay={shufflePlayTracks}
+                          onQueueTracks={handleQueueTracks}
+                          playlists={playlists}
+                          onAddTracksToPlaylist={handleAddTracksToPlaylist}
+                          onEditTrack={handleOpenTrackMetadata}
+                          onAddMusicFolder={handleSelectMusicFolders}
+                        />
                       }
-                      onAccentColorChange={setAccentColor}
-                      useSystemAccentColor={useSystemAccentColor}
-                      onUseSystemAccentColorChange={setUseSystemAccentColor}
-                      iconStyle={iconStyle}
-                      onIconStyleChange={setIconStyle}
-                      seekbarStyle={seekbarStyle}
-                      onSeekbarStyleChange={setSeekbarStyle}
-                      visualizerStyle={visualizerStyle}
-                      onVisualizerStyleChange={setVisualizerStyle}
-                      showVisualizer={showVisualizer}
-                      onShowVisualizerChange={setShowVisualizer}
-                      showArtistImageBackground={showArtistImageBackground}
-                      onShowArtistImageBackgroundChange={setShowArtistImageBackground}
-                      autoDownloadArtistImages={autoDownloadArtistImages}
-                      onAutoDownloadArtistImagesChange={handleAutoDownloadArtistImagesChange}
-                      showLyrics={showLyrics}
-                      onShowLyricsChange={setShowLyrics}
-                      syncLyricsDisplay={syncLyricsDisplay}
-                      onSyncLyricsDisplayChange={setSyncLyricsDisplay}
-                      showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
-                      onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
-                      crossfadeSeconds={crossfadeSeconds}
-                      onCrossfadeChange={setCrossfadeSeconds}
-                      systemAccentColor={systemAccentColor}
-                      musicFolders={musicFolders}
-                      trackCount={libraryTracks.length}
-                      isDesktopApp={Boolean(window.electronAPI)}
-                      isAndroidApp={isAndroidApp}
-                      onAddMusicFolder={() => {
-                        void handleSelectMusicFolders();
-                      }}
-                      onRescanMusicLibrary={handleRescanMusicLibrary}
-                      onRemoveMusicFolder={handleRemoveMusicFolder}
-                      showBrowseSection={showBrowseSection}
-                      onShowBrowseSectionChange={setShowBrowseSection}
-                      showRadioSection={showRadioSection}
-                      onShowRadioSectionChange={setShowRadioSection}
-                      isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
-                      supportsWindowMaterial={supportsWindowMaterial}
-                      windowMaterial={windowMaterial}
-                      onWindowMaterialChange={setWindowMaterial}
-                      materialRestartRequired={
-                        windowMaterial !== windowMaterialAppliedAtLaunch
-                      }
-                      onRestartApp={handleRestartForWindowMaterial}
-                      onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
                     />
-                  }
-                />
-                <Route
-                  path='/settings/*'
-                  element={
-                    <Settings
-                      themeMode={themeMode}
-                      onThemeChange={setThemeMode}
-                      accentColor={
-                        useSystemAccentColor && systemAccentColor ? systemAccentColor : accentColor
+                    <Route
+                      path='/tracks'
+                      element={
+                        <Tracks
+                          tracks={libraryTracks}
+                          selectedTrackId={currentTrack?.id ?? null}
+                          isPlaying={isPlaying}
+                          isLoading={isLibraryLoading}
+                          scanProgress={libraryScanProgress}
+                          libraryError={libraryError}
+                          isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidApp={isAndroidApp}
+                          onPlayTrack={playTrack}
+                          onShufflePlay={shufflePlayTracks}
+                          onQueueTracks={handleQueueTracks}
+                          playlists={playlists}
+                          onAddTracksToPlaylist={handleAddTracksToPlaylist}
+                          onEditTrack={handleOpenTrackMetadata}
+                          onAddMusicFolder={handleSelectMusicFolders}
+                        />
                       }
-                      onAccentColorChange={setAccentColor}
-                      useSystemAccentColor={useSystemAccentColor}
-                      onUseSystemAccentColorChange={setUseSystemAccentColor}
-                      iconStyle={iconStyle}
-                      onIconStyleChange={setIconStyle}
-                      seekbarStyle={seekbarStyle}
-                      onSeekbarStyleChange={setSeekbarStyle}
-                      visualizerStyle={visualizerStyle}
-                      onVisualizerStyleChange={setVisualizerStyle}
-                      showVisualizer={showVisualizer}
-                      onShowVisualizerChange={setShowVisualizer}
-                      showArtistImageBackground={showArtistImageBackground}
-                      onShowArtistImageBackgroundChange={setShowArtistImageBackground}
-                      autoDownloadArtistImages={autoDownloadArtistImages}
-                      onAutoDownloadArtistImagesChange={(enabled) => {
-                        setAutoDownloadArtistImages(enabled);
-                        if (!enabled) setShowArtistImageBackground(false);
-                      }}
-                      showLyrics={showLyrics}
-                      onShowLyricsChange={setShowLyrics}
-                      syncLyricsDisplay={syncLyricsDisplay}
-                      onSyncLyricsDisplayChange={setSyncLyricsDisplay}
-                      showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
-                      onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
-                      crossfadeSeconds={crossfadeSeconds}
-                      onCrossfadeChange={setCrossfadeSeconds}
-                      systemAccentColor={systemAccentColor}
-                      musicFolders={musicFolders}
-                      trackCount={libraryTracks.length}
-                      isDesktopApp={Boolean(window.electronAPI)}
-                      isAndroidApp={isAndroidApp}
-                      onAddMusicFolder={() => {
-                        void handleSelectMusicFolders();
-                      }}
-                      onRescanMusicLibrary={() => {
-                        void handleRescanMusicLibrary();
-                      }}
-                      onRemoveMusicFolder={(folder) => {
-                        void handleRemoveMusicFolder(folder);
-                      }}
-                      showBrowseSection={showBrowseSection}
-                      onShowBrowseSectionChange={setShowBrowseSection}
-                      showRadioSection={showRadioSection}
-                      onShowRadioSectionChange={setShowRadioSection}
-                      isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
-                      supportsWindowMaterial={supportsWindowMaterial}
-                      windowMaterial={windowMaterial}
-                      onWindowMaterialChange={setWindowMaterial}
-                      materialRestartRequired={
-                        windowMaterial !== windowMaterialAppliedAtLaunch
-                      }
-                      onRestartApp={handleRestartForWindowMaterial}
-                      onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
                     />
-                  }
-                />
-                </Routes>
+                    <Route
+                      path='/albums'
+                      element={
+                        <Albums
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onShufflePlay={shufflePlayTracks}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/albums/detail'
+                      element={
+                        <CollectionDetails
+                          type='album'
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/artists'
+                      element={
+                        <Artists
+                          tracks={libraryTracks}
+                          autoDownloadArtistImages={autoDownloadArtistImages}
+                          onPlayTrack={playTrack}
+                          onShufflePlay={shufflePlayTracks}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/artists/detail'
+                      element={
+                        <CollectionDetails
+                          type='artist'
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/genres'
+                      element={
+                        <Genres
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/genres/detail'
+                      element={
+                        <CollectionDetails
+                          type='genre'
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/composer'
+                      element={
+                        <Composer
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/playlists/:playlistId?'
+                      element={
+                        <PlaylistsPage
+                          playlists={playlists}
+                          tracks={libraryTracks}
+                          onCreatePlaylist={handleCreatePlaylist}
+                          onDeletePlaylist={handleDeletePlaylist}
+                          onAddTracks={handleAddTracksToPlaylist}
+                          onRemoveTrack={handleRemoveTrackFromPlaylist}
+                          onPlayTrack={playTrack}
+                          onShufflePlay={shufflePlayTracks}
+                          onPlaylistAction={handlePlaylistAction}
+                          message={libraryError}
+                        />
+                      }
+                    />
+                    <Route path='/browse' element={<SectionPlaceholder title='Browse' />} />
+                    <Route
+                      path='/radio'
+                      element={
+                        <RadioPage
+                          currentTrack={currentTrack}
+                          isPlaying={isPlaying}
+                          onPlayTrack={playTrack}
+                          onPlayPause={handlePlayPause}
+                        />
+                      }
+                    />
+                    <Route path='/jamendo' element={<Navigate to='/radio?tab=jamendo' replace />} />
+                    <Route
+                      path='/audiomack'
+                      element={<Navigate to='/radio?tab=audiomack' replace />}
+                    />
+                    <Route
+                      path='/search'
+                      element={
+                        <Search
+                          tracks={libraryTracks}
+                          onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/settings'
+                      element={
+                        <Settings
+                          themeMode={themeMode}
+                          onThemeChange={setThemeMode}
+                          accentColor={
+                            useSystemAccentColor && systemAccentColor
+                              ? systemAccentColor
+                              : accentColor
+                          }
+                          onAccentColorChange={setAccentColor}
+                          useSystemAccentColor={useSystemAccentColor}
+                          onUseSystemAccentColorChange={setUseSystemAccentColor}
+                          iconStyle={iconStyle}
+                          onIconStyleChange={setIconStyle}
+                          seekbarStyle={seekbarStyle}
+                          onSeekbarStyleChange={setSeekbarStyle}
+                          visualizerStyle={visualizerStyle}
+                          onVisualizerStyleChange={setVisualizerStyle}
+                          showVisualizer={showVisualizer}
+                          onShowVisualizerChange={setShowVisualizer}
+                          showArtistImageBackground={showArtistImageBackground}
+                          onShowArtistImageBackgroundChange={setShowArtistImageBackground}
+                          autoDownloadArtistImages={autoDownloadArtistImages}
+                          onAutoDownloadArtistImagesChange={handleAutoDownloadArtistImagesChange}
+                          showLyrics={showLyrics}
+                          onShowLyricsChange={setShowLyrics}
+                          syncLyricsDisplay={syncLyricsDisplay}
+                          onSyncLyricsDisplayChange={setSyncLyricsDisplay}
+                          showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
+                          onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
+                          crossfadeSeconds={crossfadeSeconds}
+                          onCrossfadeChange={setCrossfadeSeconds}
+                          systemAccentColor={systemAccentColor}
+                          musicFolders={musicFolders}
+                          trackCount={libraryTracks.length}
+                          isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidApp={isAndroidApp}
+                          androidBackgroundPlaybackEnabled={androidBackgroundPlaybackEnabled}
+                          onAndroidBackgroundPlaybackChange={setAndroidBackgroundPlaybackEnabled}
+                          androidLockScreenControlsEnabled={androidLockScreenControlsEnabled}
+                          onAndroidLockScreenControlsChange={setAndroidLockScreenControlsEnabled}
+                          androidDeviceInfo={androidDeviceInfo}
+                          androidMaterialYouEnabled={androidMaterialYouEnabled}
+                          androidMaterialYouAvailable={
+                            androidAppearance?.supportsMaterialYou ?? false
+                          }
+                          androidMaterialYouLoading={!androidAppearanceLoaded}
+                          androidMaterialYouError={androidAppearanceError}
+                          onAndroidMaterialYouChange={setAndroidMaterialYouEnabled}
+                          onAddMusicFolder={() => {
+                            void handleSelectMusicFolders();
+                          }}
+                          onRescanMusicLibrary={handleRescanMusicLibrary}
+                          onRemoveMusicFolder={handleRemoveMusicFolder}
+                          showBrowseSection={showBrowseSection}
+                          onShowBrowseSectionChange={setShowBrowseSection}
+                          showRadioSection={showRadioSection}
+                          onShowRadioSectionChange={setShowRadioSection}
+                          isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
+                          supportsWindowMaterial={supportsWindowMaterial}
+                          windowMaterial={windowMaterial}
+                          onWindowMaterialChange={setWindowMaterial}
+                          materialRestartRequired={windowMaterial !== windowMaterialAppliedAtLaunch}
+                          onRestartApp={handleRestartForWindowMaterial}
+                          onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/settings/*'
+                      element={
+                        <Settings
+                          themeMode={themeMode}
+                          onThemeChange={setThemeMode}
+                          accentColor={
+                            useSystemAccentColor && systemAccentColor
+                              ? systemAccentColor
+                              : accentColor
+                          }
+                          onAccentColorChange={setAccentColor}
+                          useSystemAccentColor={useSystemAccentColor}
+                          onUseSystemAccentColorChange={setUseSystemAccentColor}
+                          iconStyle={iconStyle}
+                          onIconStyleChange={setIconStyle}
+                          seekbarStyle={seekbarStyle}
+                          onSeekbarStyleChange={setSeekbarStyle}
+                          visualizerStyle={visualizerStyle}
+                          onVisualizerStyleChange={setVisualizerStyle}
+                          showVisualizer={showVisualizer}
+                          onShowVisualizerChange={setShowVisualizer}
+                          showArtistImageBackground={showArtistImageBackground}
+                          onShowArtistImageBackgroundChange={setShowArtistImageBackground}
+                          autoDownloadArtistImages={autoDownloadArtistImages}
+                          onAutoDownloadArtistImagesChange={(enabled) => {
+                            setAutoDownloadArtistImages(enabled);
+                            if (!enabled) setShowArtistImageBackground(false);
+                          }}
+                          showLyrics={showLyrics}
+                          onShowLyricsChange={setShowLyrics}
+                          syncLyricsDisplay={syncLyricsDisplay}
+                          onSyncLyricsDisplayChange={setSyncLyricsDisplay}
+                          showSyncedLyricsOnPlayBar={showSyncedLyricsOnPlayBar}
+                          onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
+                          crossfadeSeconds={crossfadeSeconds}
+                          onCrossfadeChange={setCrossfadeSeconds}
+                          systemAccentColor={systemAccentColor}
+                          musicFolders={musicFolders}
+                          trackCount={libraryTracks.length}
+                          isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidApp={isAndroidApp}
+                          androidBackgroundPlaybackEnabled={androidBackgroundPlaybackEnabled}
+                          onAndroidBackgroundPlaybackChange={setAndroidBackgroundPlaybackEnabled}
+                          androidLockScreenControlsEnabled={androidLockScreenControlsEnabled}
+                          onAndroidLockScreenControlsChange={setAndroidLockScreenControlsEnabled}
+                          androidDeviceInfo={androidDeviceInfo}
+                          androidMaterialYouEnabled={androidMaterialYouEnabled}
+                          androidMaterialYouAvailable={
+                            androidAppearance?.supportsMaterialYou ?? false
+                          }
+                          androidMaterialYouLoading={!androidAppearanceLoaded}
+                          androidMaterialYouError={androidAppearanceError}
+                          onAndroidMaterialYouChange={setAndroidMaterialYouEnabled}
+                          onAddMusicFolder={() => {
+                            void handleSelectMusicFolders();
+                          }}
+                          onRescanMusicLibrary={() => {
+                            void handleRescanMusicLibrary();
+                          }}
+                          onRemoveMusicFolder={(folder) => {
+                            void handleRemoveMusicFolder(folder);
+                          }}
+                          showBrowseSection={showBrowseSection}
+                          onShowBrowseSectionChange={setShowBrowseSection}
+                          showRadioSection={showRadioSection}
+                          onShowRadioSectionChange={setShowRadioSection}
+                          isWindowsDesktopApp={window.electronAPI?.platform === 'win32'}
+                          supportsWindowMaterial={supportsWindowMaterial}
+                          windowMaterial={windowMaterial}
+                          onWindowMaterialChange={setWindowMaterial}
+                          materialRestartRequired={windowMaterial !== windowMaterialAppliedAtLaunch}
+                          onRestartApp={handleRestartForWindowMaterial}
+                          onOpenWindowsDefaultApps={handleOpenWindowsDefaultApps}
+                        />
+                      }
+                    />
+                    <Route path='*' element={<Navigate to='/tracks' replace />} />
+                  </Routes>
+                </RouteErrorBoundary>
               </Suspense>
             </div>
           </main>
@@ -2177,11 +2636,11 @@ const App = () => {
         hidden
       />
       {playbackNotice && (
-        <div className="playback-notice" role="status" aria-live="polite">
+        <div className='playback-notice' role='status' aria-live='polite'>
           <span>{playbackNotice}</span>
           <button
-            type="button"
-            aria-label="Dismiss playback notice"
+            type='button'
+            aria-label='Dismiss playback notice'
             onClick={() => {
               setPlaybackNotice(null);
               if (playbackNoticeTimeoutRef.current !== null) {
@@ -2190,7 +2649,9 @@ const App = () => {
               }
             }}
           >
-            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              close
+            </span>
           </button>
         </div>
       )}
@@ -2261,10 +2722,7 @@ const App = () => {
         />
       )}
       {!hasSeenReleaseNotes && settingsLoaded && (
-        <ReleaseNotesDialog
-          version={packageJson.version}
-          onClose={handleCloseReleaseNotes}
-        />
+        <ReleaseNotesDialog version={packageJson.version} onClose={handleCloseReleaseNotes} />
       )}
     </div>
   );

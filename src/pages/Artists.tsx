@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import QueueContextMenu from '../components/QueueContextMenu';
-import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
+import {
+  getLibraryItemHash,
+  getLibraryItemPath,
+  useScrollToLibraryItem,
+} from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { splitArtistCredits } from '../utils/artistCredits';
 import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import { useArtistImage } from '../services/artistImages';
+import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import './Artists.css';
 
 interface ArtistCardProps {
@@ -23,16 +28,20 @@ interface ArtistCardProps {
 }
 
 const ArtistCard = ({ artist, allowImageDownload, onOpen, onPlayTrack }: ArtistCardProps) => {
-  const { elementRef, imageUrl } = useArtistImage(artist.name, {
+  const { elementRef: artistElementRef, imageUrl: artistImageUrl } = useArtistImage(artist.name, {
     allowDownload: allowImageDownload,
     loadWhenVisible: true,
   });
+  const { elementRef: artworkElementRef, imageUrl: albumArtUrl } = useAndroidAlbumArtwork(
+    artist.tracks[0]
+  );
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
-  const hasImage = Boolean(imageUrl && imageUrl !== failedImageUrl);
+  const imageUrl = artistImageUrl !== failedImageUrl ? artistImageUrl : albumArtUrl;
+  const hasImage = Boolean(imageUrl);
 
   return (
     <div
-      ref={elementRef}
+      ref={artistElementRef}
       id={getLibraryItemHash('artist', artist.name).slice(1)}
       className='artist-card'
       role='link'
@@ -43,27 +52,38 @@ const ArtistCard = ({ artist, allowImageDownload, onOpen, onPlayTrack }: ArtistC
         onOpen();
       }}
       onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' '))
+          return;
         event.preventDefault();
         onOpen();
       }}
     >
-      <div className={`artist-image ${hasImage ? '' : 'artist-image-placeholder'}`}>
+      <div
+        ref={artworkElementRef}
+        className={`artist-image ${hasImage ? '' : 'artist-image-placeholder'}`}
+      >
         {hasImage ? (
           <img
             src={imageUrl ?? undefined}
             alt={`${artist.name}`}
             loading='lazy'
             decoding='async'
-            onError={() => setFailedImageUrl(imageUrl)}
+            onError={() => setFailedImageUrl(imageUrl ?? null)}
           />
         ) : (
-          <span className='material-symbols-outlined' aria-hidden='true'>person</span>
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            person
+          </span>
         )}
-        <button className='play-button' type='button' aria-label={`Play ${artist.name}`} onClick={(event) => {
-          event.stopPropagation();
-          onPlayTrack(artist.tracks[0], artist.tracks);
-        }}>
+        <button
+          className='play-button'
+          type='button'
+          aria-label={`Play ${artist.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlayTrack(artist.tracks[0], artist.tracks);
+          }}
+        >
           <span className='material-symbols-outlined'>play_arrow</span>
         </button>
       </div>
@@ -78,7 +98,9 @@ const ArtistCard = ({ artist, allowImageDownload, onOpen, onPlayTrack }: ArtistC
         >
           <span className='artist-name'>{artist.name}</span>
         </button>
-        <p className='artist-stats'>{artist.albums.size} albums • {artist.tracks.length} tracks</p>
+        <p className='artist-stats'>
+          {artist.albums.size} albums • {artist.tracks.length} tracks
+        </p>
       </div>
     </div>
   );
@@ -105,11 +127,19 @@ const ArtistsPage = ({
   useScrollToLibraryItem();
 
   const artists = useMemo(() => {
-    const artistsByName = new Map<string, { id: string; name: string; albums: Set<string>; tracks: Track[] }>();
+    const artistsByName = new Map<
+      string,
+      { id: string; name: string; albums: Set<string>; tracks: Track[] }
+    >();
     tracks.forEach((track) => {
       splitArtistCredits(track.artist).forEach((artistName) => {
         const id = artistName.toLocaleLowerCase();
-        const artist = artistsByName.get(id) ?? { id, name: artistName, albums: new Set<string>(), tracks: [] };
+        const artist = artistsByName.get(id) ?? {
+          id,
+          name: artistName,
+          albums: new Set<string>(),
+          tracks: [],
+        };
         artist.albums.add(track.album.toLocaleLowerCase());
         artist.tracks.push(track);
         artistsByName.set(id, artist);
@@ -124,8 +154,10 @@ const ArtistsPage = ({
   const sortedArtists = useMemo(
     () =>
       [...artists].sort((a, b) => {
-        const aValue = sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
-        const bValue = sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
+        const aValue =
+          sortBy === 'name' ? a.name : sortBy === 'albums' ? a.albums.size : a.tracks.length;
+        const bValue =
+          sortBy === 'name' ? b.name : sortBy === 'albums' ? b.albums.size : b.tracks.length;
         return compareAlphaNumericFirst(aValue, bValue, sortDirection);
       }),
     [artists, sortBy, sortDirection]
@@ -134,7 +166,12 @@ const ArtistsPage = ({
     () =>
       buildAlphaNumericIndex(
         sortedArtists,
-        (artist) => (sortBy === 'name' ? artist.name : sortBy === 'albums' ? artist.albums.size : artist.tracks.length),
+        (artist) =>
+          sortBy === 'name'
+            ? artist.name
+            : sortBy === 'albums'
+              ? artist.albums.size
+              : artist.tracks.length,
         (artist) => getLibraryItemHash('artist', artist.name).slice(1)
       ),
     [sortBy, sortedArtists]
@@ -157,19 +194,35 @@ const ArtistsPage = ({
               disabled={tracks.length === 0}
               onClick={() => onShufflePlay(tracks)}
             >
-              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                shuffle
+              </span>
               Shuffle &amp; Play
             </button>
             {artists.length > 0 && (
               <div className='sort-selector'>
-                <label className='sort-label' htmlFor='artist-sort'>Sort by:</label>
-                <select id='artist-sort' className='sort-select' value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+                <label className='sort-label' htmlFor='artist-sort'>
+                  Sort by:
+                </label>
+                <select
+                  id='artist-sort'
+                  className='sort-select'
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                >
                   <option value='name'>Name</option>
                   <option value='albums'>Albums</option>
                   <option value='tracks'>Tracks</option>
                 </select>
-                <button className='sort-direction' type='button' aria-label='Change sort direction' onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}>
-                  <span className='material-symbols-outlined'>{sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+                <button
+                  className='sort-direction'
+                  type='button'
+                  aria-label='Change sort direction'
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                >
+                  <span className='material-symbols-outlined'>
+                    {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                  </span>
                 </button>
               </div>
             )}
@@ -177,11 +230,17 @@ const ArtistsPage = ({
         </header>
 
         {artists.length === 0 ? (
-          <p className='library-message'>Artists from your indexed music folders will appear here.</p>
+          <p className='library-message'>
+            Artists from your indexed music folders will appear here.
+          </p>
         ) : (
           <div className='artists-grid'>
             {sortedArtists.map((artist) => (
-              <QueueContextMenu key={artist.id} tracks={artist.tracks} onQueueTracks={onQueueTracks}>
+              <QueueContextMenu
+                key={artist.id}
+                tracks={artist.tracks}
+                onQueueTracks={onQueueTracks}
+              >
                 <ArtistCard
                   artist={artist}
                   allowImageDownload={autoDownloadArtistImages}

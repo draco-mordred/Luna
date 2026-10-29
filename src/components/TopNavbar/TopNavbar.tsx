@@ -123,7 +123,7 @@ const TopNavbar = ({
   };
 
   return (
-    <nav className="top-navbar">
+    <nav className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}`}>
       <div className="navbar-left">
         <h1 className="navbar-title">{SECTION_TITLES[section]}</h1>
         {section === 'library' && (

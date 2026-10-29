@@ -23,6 +23,7 @@ const QueueContextMenu = ({
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!position) return undefined;
     const closeMenu = () => setPosition(null);
     window.addEventListener('click', closeMenu);
     window.addEventListener('blur', closeMenu);
@@ -32,7 +33,7 @@ const QueueContextMenu = ({
       window.removeEventListener('blur', closeMenu);
       window.removeEventListener('luna-close-queue-context-menus', closeMenu);
     };
-  }, []);
+  }, [position]);
 
   useEffect(() => {
     if (!position || !lockPageScroll) return;
@@ -63,41 +64,43 @@ const QueueContextMenu = ({
     });
   };
 
-  const menu = position && createPortal(
-    <div
-      ref={menuRef}
-      className="queue-context-menu"
-      role="menu"
-      aria-label="Queue options"
-      style={{
-        position: 'fixed',
-        top: position.y,
-        left: position.x,
-        zIndex: 1000,
-      }}
-      onClick={(event) => event.stopPropagation()}
-    >
-      {[
-        { label: 'Add to play queue', playNext: false },
-        { label: 'Play next', playNext: true },
-      ].map((action) => (
-        <button
-          key={action.label}
-          type="button"
-          className="queue-context-menu-item"
-          role="menuitem"
-          disabled={tracks.length === 0}
-          onClick={() => {
-            onQueueTracks(tracks, action.playNext);
-            setPosition(null);
-          }}
-        >
-          {action.label}
-        </button>
-      ))}
-    </div>,
-    document.body,
-  );
+  const menu =
+    position &&
+    createPortal(
+      <div
+        ref={menuRef}
+        className='queue-context-menu'
+        role='menu'
+        aria-label='Queue options'
+        style={{
+          position: 'fixed',
+          top: position.y,
+          left: position.x,
+          zIndex: 1000,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {[
+          { label: 'Add to play queue', playNext: false },
+          { label: 'Play next', playNext: true },
+        ].map((action) => (
+          <button
+            key={action.label}
+            type='button'
+            className='queue-context-menu-item'
+            role='menuitem'
+            disabled={tracks.length === 0}
+            onClick={() => {
+              onQueueTracks(tracks, action.playNext);
+              setPosition(null);
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>,
+      document.body
+    );
 
   return asListItem ? (
     <li onContextMenu={handleContextMenu}>
@@ -105,10 +108,7 @@ const QueueContextMenu = ({
       {menu}
     </li>
   ) : (
-    <div
-      style={{ display: 'contents' }}
-      onContextMenu={handleContextMenu}
-    >
+    <div style={{ display: 'contents' }} onContextMenu={handleContextMenu}>
       {children}
       {menu}
     </div>

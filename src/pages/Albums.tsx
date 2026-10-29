@@ -3,9 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
 import QueueContextMenu from '../components/QueueContextMenu';
-import { getLibraryItemHash, getLibraryItemPath, useScrollToLibraryItem } from '../utils/libraryNavigation';
+import {
+  getLibraryItemHash,
+  getLibraryItemPath,
+  useScrollToLibraryItem,
+} from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
+import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import './Albums.css';
 
 interface AlbumSummary {
@@ -32,74 +37,12 @@ interface AlbumCardProps {
   onOpen: () => void;
 }
 
-const AlbumCard = memo(({ album, onPlayTrack, onOpen }: AlbumCardProps) => (
-  <section
-    id={getLibraryItemHash('album', album.name, album.artist).slice(1)}
-    className='album-card'
-    role='link'
-    tabIndex={0}
-    aria-label={`Open ${album.name} by ${album.artist}`}
-    onClick={(event) => {
-      if ((event.target as HTMLElement).closest('button')) return;
-      onOpen();
-    }}
-    onKeyDown={(event) => {
-      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-      event.preventDefault();
-      onOpen();
-    }}
-  >
-    <div className={`album-cover ${album.firstTrack.albumArt ? '' : 'album-cover-placeholder'}`}>
-      {album.firstTrack.albumArt ? (
-        <img
-          src={album.firstTrack.albumArt}
-          alt={`${album.name} cover`}
-          loading='lazy'
-          decoding='async'
-        />
-      ) : (
-        <span className='material-symbols-outlined' aria-hidden='true'>
-          album
-        </span>
-      )}
-      <button
-        className='play-button'
-        type='button'
-        aria-label={`Play ${album.name}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onPlayTrack(album.firstTrack, album.tracks);
-        }}
-      >
-        <span className='material-symbols-outlined'>play_arrow</span>
-      </button>
-    </div>
-    <div className='album-info'>
-      <button type='button' className='collection-expand-title' onClick={(event) => {
-        event.stopPropagation();
-        onOpen();
-      }}>
-        <span className='album-name'>{album.name}</span>
-      </button>
-      <p className='album-artist'>{album.artist}</p>
-      <p className='album-meta'>
-        {album.year || 'Year unknown'} • {album.trackCount} tracks
-      </p>
-    </div>
-  </section>
-));
-
-interface AlbumListItemProps extends AlbumCardProps {
-  index: number;
-}
-
-const AlbumListItem = memo(({ album, index, onPlayTrack, onOpen }: AlbumListItemProps) => (
-  <section
-    id={getLibraryItemHash('album', album.name, album.artist).slice(1)}
-    className='album-list-entry'
-  >
-    <div
-      className='album-list-item'
+const AlbumCard = memo(({ album, onPlayTrack, onOpen }: AlbumCardProps) => {
+  const { elementRef, imageUrl } = useAndroidAlbumArtwork(album.firstTrack);
+  return (
+    <section
+      id={getLibraryItemHash('album', album.name, album.artist).slice(1)}
+      className='album-card'
       role='link'
       tabIndex={0}
       aria-label={`Open ${album.name} by ${album.artist}`}
@@ -108,54 +51,123 @@ const AlbumListItem = memo(({ album, index, onPlayTrack, onOpen }: AlbumListItem
         onOpen();
       }}
       onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' '))
+          return;
         event.preventDefault();
         onOpen();
       }}
     >
-      <div className='album-list-number'>{index + 1}</div>
-      <div
-        className={`album-list-cover ${album.firstTrack.albumArt ? '' : 'album-cover-placeholder'}`}
-      >
-        {album.firstTrack.albumArt ? (
-          <img
-            src={album.firstTrack.albumArt}
-            alt={`${album.name} cover`}
-            loading='lazy'
-            decoding='async'
-          />
+      <div ref={elementRef} className={`album-cover ${imageUrl ? '' : 'album-cover-placeholder'}`}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={`${album.name} cover`} loading='lazy' decoding='async' />
         ) : (
           <span className='material-symbols-outlined' aria-hidden='true'>
             album
           </span>
         )}
-      </div>
-      <div className='album-list-info'>
-        <button type='button' className='collection-expand-title' onClick={(event) => {
-          event.stopPropagation();
-          onOpen();
-        }}>
-          <span className='album-list-name'>{album.name}</span>
+        <button
+          className='play-button'
+          type='button'
+          aria-label={`Play ${album.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlayTrack(album.firstTrack, album.tracks);
+          }}
+        >
+          <span className='material-symbols-outlined'>play_arrow</span>
         </button>
-        <p className='album-list-artist'>{album.artist}</p>
       </div>
-      <div className='album-list-year'>{album.year || '—'}</div>
-      <div className='album-list-tracks'>{album.trackCount} tracks</div>
-      <div className='album-list-duration'>{formatDuration(album.duration)}</div>
-      <button
-        className='album-list-menu'
-        type='button'
-        aria-label={`Play ${album.name}`}
+      <div className='album-info'>
+        <button
+          type='button'
+          className='collection-expand-title'
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+        >
+          <span className='album-name'>{album.name}</span>
+        </button>
+        <p className='album-artist'>{album.artist}</p>
+        <p className='album-meta'>
+          {album.year || 'Year unknown'} • {album.trackCount} tracks
+        </p>
+      </div>
+    </section>
+  );
+});
+
+interface AlbumListItemProps extends AlbumCardProps {
+  index: number;
+}
+
+const AlbumListItem = memo(({ album, index, onPlayTrack, onOpen }: AlbumListItemProps) => {
+  const { elementRef, imageUrl } = useAndroidAlbumArtwork(album.firstTrack);
+  return (
+    <section
+      id={getLibraryItemHash('album', album.name, album.artist).slice(1)}
+      className='album-list-entry'
+    >
+      <div
+        className='album-list-item'
+        role='link'
+        tabIndex={0}
+        aria-label={`Open ${album.name} by ${album.artist}`}
         onClick={(event) => {
-          event.stopPropagation();
-          onPlayTrack(album.firstTrack, album.tracks);
+          if ((event.target as HTMLElement).closest('button')) return;
+          onOpen();
+        }}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' '))
+            return;
+          event.preventDefault();
+          onOpen();
         }}
       >
-        <span className='material-symbols-outlined'>play_arrow</span>
-      </button>
-    </div>
-  </section>
-));
+        <div className='album-list-number'>{index + 1}</div>
+        <div
+          ref={elementRef}
+          className={`album-list-cover ${imageUrl ? '' : 'album-cover-placeholder'}`}
+        >
+          {imageUrl ? (
+            <img src={imageUrl} alt={`${album.name} cover`} loading='lazy' decoding='async' />
+          ) : (
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              album
+            </span>
+          )}
+        </div>
+        <div className='album-list-info'>
+          <button
+            type='button'
+            className='collection-expand-title'
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen();
+            }}
+          >
+            <span className='album-list-name'>{album.name}</span>
+          </button>
+          <p className='album-list-artist'>{album.artist}</p>
+        </div>
+        <div className='album-list-year'>{album.year || '—'}</div>
+        <div className='album-list-tracks'>{album.trackCount} tracks</div>
+        <div className='album-list-duration'>{formatDuration(album.duration)}</div>
+        <button
+          className='album-list-menu'
+          type='button'
+          aria-label={`Play ${album.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlayTrack(album.firstTrack, album.tracks);
+          }}
+        >
+          <span className='material-symbols-outlined'>play_arrow</span>
+        </button>
+      </div>
+    </section>
+  );
+});
 
 const formatDuration = (seconds: number) => {
   const hours = Math.floor(seconds / 3600);
@@ -236,7 +248,9 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
               disabled={tracks.length === 0}
               onClick={() => onShufflePlay(tracks)}
             >
-              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                shuffle
+              </span>
               Shuffle &amp; Play
             </button>
             <div className='view-mode-toggle'>
@@ -284,13 +298,19 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
         </header>
 
         {albums.length === 0 ? (
-          <p className='library-message'>Albums from your indexed music folders will appear here.</p>
+          <p className='library-message'>
+            Albums from your indexed music folders will appear here.
+          </p>
         ) : (
           <div className={`albums-container ${viewMode}`}>
             {viewMode === 'grid' ? (
               <div className='albums-grid'>
                 {sortedAlbums.map((album) => (
-                  <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
+                  <QueueContextMenu
+                    key={album.id}
+                    tracks={album.tracks}
+                    onQueueTracks={onQueueTracks}
+                  >
                     <AlbumCard
                       album={album}
                       onPlayTrack={onPlayTrack}
@@ -302,7 +322,11 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
             ) : (
               <div className='albums-list'>
                 {sortedAlbums.map((album, index) => (
-                  <QueueContextMenu key={album.id} tracks={album.tracks} onQueueTracks={onQueueTracks}>
+                  <QueueContextMenu
+                    key={album.id}
+                    tracks={album.tracks}
+                    onQueueTracks={onQueueTracks}
+                  >
                     <AlbumListItem
                       album={album}
                       index={index}

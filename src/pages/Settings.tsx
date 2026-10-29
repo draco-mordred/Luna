@@ -1,12 +1,8 @@
 import { memo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type {
-  IconStyle,
-  SeekbarStyle,
-  VisualizerStyle,
-  WindowMaterial,
-} from '../types/electron';
+import type { IconStyle, SeekbarStyle, VisualizerStyle, WindowMaterial } from '../types/electron';
 import packageMetadata from '../../package.json';
+import type { AndroidDeviceInfo } from '../services/androidMusicLibrary';
 import ReleaseNotesDialog from '../components/ReleaseNotesDialog';
 import './Settings.css';
 
@@ -44,6 +40,16 @@ interface SettingsPageProps {
   trackCount: number;
   isDesktopApp: boolean;
   isAndroidApp: boolean;
+  androidBackgroundPlaybackEnabled: boolean;
+  onAndroidBackgroundPlaybackChange: (enabled: boolean) => void;
+  androidLockScreenControlsEnabled: boolean;
+  onAndroidLockScreenControlsChange: (enabled: boolean) => void;
+  androidDeviceInfo: AndroidDeviceInfo | null;
+  androidMaterialYouEnabled: boolean;
+  androidMaterialYouAvailable: boolean;
+  androidMaterialYouLoading: boolean;
+  androidMaterialYouError: string | null;
+  onAndroidMaterialYouChange: (enabled: boolean) => void;
   onAddMusicFolder: () => void;
   onRescanMusicLibrary: () => void;
   onRemoveMusicFolder: (folder: string) => void;
@@ -99,6 +105,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   trackCount,
   isDesktopApp,
   isAndroidApp,
+  androidBackgroundPlaybackEnabled,
+  onAndroidBackgroundPlaybackChange,
+  androidLockScreenControlsEnabled,
+  onAndroidLockScreenControlsChange,
+  androidDeviceInfo,
+  androidMaterialYouEnabled,
+  androidMaterialYouAvailable,
+  androidMaterialYouLoading,
+  androidMaterialYouError,
+  onAndroidMaterialYouChange,
   onAddMusicFolder,
   onRescanMusicLibrary,
   onRemoveMusicFolder,
@@ -168,6 +184,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
           </div>
+          {isAndroidApp && (
+            <div
+              className={`setting-item ${
+                !androidMaterialYouAvailable ? 'setting-item-disabled' : ''
+              }`}
+            >
+              <div className='setting-info'>
+                <h3>Android Material You colors</h3>
+                <p>
+                  {androidMaterialYouError ??
+                    (androidMaterialYouLoading
+                      ? 'Checking Android color support…'
+                      : androidMaterialYouAvailable
+                        ? 'Use colors derived from your Android wallpaper'
+                        : 'Wallpaper colors require Android 12 or later')}
+                </p>
+              </div>
+              <div className='setting-control'>
+                <label className='toggle-switch'>
+                  <input
+                    type='checkbox'
+                    checked={androidMaterialYouEnabled}
+                    disabled={!androidMaterialYouAvailable}
+                    onChange={(event) => onAndroidMaterialYouChange(event.currentTarget.checked)}
+                    aria-label='Use Android Material You colors'
+                  />
+                  <span className='toggle-slider'></span>
+                </label>
+              </div>
+            </div>
+          )}
           <div className='setting-item'>
             <div className='setting-info'>
               <h3>Accent Color</h3>
@@ -246,11 +293,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   </option>
                 </select>
                 {supportsWindowMaterial && materialRestartRequired && (
-                  <button
-                    type='button'
-                    className='manage-button'
-                    onClick={onRestartApp}
-                  >
+                  <button type='button' className='manage-button' onClick={onRestartApp}>
                     Restart now
                   </button>
                 )}
@@ -262,17 +305,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <div className='setting-info'>
                 <h3>Default audio player</h3>
                 <p>
-                  Install Luna with the Windows setup installer to register it, then choose it
-                  for supported formats in Windows Default apps. Windows requires you to confirm
-                  each format.
+                  Install Luna with the Windows setup installer to register it, then choose it for
+                  supported formats in Windows Default apps. Windows requires you to confirm each
+                  format.
                 </p>
               </div>
               <div className='setting-control default-audio-player-control'>
-                <button
-                  type='button'
-                  className='manage-button'
-                  onClick={onOpenWindowsDefaultApps}
-                >
+                <button type='button' className='manage-button' onClick={onOpenWindowsDefaultApps}>
                   Open Windows Default Apps
                 </button>
               </div>
@@ -364,7 +403,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className='setting-control'>
               {(isDesktopApp || isAndroidApp) && (
                 <button type='button' className='manage-button' onClick={onRescanMusicLibrary}>
-                {isAndroidApp ? 'Scan device' : 'Rescan'}
+                  {isAndroidApp ? 'Scan device' : 'Rescan'}
                 </button>
               )}
             </div>
@@ -465,7 +504,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
             <div className='setting-control'>
               <label className='toggle-switch'>
-                <input type='checkbox' />
+                <input type='checkbox' aria-label='Enable volume normalization' />
                 <span className='toggle-slider'></span>
               </label>
             </div>
@@ -477,14 +516,57 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
             <div className='setting-control'>
               <label className='toggle-switch'>
-                <input
-                  type='checkbox'
-                  disabled
-                />
+                <input type='checkbox' aria-label='Enable gapless playback' disabled />
                 <span className='toggle-slider'></span>
               </label>
             </div>
           </div>
+          {isAndroidApp && (
+            <>
+              <div className='setting-item'>
+                <div className='setting-info'>
+                  <h3>Background playback and notification controls</h3>
+                  <p>
+                    Keep playback active in a foreground service and show play, pause, skip, and
+                    seek controls in Android notifications
+                  </p>
+                </div>
+                <div className='setting-control'>
+                  <label className='toggle-switch'>
+                    <input
+                      type='checkbox'
+                      aria-label='Enable Android background playback and notification controls'
+                      checked={androidBackgroundPlaybackEnabled}
+                      onChange={(event) =>
+                        onAndroidBackgroundPlaybackChange(event.currentTarget.checked)
+                      }
+                    />
+                    <span className='toggle-slider'></span>
+                  </label>
+                </div>
+              </div>
+              <div className='setting-item'>
+                <div className='setting-info'>
+                  <h3>Lock-screen media controls</h3>
+                  <p>Allow Android to show Luna playback controls on the lock screen</p>
+                </div>
+                <div className='setting-control'>
+                  <label className='toggle-switch'>
+                    <input
+                      type='checkbox'
+                      aria-label='Show Android lock-screen media controls'
+                      checked={androidLockScreenControlsEnabled}
+                      disabled={!androidBackgroundPlaybackEnabled}
+                      onChange={(event) =>
+                        onAndroidLockScreenControlsChange(event.currentTarget.checked)
+                      }
+                    />
+                    <span className='toggle-slider'></span>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ),
     },
@@ -523,9 +605,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   aria-label='Synchronize lyric displays'
                   checked={syncLyricsDisplay}
                   disabled={!showLyrics}
-                  onChange={(event) =>
-                    onSyncLyricsDisplayChange(event.currentTarget.checked)
-                  }
+                  onChange={(event) => onSyncLyricsDisplayChange(event.currentTarget.checked)}
                 />
                 <span className='toggle-slider'></span>
               </label>
@@ -550,7 +630,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </label>
             </div>
           </div>
-          <div className={`setting-item ${!autoDownloadArtistImages ? 'setting-item-disabled' : ''}`}>
+          <div
+            className={`setting-item ${!autoDownloadArtistImages ? 'setting-item-disabled' : ''}`}
+          >
             <div className='setting-info'>
               <h3>Artist image background</h3>
               <p>Show the current artist’s web image behind Now Playing</p>
@@ -579,6 +661,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <label className='toggle-switch'>
                 <input
                   type='checkbox'
+                  aria-label='Show visualizer in Now Playing'
                   checked={showVisualizer}
                   onChange={(event) => onShowVisualizerChange(event.currentTarget.checked)}
                 />
@@ -686,9 +769,35 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           <div className='about-meta'>
             <span>Running in</span>
             <strong>
-              {window.electronAPI ? `${window.electronAPI.platform} desktop app` : 'Web browser'}
+              {isAndroidApp
+                ? 'Android app'
+                : window.electronAPI
+                  ? `${window.electronAPI.platform} desktop app`
+                  : 'Web browser'}
             </strong>
           </div>
+          {isAndroidApp && androidDeviceInfo && (
+            <>
+              <div className='about-meta'>
+                <span>Device</span>
+                <strong>
+                  {[androidDeviceInfo.manufacturer, androidDeviceInfo.model]
+                    .filter(Boolean)
+                    .filter(
+                      (value, index, values) =>
+                        index === 0 || value.toLowerCase() !== values[0].toLowerCase()
+                    )
+                    .join(' ') || 'Android device'}
+                </strong>
+              </div>
+              <div className='about-meta'>
+                <span>Android version</span>
+                <strong>
+                  {androidDeviceInfo.androidVersion} (API {androidDeviceInfo.apiLevel})
+                </strong>
+              </div>
+            </>
+          )}
           <div className='about-links'>
             <a
               href='https://github.com/draco-mordred/Luna'
@@ -745,9 +854,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
         {/* Main Content */}
         <main className='settings-main'>
-          <div key={activeSection}>
-            {sections.find((s) => s.id === activeSection)?.component}
-          </div>
+          <div key={activeSection}>{sections.find((s) => s.id === activeSection)?.component}</div>
         </main>
       </div>
     </div>

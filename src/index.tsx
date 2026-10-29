@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import '@fontsource/material-symbols-outlined/400.css';
 import '@fontsource/material-symbols-rounded/400.css';
 import '@fontsource/material-symbols-sharp/400.css';
@@ -13,7 +14,7 @@ import App from './App';
 import './App.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-const AppRouter = window.electronAPI ? HashRouter : BrowserRouter;
+const AppRouter = window.electronAPI || Capacitor.isNativePlatform() ? HashRouter : BrowserRouter;
 
 root.render(
   <React.StrictMode>

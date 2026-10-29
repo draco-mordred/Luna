@@ -1,6 +1,6 @@
 {
   "name": "luna-player",
-  "version": "1.1.271026",
+  "version": "1.1.291026",
   "private": true,
   "main": "public/electron.js",
   "description": "A music player built with React, Electron, and Capacitor.",

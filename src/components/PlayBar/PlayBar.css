@@ -41,6 +41,12 @@
   display: none;
 }
 
+html[data-android-app='true'] .play-bar {
+  transition:
+    height 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    --expand-progress 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Drag Handle */
 .drag-handle {
   position: absolute;
@@ -102,6 +108,21 @@
   visibility: visible;
   pointer-events: auto;
   transition-delay: 0s, 0s, 0s, 0s;
+}
+
+html[data-android-app='true'] .now-playing {
+  clip-path: none;
+  transform: translate3d(0, calc((1 - var(--expand-progress)) * 20px), 0)
+    scale(calc(0.99 + var(--expand-progress) * 0.01));
+  transition:
+    opacity 260ms ease,
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 520ms;
+  will-change: opacity, transform;
+}
+
+html[data-android-app='true'] .now-playing.visible {
+  transition-delay: 0s, 0s, 0s;
 }
 
 .now-playing-artist-background {
@@ -233,6 +254,12 @@ width: min(42vh, 420px);
 
 .album-art {
   position: relative;
+}
+
+html[data-android-app='true'] .album-art {
+  transition:
+    opacity 320ms ease,
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .album-art img,

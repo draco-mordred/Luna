@@ -15,8 +15,7 @@ export const getAlphaNumericIndexAtPosition = (
   Math.max(0, Math.min(entryCount - 1, Math.floor((positionWithinRail + scrollTop) / entryHeight)));
 
 const getScrollportContentTop = (scrollContainer: HTMLElement): number => {
-  const scrollportTop =
-    scrollContainer.getBoundingClientRect().top + scrollContainer.clientTop;
+  const scrollportTop = scrollContainer.getBoundingClientRect().top + scrollContainer.clientTop;
   const navbarBottom =
     document.querySelector<HTMLElement>('.top-navbar')?.getBoundingClientRect().bottom ??
     scrollportTop;
@@ -142,7 +141,7 @@ const AlphaNumericIndex = ({
       className='alpha-numeric-index'
       aria-label={ariaLabel}
       ref={railRef}
-      style={{ height: `min(88vh, ${Math.max(120, Math.min(entries.length * 18, 620))}px)` }}
+      style={{ height: `min(88vh, ${Math.max(120, Math.min(entries.length * 19, 620))}px)` }}
       onPointerDown={(event) => {
         if (event.pointerType !== 'mouse') return;
         event.currentTarget.setPointerCapture(event.pointerId);

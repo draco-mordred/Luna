@@ -149,6 +149,7 @@ declare global {
       onWindowStateChanged: (callback: (isMaximized: boolean) => void) => () => void;
       onWindowFocusChanged: (callback: (isFocused: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
+      onSystemAccentColorChanged: (callback: (color: string) => void) => () => void;
       setTaskbarPlaybackState: (isPlaying: boolean) => void;
       onTaskbarPrevious: (callback: () => void) => () => void;
       onTaskbarPlayPause: (callback: () => void) => () => void;

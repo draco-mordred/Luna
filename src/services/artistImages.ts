@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-const CACHE_PREFIX = 'luna-artist-image:';
+const CACHE_PREFIX = 'luna-artist-image:v2:';
 const IMAGE_DATABASE_NAME = 'luna-artist-images';
 const IMAGE_DATABASE_VERSION = 1;
 const IMAGE_STORE_NAME = 'images';
@@ -29,6 +29,17 @@ interface WikipediaSearchResponse {
   };
 }
 
+interface WikimediaCommonsSearchResponse {
+  query?: {
+    pages?: Record<
+      string,
+      {
+        imageinfo?: Array<{ thumburl?: string; url?: string }>;
+      }
+    >;
+  };
+}
+
 export interface ArtistWebInfo {
   imageUrl: string | null;
   biography: string | null;
@@ -48,7 +59,8 @@ const requestPersistentImageStorage = () => {
   void navigator.storage
     .persist()
     .then((persisted) => {
-      if (!persisted) console.warn('Persistent storage was not granted for the artist image cache.');
+      if (!persisted)
+        console.warn('Persistent storage was not granted for the artist image cache.');
     })
     .catch((error: unknown) => {
       console.warn('Could not request persistent storage for the artist image cache:', error);
@@ -67,11 +79,7 @@ const isWikimediaImageUrl = (value: string | undefined): value is string => {
 
 const readCachedImage = (key: string): CachedArtistImage | null => {
   const memoryEntry = imageCache.get(key);
-  if (
-    memoryEntry &&
-    memoryEntry.expiresAt > Date.now() &&
-    memoryEntry.biography !== undefined
-  ) {
+  if (memoryEntry && memoryEntry.expiresAt > Date.now() && memoryEntry.biography !== undefined) {
     return memoryEntry;
   }
   imageCache.delete(key);
@@ -87,7 +95,8 @@ const readCachedImage = (key: string): CachedArtistImage | null => {
       (entry.biography !== undefined &&
         entry.biography !== null &&
         typeof entry.biography !== 'string') ||
-      (entry.articleUrl !== undefined && entry.articleUrl !== null &&
+      (entry.articleUrl !== undefined &&
+        entry.articleUrl !== null &&
         (typeof entry.articleUrl !== 'string' ||
           !entry.articleUrl.startsWith('https://en.wikipedia.org/wiki/'))) ||
       entry.biography === undefined
@@ -106,7 +115,8 @@ const readCachedImage = (key: string): CachedArtistImage | null => {
 const writeCachedImage = (key: string, info: ArtistWebInfo) => {
   const entry = {
     ...info,
-    expiresAt: Date.now() + (info.imageUrl || info.biography ? IMAGE_CACHE_DURATION : MISS_CACHE_DURATION),
+    expiresAt:
+      Date.now() + (info.imageUrl || info.biography ? IMAGE_CACHE_DURATION : MISS_CACHE_DURATION),
   };
   imageCache.set(key, entry);
   try {
@@ -151,17 +161,59 @@ const lookupArtistInfo = async (artist: string): Promise<ArtistWebInfo> => {
       (page) => page.title?.trim().toLocaleLowerCase() === artist.trim().toLocaleLowerCase()
     );
     const page = exactMatch ?? pages[0];
-    const imageUrl = page?.thumbnail?.source;
+    const wikipediaImageUrl = page?.thumbnail?.source;
+    const imageUrl = isWikimediaImageUrl(wikipediaImageUrl)
+      ? wikipediaImageUrl
+      : await lookupCommonsArtistImage(artist);
     return {
-      imageUrl: isWikimediaImageUrl(imageUrl) ? imageUrl : null,
+      imageUrl,
       biography: page?.extract?.trim() || null,
-      articleUrl: page?.fullurl?.startsWith('https://en.wikipedia.org/wiki/')
-        ? page.fullurl
-        : null,
+      articleUrl: page?.fullurl?.startsWith('https://en.wikipedia.org/wiki/') ? page.fullurl : null,
     };
   } catch (error) {
     console.warn(`Could not fetch artist artwork for "${artist}":`, error);
     return { imageUrl: null, biography: null, articleUrl: null };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
+const lookupCommonsArtistImage = async (artist: string): Promise<string | null> => {
+  const searchUrl = new URL('https://commons.wikimedia.org/w/api.php');
+  searchUrl.search = new URLSearchParams({
+    action: 'query',
+    generator: 'search',
+    gsrsearch: `"${artist}"`,
+    gsrnamespace: '6',
+    gsrlimit: '5',
+    prop: 'imageinfo',
+    iiprop: 'url',
+    iiurlwidth: '800',
+    format: 'json',
+    origin: '*',
+  }).toString();
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(searchUrl, { signal: controller.signal });
+    if (!response.ok) {
+      console.warn(
+        `Wikimedia Commons artist image lookup failed for "${artist}" (HTTP ${response.status}).`
+      );
+      return null;
+    }
+
+    const data = (await response.json()) as WikimediaCommonsSearchResponse;
+    const pages = Object.values(data.query?.pages ?? {});
+    for (const page of pages) {
+      const imageUrl = page.imageinfo?.[0]?.thumburl ?? page.imageinfo?.[0]?.url;
+      if (isWikimediaImageUrl(imageUrl)) return imageUrl;
+    }
+    return null;
+  } catch (error) {
+    console.warn(`Could not find artist artwork in Wikimedia Commons for "${artist}":`, error);
+    return null;
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -216,7 +268,8 @@ const openArtistImageDatabase = (): Promise<IDBDatabase> => {
       requestPersistentImageStorage();
       resolve(request.result);
     };
-    request.onerror = () => reject(request.error ?? new Error('Could not open artist image cache.'));
+    request.onerror = () =>
+      reject(request.error ?? new Error('Could not open artist image cache.'));
     request.onblocked = () => reject(new Error('Artist image cache upgrade is blocked.'));
   }).catch((error: unknown) => {
     imageDatabasePromise = null;
@@ -244,7 +297,8 @@ const getCachedArtistImageBlob = async (
           : null
       );
     };
-    request.onerror = () => reject(request.error ?? new Error('Could not read cached artist image.'));
+    request.onerror = () =>
+      reject(request.error ?? new Error('Could not read cached artist image.'));
   });
 };
 
@@ -272,7 +326,9 @@ const cacheArtistImageBlob = async (
   const database = await openArtistImageDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(IMAGE_STORE_NAME, 'readwrite');
-    transaction.objectStore(IMAGE_STORE_NAME).put({ artist, sourceUrl, image, cachedAt: Date.now() });
+    transaction
+      .objectStore(IMAGE_STORE_NAME)
+      .put({ artist, sourceUrl, image, cachedAt: Date.now() });
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(transaction.error ?? new Error('Could not save downloaded artist image.'));
@@ -319,7 +375,10 @@ const getDownloadedArtistImage = async (
       try {
         await cacheArtistImageBlob(artist, imageUrl, image);
       } catch (error) {
-        console.warn(`Could not persist artist image for "${artistName}"; using it for this session:`, error);
+        console.warn(
+          `Could not persist artist image for "${artistName}"; using it for this session:`,
+          error
+        );
       }
       const objectUrl = URL.createObjectURL(image);
       downloadedImageUrls.set(artist, objectUrl);

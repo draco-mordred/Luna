@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import type { Playlist } from '../../services/MusicLibrary';
 import type { Track } from '../../services/MusicLibrary';
 import PlaylistArtwork from '../PlaylistArtwork';
+import AppIcon from '../AppIcon';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -43,7 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           aria-expanded={!collapsed}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <span className='logo-icon'>music_note</span>
+          <AppIcon className='logo-icon' />
           {!collapsed && <span className='logo-text'>Luna</span>}
         </button>
       </div>

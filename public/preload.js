@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWindowStateChanged: (callback) => subscribe('window-state-changed', callback),
   onWindowFocusChanged: (callback) => subscribe('window-focus-changed', callback),
   onSystemThemeChanged: (callback) => subscribe('system-theme-changed', callback),
+  onSystemAccentColorChanged: (callback) => subscribe('system-accent-color-changed', callback),
   onMusicLibraryScanProgress: (callback) => subscribe('music-library-scan-progress', callback),
   onOpenAudioFiles: (callback) => subscribe('open-audio-files', callback),
   setTaskbarPlaybackState: (isPlaying) => ipcRenderer.send('taskbar-playback-state', isPlaying),

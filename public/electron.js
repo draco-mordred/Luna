@@ -8,6 +8,7 @@ const {
   nativeImage,
   safeStorage,
   shell,
+  systemPreferences,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -305,27 +306,60 @@ const readPlaylists = async () => {
     : [];
 };
 
+const normalizeWindowsAccentColor = (rgbaColor) => {
+  const value = typeof rgbaColor === 'string' ? rgbaColor.trim() : '';
+  const match = /^#?([\da-f]{6})([\da-f]{2})?$/i.exec(value);
+  if (match?.[2] === '00') return null;
+  return match ? `#${match[1]}` : null;
+};
+
+const readWindowsRegistryDword = (key, valueName) => {
+  try {
+    const output = execFileSync('reg.exe', ['query', key, '/v', valueName], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const match = new RegExp(`${valueName}\\s+REG_DWORD\\s+0x([\\da-f]+)`, 'i').exec(output);
+    return match ? Number.parseInt(match[1], 16) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getWindowsAccentColorFromRegistry = () => {
+  const accentColorMenu = readWindowsRegistryDword(
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent',
+    'AccentColorMenu'
+  );
+  if (accentColorMenu !== null) {
+    const red = accentColorMenu & 0xff;
+    const green = (accentColorMenu >> 8) & 0xff;
+    const blue = (accentColorMenu >> 16) & 0xff;
+    return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  const colorizationColor = readWindowsRegistryDword(
+    'HKCU\\Software\\Microsoft\\Windows\\DWM',
+    'ColorizationColor'
+  );
+  return colorizationColor === null
+    ? null
+    : `#${(colorizationColor & 0xffffff).toString(16).padStart(6, '0')}`;
+};
+
 const getWindowsAccentColor = () => {
   if (process.platform !== 'win32') return null;
-  const registryValues = [
-    ['HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent', 'AccentColorMenu'],
-    ['HKCU\\Software\\Microsoft\\Windows\\DWM', 'ColorizationColor'],
-  ];
-  for (const [key, valueName] of registryValues) {
-    try {
-      const output = execFileSync('reg.exe', ['query', key, '/v', valueName], {
-        encoding: 'utf8',
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-      const match = new RegExp(`${valueName}\\s+REG_DWORD\\s+0x([0-9a-f]+)`, 'i').exec(output);
-      if (match) return `#${match[1].slice(-6).padStart(6, '0')}`;
-    } catch (error) {
-      if (valueName === 'ColorizationColor') {
-        console.warn('Could not read the Windows accent color:', error.message);
-      }
-    }
+  const registryAccentColor = getWindowsAccentColorFromRegistry();
+  if (registryAccentColor) return registryAccentColor;
+
+  try {
+    const accentColor = normalizeWindowsAccentColor(systemPreferences.getAccentColor());
+    if (accentColor) return accentColor;
+  } catch (error) {
+    console.warn('Electron could not read the Windows accent color:', error);
   }
+  console.warn('Could not read the Windows accent color from the registry or Electron.');
   return null;
 };
 
@@ -1420,6 +1454,13 @@ async function createWindow() {
 
 if (hasSingleInstanceLock) app.whenReady().then(async () => {
   nativeTheme.themeSource = 'system';
+  if (process.platform === 'win32') {
+    systemPreferences.on('accent-color-changed', (_event, rgbaColor) => {
+      const accentColor =
+        getWindowsAccentColorFromRegistry() ?? normalizeWindowsAccentColor(rgbaColor);
+      if (accentColor) mainWindow?.webContents.send('system-accent-color-changed', accentColor);
+    });
+  }
   void removeStaleMetadataCache();
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send(

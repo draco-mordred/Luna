@@ -11,6 +11,7 @@ import AlphaNumericIndex, {
 import { splitArtistCredits } from '../utils/artistCredits';
 import { getLibraryItemHash } from '../utils/libraryNavigation';
 import { compareAlphaNumericFirst, sortByTrackTitle } from '../utils/alphaNumericSort';
+import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import type { MusicLibraryScanProgress } from '../types/electron';
 import './Tracks.css';
 
@@ -38,6 +39,7 @@ interface TrackRowProps {
 const TrackRow = memo(
   ({ track, index, isPlaying, onPlayTrack, queueTracks, style }: TrackRowProps) => {
     const navigate = useNavigate();
+    const { elementRef, imageUrl } = useAndroidAlbumArtwork(track);
     return (
       <div
         data-track-id={track.id}
@@ -49,9 +51,9 @@ const TrackRow = memo(
           {index + 1}
         </span>
         <div className='track-title-cell'>
-          <div className='track-art-thumb'>
-            {track.albumArt ? (
-              <img src={track.albumArt} alt='' loading='lazy' decoding='async' />
+          <div ref={elementRef} className='track-art-thumb'>
+            {imageUrl ? (
+              <img src={imageUrl} alt='' loading='lazy' decoding='async' />
             ) : (
               <span className='material-symbols-outlined' aria-hidden='true'>
                 music_note

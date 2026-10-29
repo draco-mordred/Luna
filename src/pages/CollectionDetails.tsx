@@ -7,6 +7,7 @@ import { getArtistInfo, type ArtistWebInfo } from '../services/artistImages';
 import { artistCreditIncludes, splitArtistCredits } from '../utils/artistCredits';
 import { getLibraryItemPath } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
+import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import './CollectionDetails.css';
 
 type CollectionType = 'album' | 'artist' | 'genre';
@@ -18,46 +19,112 @@ interface CollectionDetailsProps {
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
 }
 
-const CollectionDetails = ({ type, tracks, onPlayTrack, onQueueTracks }: CollectionDetailsProps) => {
+interface CollectionAlbumCardProps {
+  album: {
+    name: string;
+    tracks: Track[];
+    firstTrack: Track;
+    year?: number;
+  };
+  onOpen: () => void;
+  onPlay: () => void;
+}
+
+const CollectionAlbumCard = ({ album, onOpen, onPlay }: CollectionAlbumCardProps) => {
+  const { imageUrl } = useAndroidAlbumArtwork(album.firstTrack, true);
+  return (
+    <article className='collection-details-album-card'>
+      <button
+        type='button'
+        className='collection-details-album-cover'
+        aria-label={`Open ${album.name}`}
+        onClick={onOpen}
+      >
+        {imageUrl ? (
+          <img src={imageUrl} alt={`${album.name} cover`} />
+        ) : (
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            album
+          </span>
+        )}
+      </button>
+      <div className='collection-details-album-info'>
+        <button type='button' className='collection-details-album-title' onClick={onOpen}>
+          {album.name}
+        </button>
+        <p>
+          {album.year ?? 'Year unknown'} · {album.tracks.length} tracks
+        </p>
+      </div>
+      <button
+        type='button'
+        className='collection-details-album-play'
+        aria-label={`Play ${album.name}`}
+        onClick={onPlay}
+      >
+        <span className='material-symbols-outlined' aria-hidden='true'>
+          play_arrow
+        </span>
+      </button>
+    </article>
+  );
+};
+
+const CollectionDetails = ({
+  type,
+  tracks,
+  onPlayTrack,
+  onQueueTracks,
+}: CollectionDetailsProps) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const name = searchParams.get('name')?.trim() ?? '';
   const artistName = searchParams.get('artist')?.trim() ?? '';
+  const normalizedName = name.toLocaleLowerCase();
+  const normalizedArtist = artistName.toLocaleLowerCase();
 
   const collectionTracks = useMemo(() => {
     if (!name) return [];
-    const normalizedName = name.toLocaleLowerCase();
-    const normalizedArtist = artistName.toLocaleLowerCase();
     const matchingTracks = tracks.filter((track) => {
       if (type === 'album') {
-        return track.album.trim().toLocaleLowerCase() === normalizedName
-          && (track.artist.trim().toLocaleLowerCase() === normalizedArtist ||
-            artistCreditIncludes(track.artist, normalizedArtist));
+        const trackAlbum = track.album?.trim().toLocaleLowerCase() ?? '';
+        const trackArtist = track.artist?.trim().toLocaleLowerCase() ?? '';
+        return (
+          trackAlbum === normalizedName &&
+          (trackArtist === normalizedArtist ||
+            artistCreditIncludes(track.artist ?? '', normalizedArtist))
+        );
       }
-      if (type === 'artist') return artistCreditIncludes(track.artist, normalizedName);
+      if (type === 'artist') return artistCreditIncludes(track.artist ?? '', normalizedName);
       return track.genre?.trim().toLocaleLowerCase() === normalizedName;
     });
     return sortCollectionTracks(matchingTracks);
-  }, [artistName, name, tracks, type]);
+  }, [normalizedArtist, normalizedName, name, tracks, type]);
 
   const firstTrack = collectionTracks[0];
+  const { imageUrl: androidAlbumArt } = useAndroidAlbumArtwork(firstTrack, true);
   const title =
     type === 'album'
       ? firstTrack?.album
       : type === 'artist'
-        ? splitArtistCredits(firstTrack?.artist ?? '').find(
+        ? (splitArtistCredits(firstTrack?.artist ?? '').find(
             (artist) => artist.toLocaleLowerCase() === name.toLocaleLowerCase()
-          ) ?? name
+          ) ?? name)
         : firstTrack?.genre;
   const subtitle =
-    type === 'album' ? firstTrack?.artist : type === 'genre' ? `${collectionTracks.length} tracks` : undefined;
+    type === 'album'
+      ? firstTrack?.artist
+      : type === 'genre'
+        ? `${collectionTracks.length} tracks`
+        : undefined;
   const pageTitle = type === 'album' ? 'Albums' : type === 'artist' ? 'Artists' : 'Genres';
 
   const artistAlbums = useMemo(() => {
     if (type !== 'artist') return [];
     const albumsByName = new Map<string, Track[]>();
     collectionTracks.forEach((track) => {
-      const key = track.album.trim().toLocaleLowerCase();
+      const key = track.album?.trim().toLocaleLowerCase() ?? '';
+      if (!key) return;
       const albumTracks = albumsByName.get(key) ?? [];
       albumTracks.push(track);
       albumsByName.set(key, albumTracks);
@@ -95,14 +162,16 @@ const CollectionDetails = ({ type, tracks, onPlayTrack, onQueueTracks }: Collect
 
   const image =
     type === 'artist' && artistWebInfo?.artist === title?.toLocaleLowerCase()
-      ? artistWebInfo?.info.imageUrl ?? firstTrack?.albumArt
-      : firstTrack?.albumArt;
+      ? (artistWebInfo?.info.imageUrl ?? androidAlbumArt)
+      : androidAlbumArt;
 
   if (!firstTrack || !title) {
     return (
       <section className='collection-details-page'>
         <button type='button' className='collection-details-back' onClick={() => navigate(-1)}>
-          <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            arrow_back
+          </span>
           Back
         </button>
         <p className='library-message'>This {type} could not be found in your music library.</p>
@@ -110,45 +179,69 @@ const CollectionDetails = ({ type, tracks, onPlayTrack, onQueueTracks }: Collect
     );
   }
 
-  const detail = type === 'album'
-    ? `${collectionTracks.length} tracks${firstTrack.year ? ` · ${firstTrack.year}` : ''}`
-    : type === 'artist'
-      ? `${new Set(collectionTracks.map((track) => track.album.toLocaleLowerCase())).size} albums · ${collectionTracks.length} tracks`
-      : `${collectionTracks.length} tracks`;
+  const detail =
+    type === 'album'
+      ? `${collectionTracks.length} tracks${firstTrack.year ? ` · ${firstTrack.year}` : ''}`
+      : type === 'artist'
+        ? `${
+            new Set(
+              collectionTracks
+                .map((track) => track.album?.trim().toLocaleLowerCase())
+                .filter((album): album is string => Boolean(album))
+            ).size
+          } albums · ${collectionTracks.length} tracks`
+        : `${collectionTracks.length} tracks`;
 
   return (
     <div className='collection-details-page'>
       <nav className='collection-details-breadcrumb' aria-label='Breadcrumb'>
         <Link to={`/${type}s`}>{pageTitle}</Link>
-        <span className='material-symbols-outlined' aria-hidden='true'>chevron_right</span>
+        <span className='material-symbols-outlined' aria-hidden='true'>
+          chevron_right
+        </span>
         <span>{title}</span>
       </nav>
 
       <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
-      <header className={`collection-details-hero ${image ? 'has-image' : ''}`}>
-        {image ? (
-          <img className='collection-details-image' src={image} alt={`${title} artwork`} />
-        ) : (
-          <div className='collection-details-image collection-details-image-placeholder' aria-hidden='true'>
-            <span className='material-symbols-outlined'>{type === 'artist' ? 'person' : type === 'genre' ? 'style' : 'album'}</span>
+        <header className={`collection-details-hero ${image ? 'has-image' : ''}`}>
+          {image ? (
+            <img className='collection-details-image' src={image} alt={`${title} artwork`} />
+          ) : (
+            <div
+              className='collection-details-image collection-details-image-placeholder'
+              aria-hidden='true'
+            >
+              <span className='material-symbols-outlined'>
+                {type === 'artist' ? 'person' : type === 'genre' ? 'style' : 'album'}
+              </span>
+            </div>
+          )}
+          <div className='collection-details-info'>
+            <p className='collection-details-type'>{type}</p>
+            <h1>{title}</h1>
+            {subtitle && <p className='collection-details-subtitle'>{subtitle}</p>}
+            <p className='collection-details-meta'>{detail}</p>
+            <button
+              type='button'
+              className='collection-details-play'
+              onClick={() => onPlayTrack(firstTrack, collectionTracks)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                play_arrow
+              </span>
+              Play
+            </button>
           </div>
-        )}
-        <div className='collection-details-info'>
-          <p className='collection-details-type'>{type}</p>
-          <h1>{title}</h1>
-          {subtitle && <p className='collection-details-subtitle'>{subtitle}</p>}
-          <p className='collection-details-meta'>{detail}</p>
-          <button type='button' className='collection-details-play' onClick={() => onPlayTrack(firstTrack, collectionTracks)}>
-            <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
-            Play
-          </button>
-        </div>
-      </header>
+        </header>
       </QueueContextMenu>
 
       <section className='collection-details-tracks' aria-label={`${title} tracks`}>
         <h2>Tracks</h2>
-        <LibraryTrackList tracks={collectionTracks} onPlayTrack={onPlayTrack} onQueueTracks={onQueueTracks} />
+        <LibraryTrackList
+          tracks={collectionTracks}
+          onPlayTrack={onPlayTrack}
+          onQueueTracks={onQueueTracks}
+        />
       </section>
 
       {type === 'artist' && (
@@ -163,38 +256,11 @@ const CollectionDetails = ({ type, tracks, onPlayTrack, onQueueTracks }: Collect
                     tracks={album.tracks}
                     onQueueTracks={onQueueTracks}
                   >
-                    <article className='collection-details-album-card'>
-                      <button
-                        type='button'
-                        className='collection-details-album-cover'
-                        aria-label={`Open ${album.name}`}
-                        onClick={() => navigate(getLibraryItemPath('album', album.name, title))}
-                      >
-                        {album.firstTrack.albumArt ? (
-                          <img src={album.firstTrack.albumArt} alt={`${album.name} cover`} />
-                        ) : (
-                          <span className='material-symbols-outlined' aria-hidden='true'>album</span>
-                        )}
-                      </button>
-                      <div className='collection-details-album-info'>
-                        <button
-                          type='button'
-                          className='collection-details-album-title'
-                          onClick={() => navigate(getLibraryItemPath('album', album.name, title))}
-                        >
-                          {album.name}
-                        </button>
-                        <p>{album.year ?? 'Year unknown'} · {album.tracks.length} tracks</p>
-                      </div>
-                      <button
-                        type='button'
-                        className='collection-details-album-play'
-                        aria-label={`Play ${album.name}`}
-                        onClick={() => onPlayTrack(album.firstTrack, album.tracks)}
-                      >
-                        <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
-                      </button>
-                    </article>
+                    <CollectionAlbumCard
+                      album={album}
+                      onOpen={() => navigate(getLibraryItemPath('album', album.name, title))}
+                      onPlay={() => onPlayTrack(album.firstTrack, album.tracks)}
+                    />
                   </QueueContextMenu>
                 ))}
               </div>

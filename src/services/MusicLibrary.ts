@@ -25,6 +25,7 @@ export interface Track {
   album: string;
   albumArtist?: string;
   albumArt?: string;
+  androidAlbumId?: string;
   metadataVersion?: number;
   duration: number;
   trackNumber?: number;

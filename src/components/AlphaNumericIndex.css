@@ -77,17 +77,34 @@
 
 html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
   top: calc(
-    (100dvh + 116px - var(--playbar-collapsed-height) - 72px - env(safe-area-inset-bottom, 0px)) / 2
+    (100dvh + 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px)) / 2
   );
   right: 6px;
   height: max(
     88px,
     calc(
-      100dvh - 116px - var(--playbar-collapsed-height) - 72px - env(safe-area-inset-bottom, 0px) -
-        16px
+      100dvh - 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px) - 16px
     )
   ) !important;
   max-height: none;
+}
+
+html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
+  padding: 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-android-app='true'] .alpha-numeric-index-button {
+  color: color-mix(in srgb, var(--text-secondary) 72%, transparent);
+  font-size: 0.68rem;
+}
+
+html[data-android-app='true'] .alpha-numeric-index-button.active {
+  color: var(--text-on-accent);
 }
 
 @media (max-width: 480px) {
@@ -104,14 +121,12 @@ html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
 @media (max-height: 540px) {
   html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
     top: calc(
-      (100dvh + 80px - var(--playbar-collapsed-height) - 64px - env(safe-area-inset-bottom, 0px)) /
-        2
+      (100dvh + 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px)) / 2
     );
     height: max(
       80px,
       calc(
-        100dvh - 80px - var(--playbar-collapsed-height) - 64px - env(safe-area-inset-bottom, 0px) -
-          12px
+        100dvh - 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px) - 12px
       )
     ) !important;
   }

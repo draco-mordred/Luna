@@ -1,4 +1,5 @@
-import { memo, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import AudioVisualizer from './AudioVisualizer';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex';
 import { useArtistImage } from '../../services/artistImages';
@@ -6,7 +7,7 @@ import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
 import './PlayBar.css';
 import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
-import type { Track } from '../../services/MusicLibrary';
+import type { Playlist, Track } from '../../services/MusicLibrary';
 
 const COLLAPSED_HEIGHT = 126.4;
 const getExpandedHeight = () => Math.max(COLLAPSED_HEIGHT, window.innerHeight);
@@ -31,9 +32,14 @@ interface PlayBarProps {
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => void;
   onAddTrackToPlaylist?: (
+    track: { id: string; name: string; artist: string; album: string; path?: string } | null,
+    playlistId?: string
+  ) => void;
+  playlists?: Playlist[];
+  onShowAlbum?: (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => void;
-  onShowAlbum?: (
+  onShowArtist?: (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => void;
   onToggleLove?: (
@@ -60,8 +66,6 @@ interface PlayBarProps {
   playQueueIndex: number;
   onQueueSelect: (index: number) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
-  openNowPlayingRequest: number;
-  toggleLyricsRequest: number;
   isDesktopApp: boolean;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
@@ -76,6 +80,43 @@ const DEFAULT_ALBUM_ART = (
     album
   </span>
 );
+
+const TrackImageCrossfade: React.FC<{ src: string | null; alt: string; className?: string }> = ({
+  src,
+  alt,
+  className = '',
+}) => {
+  const [images, setImages] = useState<{ current: string | null; previous: string | null }>({
+    current: src,
+    previous: null,
+  });
+
+  if (images.current !== src) {
+    setImages({ current: src, previous: images.current });
+  }
+
+  useEffect(() => {
+    if (!images.previous) return undefined;
+    const previousSrc = images.previous;
+    const timeout = window.setTimeout(() => {
+      setImages((current) =>
+        current.current === src && current.previous === previousSrc
+          ? { ...current, previous: null }
+          : current
+      );
+    }, 560);
+    return () => window.clearTimeout(timeout);
+  }, [images.previous, src]);
+
+  return (
+    <div className={`track-image-crossfade ${className}`}>
+      {images.previous && <img className='track-image-previous' src={images.previous} alt='' />}
+      {images.current && (
+        <img className='track-image-current' src={images.current} alt={alt} key={images.current} />
+      )}
+    </div>
+  );
+};
 
 const TransportIcon: React.FC<{
   name: 'shuffle' | 'previous' | 'next' | 'repeat' | 'repeat_one';
@@ -406,7 +447,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onNext,
   onDeleteTrackFromLibrary,
   onAddTrackToPlaylist,
+  playlists = [],
   onShowAlbum,
+  onShowArtist,
   onToggleLove,
   onSuggestTrackLess,
   volume,
@@ -427,8 +470,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
   playQueueIndex,
   onQueueSelect,
   onQueueTracks,
-  openNowPlayingRequest,
-  toggleLyricsRequest,
   isDesktopApp,
   playerWindowMode,
   lyricOffsetSteps,
@@ -447,15 +488,42 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [showMiniSyncedLyrics, setShowMiniSyncedLyrics] = useState(false);
+  const [miniLyricsVisibility, setMiniLyricsVisibility] = useState<{
+    trackId: string | null;
+    visible: boolean;
+  }>({ trackId: null, visible: false });
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showTrackMenu, setShowTrackMenu] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(false);
+  const [isTrackMenuMounted, setIsTrackMenuMounted] = useState(false);
+  const [showPlaylistSubmenu, setShowPlaylistSubmenu] = useState(false);
+  const [confirmTrackDeletion, setConfirmTrackDeletion] = useState<Track | null>(null);
+  const [trackMenuPosition, setTrackMenuPosition] = useState<{ top: number; left: number } | null>(
+    null
+  );
+  const [playlistSubmenuSide, setPlaylistSubmenuSide] = useState<'left' | 'right'>('right');
+  const [lyricsVisibility, setLyricsVisibility] = useState<{
+    trackId: string | null;
+    visible: boolean;
+  }>({ trackId: null, visible: false });
   const [showPlayQueue, setShowPlayQueue] = useState(false);
+  const [isMiniDockVisible, setIsMiniDockVisible] = useState(true);
+  const [playBarWidth, setPlayBarWidth] = useState(0);
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
-  const [showLyricsHint, setShowLyricsHint] = useState(false);
-  const [showSyncedLyrics, setShowSyncedLyrics] = useState(true);
+  const [lyricsHintTrackId, setLyricsHintTrackId] = useState<string | null>(null);
+  const [syncedLyricsMode, setSyncedLyricsMode] = useState<{
+    trackId: string | null;
+    visible: boolean;
+  }>({ trackId: null, visible: true });
   const [playbackPosition, setPlaybackPosition] = useState({ currentTime: 0, duration: 0 });
+  const seekbarFillRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const seekbarInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const miniPlayerRef = useRef<HTMLDivElement>(null);
+  const trackMenuRef = useRef<HTMLDivElement>(null);
+  const trackMenuToggleRef = useRef<HTMLButtonElement>(null);
+  const trackMenuPopoverRef = useRef<HTMLDivElement>(null);
+  const trackMenuCloseTimeoutRef = useRef<number | null>(null);
+  const trackDeletionBackdropRef = useRef<HTMLDivElement>(null);
+  const deleteConfirmationCancelRef = useRef<HTMLButtonElement>(null);
   const currentTime = playbackPosition.currentTime;
   const duration = playbackPosition.duration || track?.duration || 0;
   const lyricsPlaybackTime = Math.max(0, currentTime - lyricOffsetSteps * 0.1);
@@ -465,11 +533,22 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
   const dragFrameRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
-  const lastLyricsShortcutRequestRef = useRef(toggleLyricsRequest);
   const visualizerLocationRef = useRef<string | null>(null);
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
   const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
+  const showLyrics = Boolean(
+    lyricsEnabled &&
+    track?.lyrics?.trim() &&
+    lyricsVisibility.trackId === track.id &&
+    lyricsVisibility.visible
+  );
+  const showLyricsHint = Boolean(track?.id && lyricsHintTrackId === track.id);
+  const showSyncedLyrics =
+    syncedLyricsMode.trackId === track?.id ? syncedLyricsMode.visible : hasSyncedLyrics;
+  const showMiniSyncedLyrics = syncLyricsDisplay
+    ? showLyrics
+    : miniLyricsVisibility.trackId === track?.id && miniLyricsVisibility.visible;
   const queueIndexEntries = useMemo(
     () =>
       buildAlphaNumericIndex(
@@ -485,6 +564,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const showPlainLyricsPanel = Boolean(
     lyricsEnabled && showLyrics && track?.lyrics?.trim() && (!hasSyncedLyrics || !showSyncedLyrics)
   );
+  const isPlainLyricsVisible = showPlainLyricsPanel && !showPlayQueue;
   const isMiniSyncedLyricsVisible = Boolean(
     lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && showMiniSyncedLyrics
   );
@@ -496,9 +576,137 @@ const PlayBar: React.FC<PlayBarProps> = ({
         ? 'default'
         : 'lyrics-slot';
   const updateLyricsVisibility = (visible: boolean) => {
-    setShowLyrics(visible);
-    if (syncLyricsDisplay) setShowMiniSyncedLyrics(visible);
+    setLyricsVisibility({ trackId: track?.id ?? null, visible });
   };
+
+  const setShowLyricsHint = (visible: boolean) => {
+    setLyricsHintTrackId(visible ? (track?.id ?? null) : null);
+  };
+
+  const setShowSyncedLyrics = (visible: boolean) => {
+    setSyncedLyricsMode({ trackId: track?.id ?? null, visible });
+  };
+
+  const closeTrackMenu = useCallback(() => {
+    setShowTrackMenu(false);
+    setShowPlaylistSubmenu(false);
+    if (trackMenuCloseTimeoutRef.current !== null) {
+      window.clearTimeout(trackMenuCloseTimeoutRef.current);
+    }
+    trackMenuCloseTimeoutRef.current = window.setTimeout(() => {
+      setIsTrackMenuMounted(false);
+      trackMenuCloseTimeoutRef.current = null;
+    }, 240);
+  }, []);
+
+  const toggleTrackMenu = useCallback(() => {
+    if (showTrackMenu) {
+      closeTrackMenu();
+      return;
+    }
+    if (trackMenuCloseTimeoutRef.current !== null) {
+      window.clearTimeout(trackMenuCloseTimeoutRef.current);
+      trackMenuCloseTimeoutRef.current = null;
+    }
+    setIsTrackMenuMounted(true);
+    setShowTrackMenu(true);
+  }, [closeTrackMenu, showTrackMenu]);
+
+  const openPlaylistSubmenu = () => {
+    const menuRect = trackMenuPopoverRef.current?.getBoundingClientRect();
+    if (menuRect) {
+      const availableRight = window.innerWidth - menuRect.right;
+      const availableLeft = menuRect.left;
+      setPlaylistSubmenuSide(
+        availableRight >= 300 || availableRight >= availableLeft ? 'right' : 'left'
+      );
+    }
+    setShowPlaylistSubmenu(true);
+  };
+
+  useEffect(() => {
+    if (!showTrackMenu) return undefined;
+
+    const handleMenuClick = (event: MouseEvent) => {
+      if (!(event.target instanceof Node)) return;
+      const clickedInsideMenu =
+        trackMenuRef.current?.contains(event.target) ||
+        trackMenuToggleRef.current?.contains(event.target) ||
+        trackMenuPopoverRef.current?.contains(event.target);
+      if (!clickedInsideMenu) {
+        closeTrackMenu();
+      }
+    };
+    const handleMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeTrackMenu();
+    };
+
+    document.addEventListener('click', handleMenuClick);
+    document.addEventListener('keydown', handleMenuKeyDown);
+    return () => {
+      document.removeEventListener('click', handleMenuClick);
+      document.removeEventListener('keydown', handleMenuKeyDown);
+    };
+  }, [closeTrackMenu, showTrackMenu]);
+
+  useEffect(
+    () => () => {
+      if (trackMenuCloseTimeoutRef.current !== null) {
+        window.clearTimeout(trackMenuCloseTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!confirmTrackDeletion) return undefined;
+    deleteConfirmationCancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfirmTrackDeletion(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [confirmTrackDeletion]);
+
+  useLayoutEffect(() => {
+    if (!isTrackMenuMounted || !showTrackMenu) return undefined;
+
+    const updateMenuPosition = () => {
+      const wrapper = trackMenuRef.current;
+      const toggle = trackMenuToggleRef.current;
+      const menu = trackMenuPopoverRef.current;
+      if (!wrapper || !toggle || !menu) return;
+
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const toggleRect = toggle.getBoundingClientRect();
+      const menuWidth = menu.offsetWidth;
+      const menuHeight = Math.min(menu.offsetHeight, window.innerHeight - 24);
+      const spaceBelow = window.innerHeight - toggleRect.bottom;
+      const spaceAbove = toggleRect.top;
+      const placeAbove = spaceBelow < menuHeight + 16 && spaceAbove > spaceBelow;
+      const viewportLeft = Math.min(
+        Math.max(12, toggleRect.right - menuWidth),
+        Math.max(12, window.innerWidth - menuWidth - 12)
+      );
+      const viewportTop = placeAbove
+        ? Math.max(12, toggleRect.top - menuHeight - 8)
+        : Math.min(toggleRect.bottom + 8, window.innerHeight - menuHeight - 12);
+
+      setTrackMenuPosition({
+        left: viewportLeft - wrapperRect.left,
+        top: viewportTop - wrapperRect.top,
+      });
+    };
+
+    const frame = window.requestAnimationFrame(updateMenuPosition);
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [isTrackMenuMounted, showTrackMenu, showPlaylistSubmenu]);
   const handleCollapse = () => {
     currentHeightRef.current = getExpandedHeight();
     setState('collapsed');
@@ -506,8 +714,49 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   useEffect(() => {
-    if (openNowPlayingRequest > 0) setState('expanded');
-  }, [openNowPlayingRequest]);
+    const openNowPlaying = () => setState('expanded');
+    const toggleLyrics = () => {
+      if (!lyricsEnabled || !track?.lyrics?.trim()) return;
+      setLyricsVisibility({ trackId: track.id, visible: !showLyrics });
+      setLyricsHintTrackId(null);
+    };
+
+    window.addEventListener('luna-open-now-playing', openNowPlaying);
+    window.addEventListener('luna-toggle-lyrics', toggleLyrics);
+    return () => {
+      window.removeEventListener('luna-open-now-playing', openNowPlaying);
+      window.removeEventListener('luna-toggle-lyrics', toggleLyrics);
+    };
+  }, [lyricsEnabled, showLyrics, track?.id, track?.lyrics]);
+
+  useEffect(() => {
+    if (playerWindowMode !== 'mini' || !isPlaying) return undefined;
+
+    let hideTimeout = 0;
+    let revealFrame = 0;
+    const revealDock = () => {
+      setIsMiniDockVisible(true);
+      window.clearTimeout(hideTimeout);
+      hideTimeout = window.setTimeout(() => setIsMiniDockVisible(false), 3000);
+    };
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'pointermove',
+      'pointerdown',
+      'keydown',
+      'wheel',
+      'touchstart',
+    ];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, revealDock));
+    document.addEventListener('focusin', revealDock);
+    revealFrame = window.requestAnimationFrame(revealDock);
+
+    return () => {
+      window.cancelAnimationFrame(revealFrame);
+      window.clearTimeout(hideTimeout);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, revealDock));
+      document.removeEventListener('focusin', revealDock);
+    };
+  }, [isPlaying, playerWindowMode]);
 
   useEffect(() => {
     const collapseNowPlaying = () => {
@@ -522,14 +771,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
   }, [state]);
 
   useEffect(() => {
-    if (toggleLyricsRequest === lastLyricsShortcutRequestRef.current) return;
-    lastLyricsShortcutRequestRef.current = toggleLyricsRequest;
-    if (!lyricsEnabled || !track?.lyrics?.trim()) return;
-    const nextVisibility = !showLyrics;
-    setShowLyrics(nextVisibility);
-    if (syncLyricsDisplay) setShowMiniSyncedLyrics(nextVisibility);
-    setShowLyricsHint(false);
-  }, [lyricsEnabled, showLyrics, syncLyricsDisplay, toggleLyricsRequest, track?.lyrics]);
+    window.addEventListener('luna-track-changed', closeTrackMenu);
+    return () => window.removeEventListener('luna-track-changed', closeTrackMenu);
+  }, [closeTrackMenu]);
 
   useEffect(() => {
     const syncPlaybackPosition = () => {
@@ -563,6 +807,34 @@ const PlayBar: React.FC<PlayBarProps> = ({
     };
   }, [activeAudio, track?.duration, track?.id]);
 
+  useEffect(() => {
+    if (!activeAudio) return undefined;
+    let frame = 0;
+    const updateProgressFills = () => {
+      const actualDuration =
+        Number.isFinite(activeAudio.duration) && activeAudio.duration > 0
+          ? activeAudio.duration
+          : duration;
+      const progress =
+        actualDuration > 0
+          ? `${(Math.min(activeAudio.currentTime, actualDuration) / actualDuration) * 100}%`
+          : '0%';
+      seekbarFillRefs.current.forEach((fill) => {
+        if (fill) fill.style.width = progress;
+      });
+      const playbackTime = Math.min(activeAudio.currentTime, actualDuration);
+      seekbarInputRefs.current.forEach((input) => {
+        if (input) input.value = String(playbackTime);
+      });
+      if (isPlaying && !activeAudio.paused && !activeAudio.ended) {
+        frame = window.requestAnimationFrame(updateProgressFills);
+      }
+    };
+
+    updateProgressFills();
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeAudio, duration, isPlaying, track?.id]);
+
   const seekTo = (time: number) => {
     onSeek(time);
     setPlaybackPosition((position) => ({
@@ -570,21 +842,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
       currentTime: Math.max(0, Math.min(duration, time)),
     }));
   };
-
-  useEffect(() => {
-    if (!lyricsEnabled) {
-      setShowLyrics(false);
-      setShowMiniSyncedLyrics(false);
-      setShowLyricsHint(false);
-      return;
-    }
-
-    if (syncLyricsDisplay) {
-      setShowMiniSyncedLyrics(showLyrics && showSyncedLyricsOnPlayBar && hasSyncedLyrics);
-    } else if (!showSyncedLyricsOnPlayBar || !hasSyncedLyrics) {
-      setShowMiniSyncedLyrics(false);
-    }
-  }, [hasSyncedLyrics, lyricsEnabled, showLyrics, showSyncedLyricsOnPlayBar, syncLyricsDisplay]);
 
   useLayoutEffect(() => {
     if (visualizerLocationRef.current === null) {
@@ -614,24 +871,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
 
   useEffect(() => {
-    setShowLyrics(false);
-    setShowLyricsHint(false);
-    setShowTrackMenu(false);
-    setShowMiniSyncedLyrics(false);
-    setShowSyncedLyrics(Boolean(track?.syncedLyrics && track.syncedLyrics.length > 0));
-  }, [track?.id, track?.syncedLyrics]);
-
-  useEffect(() => {
-    if (!showSyncedLyricsOnPlayBar || !hasSyncedLyrics) {
-      setShowMiniSyncedLyrics(false);
-    }
-  }, [hasSyncedLyrics, showSyncedLyricsOnPlayBar]);
-
-  useEffect(() => {
     if (!track?.lyrics?.trim()) return undefined;
 
     const timeout = window.setTimeout(() => {
-      setShowLyricsHint(true);
+      setLyricsHintTrackId(track.id);
     }, 1200);
 
     return () => window.clearTimeout(timeout);
@@ -685,13 +928,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }
     return track.lyrics || '';
   };
-
-  useEffect(() => {
-    if (isDragging) return;
-    const nextHeight = state === 'expanded' ? getExpandedHeight() : COLLAPSED_HEIGHT;
-    currentHeightRef.current = nextHeight;
-    setHeight(nextHeight);
-  }, [isDragging, state]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -754,6 +990,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   }, [isDragging]);
 
   const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (playerWindowMode !== 'normal') return;
     const target = event.target as HTMLElement;
     if (
       target.closest(
@@ -785,11 +1022,39 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   const handleMiniLyricsToggle = () => {
     const nextVisible = !isMiniSyncedLyricsVisible;
-    setShowMiniSyncedLyrics(nextVisible);
-    if (syncLyricsDisplay) setShowLyrics(nextVisible);
+    if (syncLyricsDisplay) updateLyricsVisibility(nextVisible);
+    else setMiniLyricsVisibility({ trackId: track?.id ?? null, visible: nextVisible });
     setShowVolumeSlider(false);
     setShowOptionsMenu(false);
   };
+
+  useEffect(() => {
+    if (!confirmTrackDeletion) return undefined;
+    const handleBackdropPointerDown = (event: PointerEvent) => {
+      if (event.target === trackDeletionBackdropRef.current) {
+        setConfirmTrackDeletion(null);
+      }
+    };
+    document.addEventListener('pointerdown', handleBackdropPointerDown);
+    return () => document.removeEventListener('pointerdown', handleBackdropPointerDown);
+  }, [confirmTrackDeletion]);
+
+  useLayoutEffect(() => {
+    const miniPlayer = miniPlayerRef.current;
+    if (!miniPlayer) return undefined;
+
+    const updatePlayBarWidth = () => {
+      setPlayBarWidth(miniPlayer.clientWidth);
+    };
+
+    const initialMeasure = window.requestAnimationFrame(updatePlayBarWidth);
+    const observer = new ResizeObserver(updatePlayBarWidth);
+    observer.observe(miniPlayer);
+    return () => {
+      window.cancelAnimationFrame(initialMeasure);
+      observer.disconnect();
+    };
+  }, []);
 
   const handleLyricsToggleFromArtwork = (event?: React.MouseEvent | React.PointerEvent) => {
     if (event) {
@@ -799,53 +1064,84 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   const isLongTrackTitle = (track?.name?.length ?? 0) > 28;
+  const isCompactPlayBar = playBarWidth <= 768;
+  const showInlineMiniPlayerControl = playBarWidth > 720;
+  const showInlineFullscreenPlayerControl = playBarWidth > 640;
+  const showInlineVolumeControl = playBarWidth > 560;
+  const showInlineLyricsControl = playBarWidth > 480;
+  const hasOverflowControls =
+    isCompactPlayBar ||
+    (lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && !showInlineLyricsControl) ||
+    !showInlineVolumeControl ||
+    (isDesktopApp && (!showInlineMiniPlayerControl || !showInlineFullscreenPlayerControl));
 
   const handleTrackMenuAction = (
-    action: 'delete' | 'playlist' | 'album' | 'love' | 'less' | 'queue' | 'next'
+    action: 'delete' | 'playlist' | 'album' | 'artist' | 'love' | 'less' | 'queue' | 'next'
   ) => {
     if (!track) return;
-    setShowTrackMenu(false);
     switch (action) {
       case 'delete':
-        onDeleteTrackFromLibrary?.(track);
+        setConfirmTrackDeletion(track);
+        closeTrackMenu();
         break;
       case 'playlist':
         onAddTrackToPlaylist?.(track);
+        closeTrackMenu();
         break;
       case 'album':
+        setState('collapsed');
         onShowAlbum?.(track);
+        closeTrackMenu();
+        break;
+      case 'artist':
+        setState('collapsed');
+        onShowArtist?.(track);
+        closeTrackMenu();
         break;
       case 'love':
         onToggleLove?.(track);
+        closeTrackMenu();
         break;
       case 'less':
         onSuggestTrackLess?.(track);
+        closeTrackMenu();
         break;
       case 'queue':
         onQueueTracks([track], false);
+        closeTrackMenu();
         break;
       case 'next':
         onQueueTracks([track], true);
+        closeTrackMenu();
         break;
       default:
         break;
     }
   };
 
-  const trackMenuItems = [
+  type TrackMenuAction =
+    'delete' | 'playlist' | 'album' | 'artist' | 'love' | 'less' | 'queue' | 'next';
+  const allTrackMenuItems: Array<{ label: string; icon: string; action: TrackMenuAction }> = [
     { label: 'Delete from library', icon: 'delete_forever', action: 'delete' },
     { label: 'Add to playlist', icon: 'playlist_add', action: 'playlist' },
     { label: 'Add to play queue', icon: 'queue_music', action: 'queue' },
     { label: 'Play next', icon: 'next_plan', action: 'next' },
+    { label: primaryArtist || 'Unknown Artist', icon: 'person', action: 'artist' },
     { label: 'Show Album', icon: 'album', action: 'album' },
     {
-      label: isLoved ? 'Loved' : 'Love',
+      label: isLoved ? 'Remove from favorites' : 'Add to favorites',
       icon: isLoved ? 'favorite' : 'favorite_border',
       action: 'love',
     },
     { label: 'Suggest the track less', icon: 'thumb_down', action: 'less' },
-  ].filter(
-    (item) => !track?.streamingProvider || item.action === 'queue' || item.action === 'next'
+  ];
+  const trackMenuItems = allTrackMenuItems.filter(
+    (item) =>
+      !track?.streamingProvider ||
+      item.action === 'queue' ||
+      item.action === 'next' ||
+      (item.action === 'artist' && Boolean(primaryArtist)) ||
+      (item.action === 'album' && Boolean(track?.album?.trim()))
   );
 
   // Format time display
@@ -885,639 +1181,711 @@ const PlayBar: React.FC<PlayBarProps> = ({
         return 'repeat';
     }
   };
+  const shuffleControl = (
+    <button
+      aria-label='Shuffle'
+      aria-pressed={isShuffled}
+      className={`${isCompactPlayBar ? 'more-options-item' : 'control-btn'} shuffle-btn ${isShuffled ? 'active' : ''}`}
+      onClick={handleShuffle}
+      disabled={!track}
+    >
+      <TransportIcon name='shuffle' />
+    </button>
+  );
+  const repeatControl = (
+    <button
+      aria-label={`Repeat ${repeatMode === 'off' ? 'off' : repeatMode === 'one' ? 'one' : 'all'}`}
+      aria-pressed={repeatMode !== 'off'}
+      className={`${isCompactPlayBar ? 'more-options-item' : 'control-btn'} repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
+      onClick={handleRepeat}
+      disabled={!track}
+    >
+      <TransportIcon name={getRepeatIcon()} />
+    </button>
+  );
+  const renderVolumeControl = (inOptionsMenu: boolean) => (
+    <div className={`volume-control${inOptionsMenu ? ' overflow-volume-control' : ''}`}>
+      {showVolumeSlider && (
+        <div className='volume-popover'>
+          <input
+            aria-label='Volume'
+            type='range'
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(event) => onVolumeChange(event.currentTarget.valueAsNumber)}
+            className='volume-slider'
+            style={volumeSliderStyle}
+          />
+        </div>
+      )}
+      <button
+        aria-label='Volume'
+        aria-expanded={showVolumeSlider}
+        className={inOptionsMenu ? 'more-options-item volume-menu-button' : 'control-btn mute-btn'}
+        onClick={() => {
+          setShowVolumeSlider(!showVolumeSlider);
+          if (!inOptionsMenu) setShowOptionsMenu(false);
+        }}
+      >
+        <svg className='apple-volume-icon' viewBox='0 0 24 24' aria-hidden='true'>
+          <path className='volume-speaker' d='M3 9v6h4l5 4V5L7 9H3Z' />
+          {volume === 0 ? (
+            <path className='volume-mute-mark' d='m16 9 5 6m0-6-5 6' />
+          ) : volume < 0.5 ? (
+            <path className='volume-wave' d='M15.5 9.5a4 4 0 0 1 0 5' />
+          ) : (
+            <>
+              <path className='volume-wave' d='M15.5 9.5a4 4 0 0 1 0 5' />
+              <path className='volume-wave' d='M18.5 6.5a8 8 0 0 1 0 11' />
+            </>
+          )}
+        </svg>
+        <span className='material-symbols-outlined' aria-hidden='true'>
+          {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+        </span>
+        {inOptionsMenu && <span>Volume</span>}
+      </button>
+    </div>
+  );
+  const renderLyricsControl = (inOptionsMenu: boolean) => (
+    <button
+      type='button'
+      className={
+        inOptionsMenu
+          ? 'more-options-item'
+          : `control-btn mini-synced-lyrics-toggle ${isMiniSyncedLyricsVisible ? 'active' : ''}`
+      }
+      aria-label={
+        isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'
+      }
+      title={isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'}
+      aria-pressed={isMiniSyncedLyricsVisible}
+      onClick={handleMiniLyricsToggle}
+    >
+      <span className='material-symbols-outlined' aria-hidden='true'>
+        lyrics
+      </span>
+      {inOptionsMenu && <span>Synchronized lyrics</span>}
+    </button>
+  );
   const lyricOffsetLabel = `${lyricOffsetSteps > 0 ? '+' : ''}${(lyricOffsetSteps * 0.1).toFixed(1)}s`;
 
-  const expandProgress = isDragging
-    ? getExpandProgress(currentHeightRef.current)
+  const displayHeight = isDragging
+    ? height
     : state === 'expanded'
-      ? 1
-      : 0;
+      ? getExpandedHeight()
+      : COLLAPSED_HEIGHT;
+  const expandProgress = isDragging ? getExpandProgress(height) : state === 'expanded' ? 1 : 0;
   const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
-    height: `${height}px`,
+    height: `${displayHeight}px`,
     '--expand-progress': expandProgress,
   };
 
   return (
-    <div
-      ref={playBarRef}
-      className={`play-bar ${state} ${isDragging ? 'dragging' : ''}`}
-      style={playBarStyle}
-    >
-      {/* Drag handle */}
-      <div className='drag-handle' onPointerDown={handleDragStart}>
-        <div className='drag-indicator' />
-      </div>
-
-      {/* Expanded View - Now Playing */}
+    <>
       <div
-        className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}`}
-        onPointerDown={handleDragStart}
+        ref={playBarRef}
+        className={`play-bar ${state} ${isDragging ? 'dragging' : ''} ${
+          playerWindowMode === 'mini' && isPlaying && !isMiniDockVisible ? 'mini-dock-hidden' : ''
+        }`}
+        style={playBarStyle}
       >
-        {playerWindowMode !== 'normal' && (
-          <div className='player-mode-background' aria-hidden='true'>
-            {(artistBackgroundImage || trackArtworkUrl) && (
-              <img src={artistBackgroundImage || trackArtworkUrl || ''} alt='' />
-            )}
-            <div className='player-mode-background-overlay' />
-          </div>
-        )}
-        {artistBackgroundImage && playerWindowMode === 'normal' && (
-          <div className='now-playing-artist-background' aria-hidden='true'>
-            <img src={artistBackgroundImage} alt='' />
-            <div className='now-playing-artist-background-overlay' />
-          </div>
-        )}
-        <div className='now-playing-header'>
-          <button
-            type='button'
-            className='now-playing-close'
-            aria-label={playerWindowMode === 'normal' ? 'Close Now Playing' : 'Exit player mode'}
-            onClick={playerWindowMode === 'normal' ? handleCollapse : onExitPlayerMode}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              {playerWindowMode === 'normal' ? 'keyboard_arrow_down' : 'close_fullscreen'}
-            </span>
-          </button>
-          <span>Now Playing</span>
-          {isDesktopApp && playerWindowMode === 'normal' && (
-            <div className='now-playing-mode-actions'>
-              <button
-                type='button'
-                className='now-playing-mode-button'
-                aria-label='Enter mini player mode'
-                title='Enter mini player mode'
-                onClick={onEnterMiniPlayer}
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  picture_in_picture_alt
-                </span>
-              </button>
-              <button
-                type='button'
-                className='now-playing-mode-button'
-                aria-label='Enter fullscreen player mode'
-                title='Enter fullscreen player mode'
-                onClick={onEnterFullscreenPlayer}
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  fullscreen
-                </span>
-              </button>
+        {/* Drag handle */}
+        <div className='drag-handle' onPointerDown={handleDragStart}>
+          <div className='drag-indicator' />
+        </div>
+
+        {/* Expanded View - Now Playing */}
+        <div
+          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}`}
+          onPointerDown={handleDragStart}
+        >
+          {playerWindowMode !== 'normal' && (
+            <div className='player-mode-background' aria-hidden='true'>
+              {(artistBackgroundImage || trackArtworkUrl) && (
+                <TrackImageCrossfade
+                  src={artistBackgroundImage || trackArtworkUrl || null}
+                  alt=''
+                  className='player-mode-background-image'
+                />
+              )}
+              <div className='player-mode-background-overlay' />
             </div>
           )}
-          <button
-            type='button'
-            className={`now-playing-queue-toggle ${showPlayQueue ? 'active' : ''}`}
-            aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
-            aria-expanded={showPlayQueue}
-            onClick={() => setShowPlayQueue((visible) => !visible)}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              chevron_left
-            </span>
-          </button>
-        </div>
-        <div
-          className={[
-            'now-playing-container',
-            showSyncedLyricCaption ? 'has-synced-lyric' : '',
-            hasSyncedLyrics ? 'has-synced-lyrics' : '',
-            showVisualizer && !hasSyncedLyrics ? 'visualizer-in-lyrics-slot' : '',
-            showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          data-playback-state={isPlaying ? 'playing' : 'paused'}
-        >
-          {/* Album Art */}
-          <div
-            className='album-art'
-            onDoubleClick={(event) => {
-              if (lyricsEnabled && track?.lyrics?.trim()) {
-                handleLyricsToggleFromArtwork(event);
-              }
-            }}
-            onMouseEnter={() => {
-              if (lyricsEnabled && track?.lyrics?.trim()) {
-                setShowLyricsHint(true);
-              }
-            }}
-            onMouseLeave={() => {
-              if (!showLyrics) {
-                setShowLyricsHint(false);
-              }
-            }}
-          >
-            {lyricsEnabled && track?.lyrics?.trim() && showLyricsHint && !showLyrics && (
-              <button
-                type='button'
-                className='lyrics-hint'
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleLyricsToggle();
-                }}
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  lyrics
-                </span>
-                Lyrics available
-              </button>
-            )}
-            {trackArtworkUrl ? (
-              <img src={trackArtworkUrl} alt={track?.album ?? ''} />
-            ) : (
-              <div className='default-art'>{DEFAULT_ALBUM_ART}</div>
-            )}
-          </div>
-
-          {showVisualizer && (
-            <AudioVisualizer
-              analyser={visualizerAnalyser}
-              isPlaying={isPlaying}
-              isVisible={state === 'expanded'}
-              volume={volume}
-              style={visualizerStyle}
-              className={isVisualizerRelocating ? 'relocating' : ''}
-            />
+          {artistBackgroundImage && playerWindowMode === 'normal' && (
+            <div className='now-playing-artist-background' aria-hidden='true'>
+              <TrackImageCrossfade src={artistBackgroundImage} alt='' />
+              <div className='now-playing-artist-background-overlay' />
+            </div>
           )}
-
-          {/* Track Info */}
-          <div className='track-info'>
-            <div className='track-title-row'>
-              <h2
-                className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
-                onDoubleClick={() => {
-                  if (lyricsEnabled && track?.lyrics?.trim()) {
-                    updateLyricsVisibility(!showLyrics);
-                  }
-                }}
-              >
-                <span>{track?.name || 'No Track Selected'}</span>
-              </h2>
-              {track && (
-                <div className='track-title-menu-wrap'>
+          <div className='now-playing-header'>
+            <button
+              type='button'
+              className='now-playing-close'
+              aria-label={playerWindowMode === 'normal' ? 'Close Now Playing' : 'Exit player mode'}
+              onClick={playerWindowMode === 'normal' ? handleCollapse : onExitPlayerMode}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                {playerWindowMode === 'normal' ? 'keyboard_arrow_down' : 'close_fullscreen'}
+              </span>
+            </button>
+            <span>Now Playing</span>
+            {isDesktopApp && playerWindowMode === 'normal' && (
+              <div className='now-playing-mode-actions'>
+                <button
+                  type='button'
+                  className='now-playing-mode-button'
+                  aria-label='Enter mini player mode'
+                  title='Enter mini player mode'
+                  onClick={onEnterMiniPlayer}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    picture_in_picture_alt
+                  </span>
+                </button>
+                <button
+                  type='button'
+                  className='now-playing-mode-button'
+                  aria-label='Enter fullscreen player mode'
+                  title='Enter fullscreen player mode'
+                  onClick={onEnterFullscreenPlayer}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    fullscreen
+                  </span>
+                </button>
+              </div>
+            )}
+            <button
+              type='button'
+              className={`now-playing-queue-toggle ${showPlayQueue ? 'active' : ''}`}
+              aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
+              aria-expanded={showPlayQueue}
+              onClick={() => setShowPlayQueue((visible) => !visible)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                chevron_left
+              </span>
+            </button>
+          </div>
+          <div
+            className={[
+              'now-playing-container',
+              showSyncedLyricCaption ? 'has-synced-lyric' : '',
+              isPlainLyricsVisible ? 'has-plain-lyric' : '',
+              hasSyncedLyrics ? 'has-synced-lyrics' : '',
+              showVisualizer && !hasSyncedLyrics ? 'visualizer-in-lyrics-slot' : '',
+              showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            data-playback-state={isPlaying ? 'playing' : 'paused'}
+            role='button'
+            tabIndex={0}
+            aria-label={isPlaying ? 'Pause playback' : 'Start playback'}
+            onClick={(event) => {
+              const target = event.target as HTMLElement;
+              if (
+                !track ||
+                target.closest(
+                  'button, input, select, textarea, a, [role="button"], .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .track-menu-popover'
+                )
+              ) {
+                return;
+              }
+              if (didDragRef.current) {
+                didDragRef.current = false;
+                return;
+              }
+              onPlayPause();
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.target !== event.currentTarget ||
+                (event.key !== 'Enter' && event.key !== ' ')
+              ) {
+                return;
+              }
+              event.preventDefault();
+              onPlayPause();
+            }}
+          >
+            {/* Album Art */}
+            <div
+              className='album-art'
+              role={playerWindowMode === 'mini' ? 'button' : undefined}
+              tabIndex={playerWindowMode === 'mini' ? 0 : undefined}
+              aria-label={
+                playerWindowMode === 'mini'
+                  ? `${isPlaying ? 'Pause' : 'Play'} ${track?.name || 'track'}`
+                  : undefined
+              }
+              onClick={() => {
+                if (playerWindowMode === 'mini' && track) onPlayPause();
+              }}
+              onKeyDown={(event) => {
+                if (
+                  playerWindowMode === 'mini' &&
+                  track &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault();
+                  onPlayPause();
+                }
+              }}
+              onDoubleClick={(event) => {
+                if (playerWindowMode === 'normal' && lyricsEnabled && track?.lyrics?.trim()) {
+                  handleLyricsToggleFromArtwork(event);
+                }
+              }}
+              onMouseEnter={() => {
+                if (playerWindowMode === 'normal' && lyricsEnabled && track?.lyrics?.trim()) {
+                  setShowLyricsHint(true);
+                }
+              }}
+              onMouseLeave={() => {
+                if (!showLyrics) {
+                  setShowLyricsHint(false);
+                }
+              }}
+            >
+              {playerWindowMode === 'normal' &&
+                lyricsEnabled &&
+                track?.lyrics?.trim() &&
+                showLyricsHint &&
+                !showLyrics && (
                   <button
                     type='button'
-                    className='track-title-menu'
-                    aria-label={`More options for ${track.name}`}
-                    onClick={() => setShowTrackMenu((current) => !current)}
+                    className='lyrics-hint'
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleLyricsToggle();
+                    }}
                   >
                     <span className='material-symbols-outlined' aria-hidden='true'>
-                      more_vert
+                      lyrics
                     </span>
+                    Lyrics available
                   </button>
-                  {showTrackMenu && (
-                    <div className='track-menu-popover' role='menu' aria-label='Track options'>
-                      {trackMenuItems.map((item) => (
-                        <button
-                          key={item.label}
-                          type='button'
-                          className='track-menu-item'
-                          role='menuitem'
-                          onClick={() =>
-                            handleTrackMenuAction(
-                              item.action as
-                                'delete' | 'playlist' | 'album' | 'love' | 'less' | 'queue' | 'next'
-                            )
-                          }
-                        >
-                          <span className='material-symbols-outlined' aria-hidden='true'>
-                            {item.icon}
-                          </span>
-                          <span>{item.label}</span>
-                        </button>
-                      ))}
+                )}
+              {!trackArtworkUrl && <div className='default-art'>{DEFAULT_ALBUM_ART}</div>}
+              <TrackImageCrossfade src={trackArtworkUrl ?? null} alt={track?.album ?? ''} />
+            </div>
+
+            {showVisualizer && (
+              <AudioVisualizer
+                analyser={visualizerAnalyser}
+                isPlaying={isPlaying}
+                isVisible={state === 'expanded'}
+                volume={volume}
+                style={visualizerStyle}
+                className={isVisualizerRelocating ? 'relocating' : ''}
+              />
+            )}
+
+            {/* Track Info */}
+            <div className='track-info'>
+              <div className='track-title-row'>
+                <h2
+                  className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
+                  key={track?.id ?? 'no-track'}
+                  onDoubleClick={() => {
+                    if (lyricsEnabled && track?.lyrics?.trim()) {
+                      updateLyricsVisibility(!showLyrics);
+                    }
+                  }}
+                >
+                  <span>{track?.name || 'No Track Selected'}</span>
+                </h2>
+                {track && (
+                  <div className='track-title-menu-wrap' ref={trackMenuRef}>
+                    <button
+                      type='button'
+                      className={`track-love-toggle${isLoved ? ' is-loved' : ''}`}
+                      aria-label={isLoved ? 'Remove from favorites' : 'Add to favorites'}
+                      aria-pressed={isLoved}
+                      title={isLoved ? 'Remove from favorites' : 'Add to favorites'}
+                      onClick={() => handleTrackMenuAction('love')}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        {isLoved ? 'favorite' : 'favorite_border'}
+                      </span>
+                    </button>
+                    <button
+                      type='button'
+                      className='track-title-menu'
+                      ref={trackMenuToggleRef}
+                      aria-label={`More options for ${track.name}`}
+                      aria-expanded={showTrackMenu}
+                      onClick={toggleTrackMenu}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        more_vert
+                      </span>
+                    </button>
+                    {isTrackMenuMounted && (
+                      <div
+                        ref={trackMenuPopoverRef}
+                        className={`track-menu-popover${showTrackMenu ? ' is-open' : ' is-closing'}`}
+                        role='menu'
+                        tabIndex={-1}
+                        aria-label='Track options'
+                        aria-hidden={!showTrackMenu}
+                        style={
+                          trackMenuPosition
+                            ? {
+                                top: `${trackMenuPosition.top}px`,
+                                left: `${trackMenuPosition.left}px`,
+                                right: 'auto',
+                              }
+                            : undefined
+                        }
+                      >
+                        {trackMenuItems.map((item) =>
+                          item.action === 'playlist' ? (
+                            <div
+                              className={`track-menu-submenu side-${playlistSubmenuSide}`}
+                              key={item.action}
+                              onMouseEnter={openPlaylistSubmenu}
+                              onMouseLeave={() => setShowPlaylistSubmenu(false)}
+                              onFocus={openPlaylistSubmenu}
+                            >
+                              <button
+                                type='button'
+                                className='track-menu-item track-menu-submenu-toggle'
+                                role='menuitem'
+                                aria-expanded={showPlaylistSubmenu}
+                                aria-haspopup='menu'
+                                onClick={() => {
+                                  if (showPlaylistSubmenu) {
+                                    setShowPlaylistSubmenu(false);
+                                  } else {
+                                    openPlaylistSubmenu();
+                                  }
+                                }}
+                              >
+                                <span className='material-symbols-outlined' aria-hidden='true'>
+                                  {item.icon}
+                                </span>
+                                <span>{item.label}</span>
+                                <span
+                                  className='material-symbols-outlined track-menu-submenu-arrow'
+                                  aria-hidden='true'
+                                >
+                                  {showPlaylistSubmenu ? 'expand_less' : 'chevron_right'}
+                                </span>
+                              </button>
+                              <div
+                                className={`track-menu-submenu-items${showPlaylistSubmenu ? ' is-open' : ''}`}
+                                role='menu'
+                                aria-label='Select playlist'
+                                aria-hidden={!showPlaylistSubmenu}
+                              >
+                                {playlists.map((playlist) => (
+                                  <button
+                                    key={playlist.id}
+                                    type='button'
+                                    className='track-menu-item track-menu-playlist-item'
+                                    role='menuitem'
+                                    tabIndex={showPlaylistSubmenu ? 0 : -1}
+                                    onClick={() => {
+                                      onAddTrackToPlaylist?.(track, playlist.id);
+                                      closeTrackMenu();
+                                    }}
+                                  >
+                                    <span className='material-symbols-outlined' aria-hidden='true'>
+                                      queue_music
+                                    </span>
+                                    <span>{playlist.name}</span>
+                                  </button>
+                                ))}
+                                <button
+                                  type='button'
+                                  className='track-menu-item track-menu-create-playlist'
+                                  role='menuitem'
+                                  tabIndex={showPlaylistSubmenu ? 0 : -1}
+                                  onClick={() => handleTrackMenuAction('playlist')}
+                                >
+                                  <span className='material-symbols-outlined' aria-hidden='true'>
+                                    add
+                                  </span>
+                                  <span>Create new playlist…</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              key={item.label}
+                              type='button'
+                              className={`track-menu-item${item.action === 'love' ? ' is-favorite' : ''}${item.action === 'delete' ? ' is-destructive' : ''}`}
+                              role='menuitem'
+                              aria-pressed={item.action === 'love' ? isLoved : undefined}
+                              onClick={() => handleTrackMenuAction(item.action)}
+                            >
+                              <span className='material-symbols-outlined' aria-hidden='true'>
+                                {item.icon}
+                              </span>
+                              <span>{item.label}</span>
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
+                {track?.artist || 'Unknown Artist'}
+              </p>
+              <p className='album-name' key={`album-${track?.id ?? 'none'}`}>
+                {track?.album || 'Unknown Album'}
+              </p>
+              {lyricsEnabled && track?.lyrics?.trim() && (
+                <div className='lyrics-actions'>
+                  <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      lyrics
+                    </span>
+                    {showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                  </button>
+                  {track.syncedLyrics && track.syncedLyrics.length > 0 && (
+                    <button
+                      type='button'
+                      className='lyrics-mode-toggle'
+                      onClick={() => setShowSyncedLyrics(!showSyncedLyrics)}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        timelapse
+                      </span>
+                      {showSyncedLyrics ? 'Synced' : 'Plain'}
+                    </button>
+                  )}
+                  {showSyncedLyrics && Boolean(track.syncedLyrics?.length) && (
+                    <div className='lyrics-delay-controls' aria-label='Synchronized lyrics timing'>
+                      <button
+                        type='button'
+                        className='lyrics-delay-button'
+                        aria-label='Show synchronized lyrics 0.1 seconds earlier'
+                        title='Show lyrics earlier'
+                        disabled={lyricOffsetSteps <= -5}
+                        onClick={() => onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          fast_rewind
+                        </span>
+                      </button>
+                      <span aria-live='polite' title='Positive values delay lyrics'>
+                        {lyricOffsetLabel}
+                      </span>
+                      <button
+                        type='button'
+                        className='lyrics-delay-button'
+                        aria-label='Delay synchronized lyrics by 0.1 seconds'
+                        title='Delay lyrics'
+                        disabled={lyricOffsetSteps >= 5}
+                        onClick={() => onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          fast_forward
+                        </span>
+                      </button>
                     </div>
                   )}
                 </div>
               )}
             </div>
-            <p className='artist-name'>{track?.artist || 'Unknown Artist'}</p>
-            <p className='album-name'>{track?.album || 'Unknown Album'}</p>
+
             {lyricsEnabled && track?.lyrics?.trim() && (
-              <div className='lyrics-actions'>
-                <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
-                  <span className='material-symbols-outlined' aria-hidden='true'>
-                    lyrics
-                  </span>
-                  {showLyrics ? 'Hide lyrics' : 'Show lyrics'}
-                </button>
-                {track.syncedLyrics && track.syncedLyrics.length > 0 && (
-                  <button
-                    type='button'
-                    className='lyrics-mode-toggle'
-                    onClick={() => setShowSyncedLyrics((current) => !current)}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      timelapse
-                    </span>
-                    {showSyncedLyrics ? 'Synced' : 'Plain'}
-                  </button>
-                )}
-                {showSyncedLyrics && Boolean(track.syncedLyrics?.length) && (
-                  <div className='lyrics-delay-controls' aria-label='Synchronized lyrics timing'>
-                    <button
-                      type='button'
-                      className='lyrics-delay-button'
-                      aria-label='Show synchronized lyrics 0.1 seconds earlier'
-                      title='Show lyrics earlier'
-                      disabled={lyricOffsetSteps <= -5}
-                      onClick={() => onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))}
-                    >
-                      <span className='material-symbols-outlined' aria-hidden='true'>
-                        fast_rewind
-                      </span>
-                    </button>
-                    <span aria-live='polite' title='Positive values delay lyrics'>
-                      {lyricOffsetLabel}
-                    </span>
-                    <button
-                      type='button'
-                      className='lyrics-delay-button'
-                      aria-label='Delay synchronized lyrics by 0.1 seconds'
-                      title='Delay lyrics'
-                      disabled={lyricOffsetSteps >= 5}
-                      onClick={() => onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))}
-                    >
-                      <span className='material-symbols-outlined' aria-hidden='true'>
-                        fast_forward
-                      </span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {lyricsEnabled && track?.lyrics?.trim() && (
-            <section
-              className={`lyrics-panel ${showPlainLyricsPanel ? 'is-visible' : 'is-hidden'}`}
-              aria-label={`Lyrics for ${track.name}`}
-              aria-hidden={!showPlainLyricsPanel}
-            >
-              <div className='lyrics-panel-header'>
-                <div>
-                  <h2>Lyrics</h2>
-                  <p>
-                    {track.name} · {track.artist}
-                  </p>
-                </div>
-                <div className='lyrics-panel-actions'>
-                  <div className='lyrics-font-controls' aria-label='Lyrics font size'>
-                    <button
-                      type='button'
-                      className='lyrics-font-button'
-                      aria-label='Decrease lyrics font size'
-                      title='Decrease lyrics font size'
-                      disabled={plainLyricsFontStep <= -3}
-                      tabIndex={showPlainLyricsPanel ? 0 : -1}
-                      onClick={() => setPlainLyricsFontStep((step) => Math.max(-3, step - 1))}
-                    >
-                      <span className='material-symbols-outlined' aria-hidden='true'>
-                        text_decrease
-                      </span>
-                    </button>
-                    <span className='lyrics-font-size' aria-live='polite'>
-                      {Math.round((1 + (plainLyricsFontStep * 0.15) / 0.95) * 100)}%
-                    </span>
-                    <button
-                      type='button'
-                      className='lyrics-font-button'
-                      aria-label='Increase lyrics font size'
-                      title='Increase lyrics font size'
-                      disabled={plainLyricsFontStep >= 3}
-                      tabIndex={showPlainLyricsPanel ? 0 : -1}
-                      onClick={() => setPlainLyricsFontStep((step) => Math.min(3, step + 1))}
-                    >
-                      <span className='material-symbols-outlined' aria-hidden='true'>
-                        text_increase
-                      </span>
-                    </button>
-                  </div>
-                  <button
-                    type='button'
-                    className='lyrics-close'
-                    aria-label='Close lyrics'
-                    tabIndex={showPlainLyricsPanel ? 0 : -1}
-                    onClick={() => updateLyricsVisibility(false)}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      close
-                    </span>
-                  </button>
-                </div>
-              </div>
-              <p className='lyrics-text' dir='auto' style={{ fontSize: plainLyricsFontSize }}>
-                {track.syncedLyrics && track.syncedLyrics.length > 0 && showSyncedLyrics ? (
-                  <span className='synced-lyrics-line' dir='auto'>
-                    {visibleLyrics()}
-                  </span>
-                ) : (
-                  track.lyrics
-                )}
-              </p>
-            </section>
-          )}
-
-          <section
-            className={`play-queue-panel ${showPlayQueue ? 'is-visible' : 'is-hidden'}`}
-            aria-label='Play queue'
-            aria-hidden={!showPlayQueue}
-          >
-            <header className='play-queue-header'>
-              <div>
-                <h2>Play queue</h2>
-                <p>{playQueue.length} tracks</p>
-              </div>
-              <button
-                type='button'
-                className='lyrics-close'
-                aria-label='Close play queue'
-                onClick={() => setShowPlayQueue(false)}
-                tabIndex={showPlayQueue ? 0 : -1}
+              <section
+                className={`lyrics-panel ${isPlainLyricsVisible ? 'is-visible' : 'is-hidden'}`}
+                aria-label={`Lyrics for ${track.name}`}
+                aria-hidden={!isPlainLyricsVisible}
               >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  close
-                </span>
-              </button>
-            </header>
-            {playQueue.length > 0 ? (
-              <div className='play-queue-content indexed-list-layout'>
-                <ol className='play-queue-list'>
-                  {playQueue.map((queuedTrack, index) => (
-                    <li id={`play-queue-row-${index}`} key={`${queuedTrack.id}-${index}`}>
+                <div className='lyrics-panel-header'>
+                  <div>
+                    <h2>Lyrics</h2>
+                    <p>
+                      {track.name} · {track.artist}
+                    </p>
+                  </div>
+                  <div className='lyrics-panel-actions'>
+                    <div className='lyrics-font-controls' aria-label='Lyrics font size'>
                       <button
                         type='button'
-                        className={`play-queue-item ${index === playQueueIndex ? 'current' : ''}`}
-                        aria-current={index === playQueueIndex ? 'true' : undefined}
-                        tabIndex={showPlayQueue ? 0 : -1}
-                        onClick={() => onQueueSelect(index)}
+                        className='lyrics-font-button'
+                        aria-label='Decrease lyrics font size'
+                        title='Decrease lyrics font size'
+                        disabled={plainLyricsFontStep <= -3}
+                        tabIndex={isPlainLyricsVisible ? 0 : -1}
+                        onClick={() => setPlainLyricsFontStep((step) => Math.max(-3, step - 1))}
                       >
                         <span className='material-symbols-outlined' aria-hidden='true'>
-                          {index === playQueueIndex ? 'equalizer' : 'music_note'}
-                        </span>
-                        <span className='play-queue-track-copy'>
-                          <strong>{queuedTrack.name}</strong>
-                          <small>{queuedTrack.artist}</small>
+                          text_decrease
                         </span>
                       </button>
-                    </li>
-                  ))}
-                </ol>
-                <AlphaNumericIndex
-                  entries={queueIndexEntries}
-                  ariaLabel='Play queue index'
-                  scrollContainerSelector='.play-queue-list'
-                />
-              </div>
-            ) : (
-              <ol className='play-queue-list'>
-                <li className='play-queue-empty'>Play a track to start a queue.</li>
-              </ol>
+                      <span className='lyrics-font-size' aria-live='polite'>
+                        {Math.round((1 + (plainLyricsFontStep * 0.15) / 0.95) * 100)}%
+                      </span>
+                      <button
+                        type='button'
+                        className='lyrics-font-button'
+                        aria-label='Increase lyrics font size'
+                        title='Increase lyrics font size'
+                        disabled={plainLyricsFontStep >= 3}
+                        tabIndex={isPlainLyricsVisible ? 0 : -1}
+                        onClick={() => setPlainLyricsFontStep((step) => Math.min(3, step + 1))}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          text_increase
+                        </span>
+                      </button>
+                    </div>
+                    <button
+                      type='button'
+                      className='lyrics-close'
+                      aria-label='Close lyrics'
+                      tabIndex={isPlainLyricsVisible ? 0 : -1}
+                      onClick={() => updateLyricsVisibility(false)}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        close
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                <p className='lyrics-text' dir='auto' style={{ fontSize: plainLyricsFontSize }}>
+                  {track.syncedLyrics && track.syncedLyrics.length > 0 && showSyncedLyrics ? (
+                    <span className='synced-lyrics-line' dir='auto'>
+                      {visibleLyrics()}
+                    </span>
+                  ) : (
+                    track.lyrics
+                  )}
+                </p>
+              </section>
             )}
-          </section>
 
-          {/* Progress Bar */}
-          {lyricsEnabled && hasSyncedLyrics && track?.syncedLyrics && (
-            <SyncedLyricCaption
-              lineKey={currentSyncedLyricKey}
-              text={currentSyncedLyricText}
-              lines={track.syncedLyrics}
-              currentIndex={currentSyncedLyricIndex}
-              onSeek={seekTo}
-              isVisible={showSyncedLyricCaption}
-            />
-          )}
-          <div className='progress-bar-container'>
-            <div
-              className='progress-bar'
-              aria-disabled={!track}
-              onClick={(e) => {
-                if (!track) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                seekTo(percent * duration);
-              }}
+            <section
+              className={`play-queue-panel ${showPlayQueue ? 'is-visible' : 'is-hidden'}`}
+              aria-label='Play queue'
+              aria-hidden={!showPlayQueue}
             >
-              <div className='progress-fill' style={{ width: `${progressPercent}%` }} />
-            </div>
-            <div className='time-display'>
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className='controls expanded-controls'>
-            <button
-              className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
-              onClick={handleShuffle}
-              disabled={!track}
-            >
-              <TransportIcon name='shuffle' />
-            </button>
-
-            <button className='control-btn' onClick={onPrevious} disabled={!track}>
-              <TransportIcon name='previous' />
-            </button>
-
-            <button className='control-btn play-pause' onClick={onPlayPause} disabled={!track}>
-              <svg className='play-pause-icon' viewBox='0 0 24 24' aria-hidden='true'>
-                {isPlaying ? (
-                  <path className='pause-icon-glyph' d='M8 6.5v11M16 6.5v11' />
-                ) : (
-                  <>
-                    <path
-                      className='play-icon-glyph default-play-icon-glyph'
-                      d='M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z'
-                    />
-                    <path className='play-icon-glyph vlc-play-icon-glyph' d='M7 4 20 12 7 20Z' />
-                  </>
-                )}
-              </svg>
-            </button>
-
-            <button className='control-btn' onClick={onNext} disabled={!track}>
-              <TransportIcon name='next' />
-            </button>
-
-            <button
-              className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
-              onClick={handleRepeat}
-              disabled={!track}
-            >
-              <TransportIcon name={getRepeatIcon()} />
-            </button>
-          </div>
-        </div>
-        {playerWindowMode !== 'normal' && (
-          <div className='player-mode-dock'>
-            <div className='player-mode-dock-info'>
-              <PlayerModeMarquee
-                className='player-mode-dock-title'
-                text={track?.name || 'No Track Selected'}
-              />
-              <PlayerModeMarquee
-                className='player-mode-dock-subtitle'
-                text={`${track?.artist || 'Unknown Artist'} · ${track?.album || 'Unknown Album'}`}
-              />
-            </div>
-            <div className='player-mode-dock-controls'>
-              <button
-                type='button'
-                className={`control-btn ${isShuffled ? 'active' : ''}`}
-                aria-label='Toggle shuffle'
-                aria-pressed={isShuffled}
-                onClick={handleShuffle}
-                disabled={!track}
-              >
-                <TransportIcon name='shuffle' />
-              </button>
-              <button
-                type='button'
-                className='control-btn'
-                aria-label='Previous track'
-                onClick={onPrevious}
-                disabled={!track}
-              >
-                <TransportIcon name='previous' />
-              </button>
-              <button
-                type='button'
-                className='control-btn play-pause'
-                aria-label={isPlaying ? 'Pause' : 'Play'}
-                onClick={onPlayPause}
-                disabled={!track}
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  {isPlaying ? 'pause' : 'play_arrow'}
-                </span>
-              </button>
-              <button
-                type='button'
-                className='control-btn'
-                aria-label='Next track'
-                onClick={onNext}
-                disabled={!track}
-              >
-                <TransportIcon name='next' />
-              </button>
-              <button
-                type='button'
-                className={`control-btn ${repeatMode !== 'off' ? 'active' : ''}`}
-                aria-label='Toggle repeat'
-                aria-pressed={repeatMode !== 'off'}
-                onClick={handleRepeat}
-                disabled={!track}
-              >
-                <TransportIcon name={getRepeatIcon()} />
-              </button>
-              {lyricsEnabled && hasSyncedLyrics && (
+              <header className='play-queue-header'>
+                <div>
+                  <h2>Play queue</h2>
+                  <p>{playQueue.length} tracks</p>
+                </div>
                 <button
                   type='button'
-                  className={`control-btn ${showLyrics ? 'active' : ''}`}
-                  aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
-                  aria-pressed={showLyrics}
-                  onClick={handleLyricsToggle}
+                  className='lyrics-close'
+                  aria-label='Close play queue'
+                  onClick={() => setShowPlayQueue(false)}
+                  tabIndex={showPlayQueue ? 0 : -1}
                 >
                   <span className='material-symbols-outlined' aria-hidden='true'>
-                    lyrics
+                    close
                   </span>
                 </button>
+              </header>
+              {playQueue.length > 0 ? (
+                <div className='play-queue-content indexed-list-layout'>
+                  <ol className='play-queue-list'>
+                    {playQueue.map((queuedTrack, index) => (
+                      <li id={`play-queue-row-${index}`} key={`${queuedTrack.id}-${index}`}>
+                        <button
+                          type='button'
+                          className={`play-queue-item ${index === playQueueIndex ? 'current' : ''}`}
+                          aria-current={index === playQueueIndex ? 'true' : undefined}
+                          tabIndex={showPlayQueue ? 0 : -1}
+                          onClick={() => onQueueSelect(index)}
+                        >
+                          <span className='material-symbols-outlined' aria-hidden='true'>
+                            {index === playQueueIndex ? 'equalizer' : 'music_note'}
+                          </span>
+                          <span className='play-queue-track-copy'>
+                            <strong>{queuedTrack.name}</strong>
+                            <small>{queuedTrack.artist}</small>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                  <AlphaNumericIndex
+                    entries={queueIndexEntries}
+                    ariaLabel='Play queue index'
+                    scrollContainerSelector='.play-queue-list'
+                  />
+                </div>
+              ) : (
+                <ol className='play-queue-list'>
+                  <li className='play-queue-empty'>Play a track to start a queue.</li>
+                </ol>
               )}
-            </div>
-            <button type='button' className='player-mode-exit' onClick={onExitPlayerMode}>
-              <span className='material-symbols-outlined' aria-hidden='true'>
-                close_fullscreen
-              </span>
-              Exit player mode
-            </button>
-            <div className='player-mode-dock-progress'>
-              <span>{formatTime(currentTime)}</span>
-              <input
-                aria-label='Track progress'
-                type='range'
-                min={0}
-                max={duration || 0}
-                step={0.1}
-                value={Math.min(currentTime, duration)}
-                onChange={(event) => seekTo(event.currentTarget.valueAsNumber)}
-                disabled={!track}
+            </section>
+
+            {/* Progress Bar */}
+            {lyricsEnabled && hasSyncedLyrics && track?.syncedLyrics && (
+              <SyncedLyricCaption
+                lineKey={currentSyncedLyricKey}
+                text={currentSyncedLyricText}
+                lines={track.syncedLyrics}
+                currentIndex={currentSyncedLyricIndex}
+                onSeek={seekTo}
+                isVisible={showSyncedLyricCaption}
               />
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Collapsed View - Mini Player */}
-      <div
-        className={`mini-player ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
-        onPointerDown={handleDragStart}
-        aria-hidden={state === 'expanded'}
-        data-playback-state={isPlaying ? 'playing' : 'paused'}
-      >
-        <div
-          className={`track-info-mini ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
-          onClick={handleAlbumArtClick}
-        >
-          <div className='album-art-mini'>
-            {trackArtworkUrl ? (
-              <img src={trackArtworkUrl} alt={track?.album ?? ''} />
-            ) : (
-              <div className='default-art-mini'>{DEFAULT_ALBUM_ART}</div>
             )}
-          </div>
-          <div className='mini-track-info-copy'>
-            <div className='text-info'>
-              <span className='track-name-mini'>{track?.name || 'No Track'}</span>
-              <span className='artist-name-mini'>{track?.artist || 'Unknown'}</span>
+            <div className='progress-bar-container'>
+              <div
+                className='progress-bar'
+                role='slider'
+                tabIndex={track ? 0 : -1}
+                aria-label='Track progress'
+                aria-disabled={!track}
+                aria-valuemin={0}
+                aria-valuemax={duration}
+                aria-valuenow={currentTime}
+                onClick={(e) => {
+                  if (!track) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const percent = (e.clientX - rect.left) / rect.width;
+                  seekTo(percent * duration);
+                }}
+                onKeyDown={(event) => {
+                  if (!track || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+                  event.preventDefault();
+                  seekTo(currentTime + (event.key === 'ArrowRight' ? 5 : -5));
+                }}
+              >
+                <div
+                  className='progress-fill'
+                  ref={(element) => {
+                    seekbarFillRefs.current[0] = element;
+                  }}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className='time-display'>
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Mini Progress Bar */}
-        <div className='mini-progress-container'>
-          <span className='mini-time'>{formatTime(currentTime)}</span>
-          <div className='mini-progress-input-wrap'>
-            <div className='mini-progress-track' aria-hidden='true'>
-              <div className='mini-progress-track-fill' style={{ width: `${progressPercent}%` }} />
-            </div>
-            <input
-              aria-label='Track progress'
-              className='mini-progress-bar'
-              type='range'
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={Math.min(currentTime, duration)}
-              onChange={(e) => seekTo(e.currentTarget.valueAsNumber)}
-              disabled={!track}
-            />
-          </div>
-          <span className='mini-time'>{formatTime(duration)}</span>
-        </div>
-
-        {/* Controls */}
-        <div
-          className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
-        >
-          {isMiniSyncedLyricsVisible ? (
-            <MiniSyncedLyrics text={currentSyncedLyricText} />
-          ) : (
-            <div className='controls'>
+            {/* Controls */}
+            <div className='controls expanded-controls'>
               <button
-                aria-label='Shuffle'
-                aria-pressed={isShuffled}
                 className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
                 onClick={handleShuffle}
                 disabled={!track}
               >
                 <TransportIcon name='shuffle' />
               </button>
+
               <button className='control-btn' onClick={onPrevious} disabled={!track}>
                 <TransportIcon name='previous' />
               </button>
+
               <button className='control-btn play-pause' onClick={onPlayPause} disabled={!track}>
                 <svg className='play-pause-icon' viewBox='0 0 24 24' aria-hidden='true'>
                   {isPlaying ? (
@@ -1533,12 +1901,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   )}
                 </svg>
               </button>
+
               <button className='control-btn' onClick={onNext} disabled={!track}>
                 <TransportIcon name='next' />
               </button>
+
               <button
-                aria-label={`Repeat ${repeatMode === 'off' ? 'off' : repeatMode === 'one' ? 'one' : 'all'}`}
-                aria-pressed={repeatMode !== 'off'}
                 className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
                 onClick={handleRepeat}
                 disabled={!track}
@@ -1546,196 +1914,457 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <TransportIcon name={getRepeatIcon()} />
               </button>
             </div>
-          )}
-        </div>
-
-        <div className='mini-player-actions'>
-          <div className='mini-lyrics-transport' aria-hidden={!isMiniSyncedLyricsVisible}>
-            <button
-              type='button'
-              className='control-btn mini-lyrics-transport-btn'
-              aria-label='Previous track'
-              onClick={(event) => {
-                event.stopPropagation();
-                onPrevious();
-              }}
-              disabled={!track || !isMiniSyncedLyricsVisible}
-              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-            >
-              <TransportIcon name='previous' />
-            </button>
-            <button
-              type='button'
-              className='control-btn mini-lyrics-transport-btn play-pause'
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-              onClick={(event) => {
-                event.stopPropagation();
-                onPlayPause();
-              }}
-              disabled={!track || !isMiniSyncedLyricsVisible}
-              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-            >
-              <svg className='play-pause-icon' viewBox='0 0 24 24' aria-hidden='true'>
-                {isPlaying ? (
-                  <path className='pause-icon-glyph' d='M8 6.5v11M16 6.5v11' />
-                ) : (
-                  <>
-                    <path
-                      className='play-icon-glyph default-play-icon-glyph'
-                      d='M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z'
-                    />
-                    <path className='play-icon-glyph vlc-play-icon-glyph' d='M7 4 20 12 7 20Z' />
-                  </>
-                )}
-              </svg>
-            </button>
-            <button
-              type='button'
-              className='control-btn mini-lyrics-transport-btn'
-              aria-label='Next track'
-              onClick={(event) => {
-                event.stopPropagation();
-                onNext();
-              }}
-              disabled={!track || !isMiniSyncedLyricsVisible}
-              tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
-            >
-              <TransportIcon name='next' />
-            </button>
           </div>
-          {lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && (
-            <button
-              type='button'
-              className={`control-btn mini-synced-lyrics-toggle ${isMiniSyncedLyricsVisible ? 'active' : ''}`}
-              aria-label={
-                isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'
-              }
-              title={
-                isMiniSyncedLyricsVisible ? 'Hide synchronized lyrics' : 'Show synchronized lyrics'
-              }
-              aria-pressed={isMiniSyncedLyricsVisible}
-              onClick={handleMiniLyricsToggle}
-            >
-              <span className='material-symbols-outlined' aria-hidden='true'>
-                lyrics
-              </span>
-            </button>
-          )}
-          <div className='volume-control'>
-            {showVolumeSlider && (
-              <div className='volume-popover'>
-                <input
-                  aria-label='Volume'
-                  type='range'
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={volume}
-                  onChange={(e) => onVolumeChange(e.currentTarget.valueAsNumber)}
-                  className='volume-slider'
-                  style={volumeSliderStyle}
+          {playerWindowMode !== 'normal' && (
+            <div className='player-mode-dock'>
+              <div className='player-mode-dock-info'>
+                <PlayerModeMarquee
+                  className='player-mode-dock-title'
+                  text={track?.name || 'No Track Selected'}
+                />
+                <PlayerModeMarquee
+                  className='player-mode-dock-subtitle'
+                  text={`${track?.artist || 'Unknown Artist'} · ${track?.album || 'Unknown Album'}`}
                 />
               </div>
-            )}
-            <button
-              aria-label='Volume'
-              aria-expanded={showVolumeSlider}
-              className='control-btn mute-btn'
-              onClick={() => {
-                setShowVolumeSlider(!showVolumeSlider);
-                setShowOptionsMenu(false);
-              }}
-            >
-              <svg className='apple-volume-icon' viewBox='0 0 24 24' aria-hidden='true'>
-                <path className='volume-speaker' d='M3 9v6h4l5 4V5L7 9H3Z' />
-                {volume === 0 ? (
-                  <path className='volume-mute-mark' d='m16 9 5 6m0-6-5 6' />
-                ) : volume < 0.5 ? (
-                  <path className='volume-wave' d='M15.5 9.5a4 4 0 0 1 0 5' />
-                ) : (
-                  <>
-                    <path className='volume-wave' d='M15.5 9.5a4 4 0 0 1 0 5' />
-                    <path className='volume-wave' d='M18.5 6.5a8 8 0 0 1 0 11' />
-                  </>
+              <div className='player-mode-dock-controls'>
+                {playerWindowMode !== 'mini' && (
+                  <button
+                    type='button'
+                    className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
+                    aria-label='Toggle shuffle'
+                    aria-pressed={isShuffled}
+                    onClick={handleShuffle}
+                    disabled={!track}
+                  >
+                    <TransportIcon name='shuffle' />
+                  </button>
                 )}
-              </svg>
-              <span className='material-symbols-outlined'>
-                {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
-              </span>
-            </button>
-          </div>
-          <div className='more-options'>
-            <button
-              aria-label='More options'
-              aria-expanded={showOptionsMenu}
-              className='control-btn more-options-button'
-              onClick={() => {
-                setShowOptionsMenu(!showOptionsMenu);
-                setShowVolumeSlider(false);
-              }}
-            >
-              <span className='material-symbols-outlined'>menu</span>
-            </button>
-            {showOptionsMenu && (
-              <div className='more-options-menu'>
                 <button
-                  aria-pressed={isShuffled}
-                  className='more-options-item'
-                  onClick={handleShuffle}
+                  type='button'
+                  className='control-btn'
+                  aria-label='Previous track'
+                  onClick={onPrevious}
+                  disabled={!track}
                 >
-                  <TransportIcon name='shuffle' />
-                  <span>Shuffle</span>
+                  <TransportIcon name='previous' />
                 </button>
                 <button
-                  aria-pressed={repeatMode !== 'off'}
-                  className='more-options-item'
-                  onClick={handleRepeat}
+                  type='button'
+                  className='control-btn play-pause'
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                  onClick={onPlayPause}
+                  disabled={!track}
                 >
-                  <TransportIcon name={getRepeatIcon()} />
-                  <span>
-                    Repeat: {repeatMode === 'off' ? 'Off' : repeatMode === 'one' ? 'One' : 'All'}
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    {isPlaying ? 'pause' : 'play_arrow'}
                   </span>
                 </button>
+                <button
+                  type='button'
+                  className='control-btn'
+                  aria-label='Next track'
+                  onClick={onNext}
+                  disabled={!track}
+                >
+                  <TransportIcon name='next' />
+                </button>
+                {playerWindowMode !== 'mini' && (
+                  <button
+                    type='button'
+                    className={`control-btn repeat-btn ${repeatMode !== 'off' ? 'active' : ''}`}
+                    aria-label='Toggle repeat'
+                    aria-pressed={repeatMode !== 'off'}
+                    onClick={handleRepeat}
+                    disabled={!track}
+                  >
+                    <TransportIcon name={getRepeatIcon()} />
+                  </button>
+                )}
+                {lyricsEnabled && hasSyncedLyrics && (
+                  <button
+                    type='button'
+                    className={`control-btn ${showLyrics ? 'active' : ''}`}
+                    aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                    aria-pressed={showLyrics}
+                    onClick={handleLyricsToggle}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      lyrics
+                    </span>
+                  </button>
+                )}
+              </div>
+              <button type='button' className='player-mode-exit' onClick={onExitPlayerMode}>
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  close_fullscreen
+                </span>
+              </button>
+              <div className='player-mode-dock-progress mini-progress-container'>
+                <span className='mini-time'>{formatTime(currentTime)}</span>
+                <div className='mini-progress-input-wrap'>
+                  <div className='mini-progress-track' aria-hidden='true'>
+                    <div
+                      className='mini-progress-track-fill'
+                      ref={(element) => {
+                        seekbarFillRefs.current[1] = element;
+                      }}
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <input
+                    aria-label='Track progress'
+                    className='mini-progress-bar'
+                    ref={(element) => {
+                      seekbarInputRefs.current[0] = element;
+                    }}
+                    type='range'
+                    min={0}
+                    max={duration || 0}
+                    step={0.1}
+                    value={Math.min(currentTime, duration)}
+                    onChange={(event) => seekTo(event.currentTarget.valueAsNumber)}
+                    disabled={!track}
+                  />
+                </div>
+                <span className='mini-time'>{formatTime(duration)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Collapsed View - Mini Player */}
+        <div
+          ref={miniPlayerRef}
+          className={`mini-player ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+          onPointerDown={handleDragStart}
+          aria-hidden={state === 'expanded'}
+          data-playback-state={isPlaying ? 'playing' : 'paused'}
+        >
+          <div
+            className={`track-info-mini ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+            role='button'
+            tabIndex={state === 'expanded' ? -1 : 0}
+            aria-label='Expand player'
+            onClick={handleAlbumArtClick}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              handleAlbumArtClick();
+            }}
+          >
+            <div className='album-art-mini'>
+              {!trackArtworkUrl && <div className='default-art-mini'>{DEFAULT_ALBUM_ART}</div>}
+              <TrackImageCrossfade
+                src={trackArtworkUrl ?? null}
+                alt={track?.album ?? ''}
+                className='album-art-mini-crossfade'
+              />
+            </div>
+            <div className='mini-track-info-copy'>
+              <div className='text-info'>
+                <span className='track-name-mini'>{track?.name || 'No Track'}</span>
+                <span className='artist-name-mini'>{track?.artist || 'Unknown'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mini Progress Bar */}
+          <div className='mini-progress-container'>
+            <span className='mini-time'>{formatTime(currentTime)}</span>
+            <div className='mini-progress-input-wrap'>
+              <div className='mini-progress-track' aria-hidden='true'>
+                <div
+                  className='mini-progress-track-fill'
+                  ref={(element) => {
+                    seekbarFillRefs.current[2] = element;
+                  }}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <input
+                aria-label='Track progress'
+                className='mini-progress-bar'
+                ref={(element) => {
+                  seekbarInputRefs.current[1] = element;
+                }}
+                type='range'
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={Math.min(currentTime, duration)}
+                onChange={(e) => seekTo(e.currentTarget.valueAsNumber)}
+                disabled={!track}
+              />
+            </div>
+            <span className='mini-time'>{formatTime(duration)}</span>
+          </div>
+
+          {/* Controls */}
+          <div
+            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+          >
+            {isMiniSyncedLyricsVisible ? (
+              <MiniSyncedLyrics text={currentSyncedLyricText} />
+            ) : (
+              <div className='controls'>
+                {!isCompactPlayBar && shuffleControl}
+                <button className='control-btn' onClick={onPrevious} disabled={!track}>
+                  <TransportIcon name='previous' />
+                </button>
+                <button className='control-btn play-pause' onClick={onPlayPause} disabled={!track}>
+                  <svg className='play-pause-icon' viewBox='0 0 24 24' aria-hidden='true'>
+                    {isPlaying ? (
+                      <path className='pause-icon-glyph' d='M8 6.5v11M16 6.5v11' />
+                    ) : (
+                      <>
+                        <path
+                          className='play-icon-glyph default-play-icon-glyph'
+                          d='M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z'
+                        />
+                        <path
+                          className='play-icon-glyph vlc-play-icon-glyph'
+                          d='M7 4 20 12 7 20Z'
+                        />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <button className='control-btn' onClick={onNext} disabled={!track}>
+                  <TransportIcon name='next' />
+                </button>
+                {!isCompactPlayBar && repeatControl}
               </div>
             )}
           </div>
 
-          {isDesktopApp && (
-            <>
+          <div className='mini-player-actions'>
+            <div className='mini-lyrics-transport' aria-hidden={!isMiniSyncedLyricsVisible}>
               <button
                 type='button'
-                className='control-btn player-mode-entry'
-                aria-label='Enter mini player mode'
-                title='Enter mini player mode'
-                onClick={onEnterMiniPlayer}
+                className='control-btn mini-lyrics-transport-btn'
+                aria-label='Previous track'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPrevious();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
               >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  picture_in_picture_alt
-                </span>
+                <TransportIcon name='previous' />
               </button>
               <button
                 type='button'
-                className='control-btn player-mode-entry'
-                aria-label='Enter fullscreen player mode'
-                title='Enter fullscreen player mode'
-                onClick={onEnterFullscreenPlayer}
+                className='control-btn mini-lyrics-transport-btn play-pause'
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPlayPause();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
               >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  fullscreen
-                </span>
+                <svg className='play-pause-icon' viewBox='0 0 24 24' aria-hidden='true'>
+                  {isPlaying ? (
+                    <path className='pause-icon-glyph' d='M8 6.5v11M16 6.5v11' />
+                  ) : (
+                    <>
+                      <path
+                        className='play-icon-glyph default-play-icon-glyph'
+                        d='M8.4 4.6Q7 3.8 7 5.5v13q0 1.7 1.4.9l10.7-6.2q1.9-1.2 0-2.4Z'
+                      />
+                      <path className='play-icon-glyph vlc-play-icon-glyph' d='M7 4 20 12 7 20Z' />
+                    </>
+                  )}
+                </svg>
               </button>
-            </>
-          )}
-          <button
-            className='control-btn expand-btn'
-            onClick={handleAlbumArtClick}
-            aria-label='Expand player'
-          >
-            <span className='material-symbols-outlined'>open_in_full</span>
-          </button>
+              <button
+                type='button'
+                className='control-btn mini-lyrics-transport-btn'
+                aria-label='Next track'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNext();
+                }}
+                disabled={!track || !isMiniSyncedLyricsVisible}
+                tabIndex={isMiniSyncedLyricsVisible ? 0 : -1}
+              >
+                <TransportIcon name='next' />
+              </button>
+            </div>
+            {lyricsEnabled &&
+              showSyncedLyricsOnPlayBar &&
+              hasSyncedLyrics &&
+              showInlineLyricsControl &&
+              renderLyricsControl(false)}
+            {showInlineVolumeControl && renderVolumeControl(false)}
+            {hasOverflowControls && (
+              <div className='more-options'>
+                <button
+                  aria-label='More options'
+                  aria-expanded={showOptionsMenu}
+                  className='control-btn more-options-button'
+                  onClick={() => {
+                    setShowOptionsMenu(!showOptionsMenu);
+                    setShowVolumeSlider(false);
+                  }}
+                >
+                  <span className='material-symbols-outlined'>menu</span>
+                </button>
+                {showOptionsMenu && (
+                  <div className='more-options-menu'>
+                    {isCompactPlayBar && (
+                      <>
+                        <button
+                          aria-pressed={isShuffled}
+                          className='more-options-item'
+                          onClick={handleShuffle}
+                          disabled={!track}
+                        >
+                          <TransportIcon name='shuffle' />
+                          <span>Shuffle</span>
+                        </button>
+                        <button
+                          aria-pressed={repeatMode !== 'off'}
+                          className='more-options-item'
+                          onClick={handleRepeat}
+                          disabled={!track}
+                        >
+                          <TransportIcon name={getRepeatIcon()} />
+                          <span>
+                            Repeat:{' '}
+                            {repeatMode === 'off' ? 'Off' : repeatMode === 'one' ? 'One' : 'All'}
+                          </span>
+                        </button>
+                      </>
+                    )}
+                    {lyricsEnabled &&
+                      showSyncedLyricsOnPlayBar &&
+                      hasSyncedLyrics &&
+                      !showInlineLyricsControl &&
+                      renderLyricsControl(true)}
+                    {!showInlineVolumeControl && renderVolumeControl(true)}
+                    {isDesktopApp && !showInlineMiniPlayerControl && (
+                      <button
+                        type='button'
+                        className='more-options-item'
+                        aria-label='Enter mini player mode'
+                        onClick={onEnterMiniPlayer}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          picture_in_picture_alt
+                        </span>
+                        <span>Mini player</span>
+                      </button>
+                    )}
+                    {isDesktopApp && !showInlineFullscreenPlayerControl && (
+                      <button
+                        type='button'
+                        className='more-options-item'
+                        aria-label='Enter fullscreen player mode'
+                        onClick={onEnterFullscreenPlayer}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          fullscreen
+                        </span>
+                        <span>Fullscreen player</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isDesktopApp && (
+              <>
+                {showInlineMiniPlayerControl && (
+                  <button
+                    type='button'
+                    className='control-btn player-mode-entry'
+                    aria-label='Enter mini player mode'
+                    title='Enter mini player mode'
+                    onClick={onEnterMiniPlayer}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      picture_in_picture_alt
+                    </span>
+                  </button>
+                )}
+                {showInlineFullscreenPlayerControl && (
+                  <button
+                    type='button'
+                    className='control-btn player-mode-entry'
+                    aria-label='Enter fullscreen player mode'
+                    title='Enter fullscreen player mode'
+                    onClick={onEnterFullscreenPlayer}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      fullscreen
+                    </span>
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              className='control-btn expand-btn'
+              onClick={handleAlbumArtClick}
+              aria-label='Expand player'
+            >
+              <span className='material-symbols-outlined'>open_in_full</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+      {confirmTrackDeletion &&
+        createPortal(
+          <div
+            ref={trackDeletionBackdropRef}
+            className='track-delete-confirm-backdrop'
+            role='presentation'
+          >
+            <section
+              className='track-delete-confirm-dialog'
+              role='alertdialog'
+              aria-modal='true'
+              aria-labelledby='track-delete-confirm-title'
+              aria-describedby='track-delete-confirm-description'
+            >
+              <span
+                className='material-symbols-outlined track-delete-confirm-icon'
+                aria-hidden='true'
+              >
+                delete_forever
+              </span>
+              <h2 id='track-delete-confirm-title'>Remove track from library?</h2>
+              <p id='track-delete-confirm-description'>
+                Remove <strong>{confirmTrackDeletion.name}</strong> from Luna’s library and active
+                queue? The audio file itself will not be deleted.
+              </p>
+              <div className='track-delete-confirm-actions'>
+                <button
+                  type='button'
+                  className='track-delete-confirm-cancel'
+                  ref={deleteConfirmationCancelRef}
+                  onClick={() => setConfirmTrackDeletion(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type='button'
+                  className='track-delete-confirm-remove'
+                  onClick={() => {
+                    onDeleteTrackFromLibrary?.(confirmTrackDeletion);
+                    setConfirmTrackDeletion(null);
+                  }}
+                >
+                  Remove from library
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body
+        )}
+    </>
   );
 };
 

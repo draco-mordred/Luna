@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppIcon from '../AppIcon';
 import type { PlayerWindowMode } from '../../types/electron';
 
 const WindowTitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [playerWindowMode, setPlayerWindowMode] = useState<PlayerWindowMode>('normal');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const canNavigateBack =
+    playerWindowMode === 'normal' &&
+    location.pathname !== '/' &&
+    location.pathname !== '/tracks';
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -81,12 +88,29 @@ const WindowTitleBar = () => {
     });
   };
 
+  const navigateBack = () => {
+    const historyIndex = window.history.state?.idx;
+    if (typeof historyIndex === 'number' && historyIndex > 0) navigate(-1);
+    else navigate('/');
+  };
+
   return (
     <header
       className={`window-titlebar ${playerWindowMode}`}
       onDoubleClick={playerWindowMode === 'normal' ? toggleMaximize : undefined}
     >
       <div className='window-titlebar-brand'>
+        {canNavigateBack && (
+          <button
+            type='button'
+            className='window-titlebar-button window-titlebar-back'
+            aria-label='Go back'
+            onClick={navigateBack}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+          </button>
+        )}
         <AppIcon className='window-titlebar-icon' />
         <span>Luna Music</span>
       </div>

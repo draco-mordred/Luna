@@ -38,24 +38,58 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const frequencyData = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
     let animationFrame = 0;
     let previousFrameTime = performance.now();
+    let bounds = { width: 0, height: 0, pixelRatio: 1 };
+    let accentColor =
+      getComputedStyle(canvas).getPropertyValue('--play-button-accent').trim() || '#ff4444';
     const levels = levelsRef.current;
+    const frequencyIndices = frequencyData && analyser ? new Uint16Array(BAR_COUNT) : null;
 
-    const draw = (now: number) => {
-      const bounds = canvas.getBoundingClientRect();
-      if (!bounds.width || !bounds.height) return 0;
+    if (frequencyData && frequencyIndices && analyser) {
+      const nyquistFrequency = Math.min(MAX_FREQUENCY, analyser.context.sampleRate / 2);
+      const frequencyStep = analyser.context.sampleRate / analyser.fftSize;
+      for (let index = 0; index < BAR_COUNT; index += 1) {
+        const sampleFrequency =
+          MIN_FREQUENCY * (nyquistFrequency / MIN_FREQUENCY) ** (index / (BAR_COUNT - 1));
+        frequencyIndices[index] = Math.max(
+          0,
+          Math.min(frequencyData.length - 1, Math.round(sampleFrequency / frequencyStep))
+        );
+      }
+    }
 
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
       const pixelRatio = window.devicePixelRatio || 1;
-      const width = Math.round(bounds.width * pixelRatio);
-      const height = Math.round(bounds.height * pixelRatio);
+      bounds = { width: rect.width, height: rect.height, pixelRatio };
+      const width = Math.round(rect.width * pixelRatio);
+      const height = Math.round(rect.height * pixelRatio);
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
+    };
 
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-      context.clearRect(0, 0, bounds.width, bounds.height);
-      context.strokeStyle =
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resizeCanvas);
+    resizeObserver?.observe(canvas);
+    resizeCanvas();
+
+    const rootStyleObserver = new MutationObserver(() => {
+      accentColor =
         getComputedStyle(canvas).getPropertyValue('--play-button-accent').trim() || '#ff4444';
+    });
+    rootStyleObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme', 'style'],
+    });
+    const handleWindowResize = () => resizeCanvas();
+    window.addEventListener('resize', handleWindowResize);
+
+    const draw = (now: number) => {
+      if (!bounds.width || !bounds.height) return 0;
+      context.setTransform(bounds.pixelRatio, 0, 0, bounds.pixelRatio, 0, 0);
+      context.clearRect(0, 0, bounds.width, bounds.height);
+      context.strokeStyle = accentColor;
       context.fillStyle = context.strokeStyle;
       context.lineWidth = style === 'wave-organic' ? 1.6 : 2.4;
       context.lineCap = style === 'bars-thin' || style === 'bars-dense' ? 'butt' : 'round';
@@ -72,19 +106,11 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
       for (let index = 0; index < BAR_COUNT; index += 1) {
         let target = 0;
-        if (frequencyData && playing && analyser && appVolume > 0) {
-          const sampleFrequency =
-            MIN_FREQUENCY *
-            (Math.min(MAX_FREQUENCY, analyser.context.sampleRate / 2) / MIN_FREQUENCY) **
-              (index / (BAR_COUNT - 1));
-          const frequencyIndex = Math.max(
+        if (frequencyData && frequencyIndices && playing && analyser && appVolume > 0) {
+          const normalizedMagnitude = Math.max(
             0,
-            Math.min(
-              frequencyData.length - 1,
-              Math.round(sampleFrequency / (analyser.context.sampleRate / analyser.fftSize))
-            )
+            (frequencyData[frequencyIndices[index]] - 20) / 210
           );
-          const normalizedMagnitude = Math.max(0, (frequencyData[frequencyIndex] - 20) / 210);
           target = Math.pow(normalizedMagnitude, 0.82) * volumeGain;
         }
 
@@ -161,7 +187,12 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     };
 
     animationFrame = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(animationFrame);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      rootStyleObserver.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
+    };
   }, [analyser, isPlaying, isVisible, style]);
 
   return (

@@ -1,6 +1,12 @@
 {
   "appId": "com.avalon.luna",
   "productName": "Luna",
+  "protocols": [
+    {
+      "name": "Luna Auth",
+      "schemes": ["luna-auth"]
+    }
+  ],
   "directories": {
     "buildResources": "public"
   },

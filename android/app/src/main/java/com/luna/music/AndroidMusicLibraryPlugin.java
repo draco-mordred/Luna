@@ -28,6 +28,9 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
@@ -162,6 +165,28 @@ public class AndroidMusicLibraryPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setStatusBarStyle(PluginCall call) {
+        Boolean darkIcons = call.getBoolean("darkIcons");
+        if (darkIcons == null) {
+            call.reject("A status-bar icon style is required.");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            getActivity().getWindow().setStatusBarColor(Color.TRANSPARENT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getActivity().getWindow().setStatusBarContrastEnforced(false);
+            }
+            WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
+                getActivity().getWindow(),
+                getActivity().getWindow().getDecorView()
+            );
+            controller.setAppearanceLightStatusBars(darkIcons);
+            controller.show(WindowInsetsCompat.Type.statusBars());
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
     public void getAlbumArtwork(PluginCall call) {
         String albumId = call.getString("albumId");
         if (albumId == null || !albumId.matches("\\d+")) {
@@ -170,25 +195,44 @@ public class AndroidMusicLibraryPlugin extends Plugin {
         }
 
         Uri artworkUri = Uri.parse("content://media/external/audio/albumart/" + albumId);
-        try (InputStream input = getContext().getContentResolver().openInputStream(artworkUri)) {
-            Bitmap artwork = input == null ? null : BitmapFactory.decodeStream(input);
-            if (artwork == null) {
+        try {
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            try (InputStream input = getContext().getContentResolver().openInputStream(artworkUri)) {
+                if (input != null) BitmapFactory.decodeStream(input, null, options);
+            }
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
                 JSObject result = new JSObject();
                 result.put("dataUrl", (String) null);
                 call.resolve(result);
                 return;
             }
 
-            Bitmap thumbnail = resizeArtwork(artwork);
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            thumbnail.compress(Bitmap.CompressFormat.JPEG, 82, output);
-            if (thumbnail != artwork) thumbnail.recycle();
-            artwork.recycle();
+            options.inJustDecodeBounds = false;
+            options.inSampleSize = 1;
+            while (options.outWidth / options.inSampleSize > MAX_ARTWORK_DIMENSION ||
+                options.outHeight / options.inSampleSize > MAX_ARTWORK_DIMENSION) {
+                options.inSampleSize *= 2;
+            }
 
-            JSObject result = new JSObject();
-            result.put("dataUrl", "data:image/jpeg;base64," +
-                Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP));
-            call.resolve(result);
+            try (InputStream input = getContext().getContentResolver().openInputStream(artworkUri)) {
+                Bitmap artwork = input == null ? null : BitmapFactory.decodeStream(input, null, options);
+                if (artwork == null) {
+                    JSObject result = new JSObject();
+                    result.put("dataUrl", (String) null);
+                    call.resolve(result);
+                    return;
+                }
+
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                artwork.compress(Bitmap.CompressFormat.JPEG, 82, output);
+                artwork.recycle();
+
+                JSObject result = new JSObject();
+                result.put("dataUrl", "data:image/jpeg;base64," +
+                    Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP));
+                call.resolve(result);
+            }
         } catch (FileNotFoundException missingArtwork) {
             JSObject result = new JSObject();
             result.put("dataUrl", (String) null);
@@ -258,7 +302,16 @@ public class AndroidMusicLibraryPlugin extends Plugin {
             .putExtra(NowPlayingService.EXTRA_TITLE, title)
             .putExtra(NowPlayingService.EXTRA_ARTIST, artist)
             .putExtra(NowPlayingService.EXTRA_ALBUM, album)
+            .putExtra(
+                NowPlayingService.EXTRA_ALBUM_ID,
+                call.getString("albumId") == null ? "" : call.getString("albumId")
+            )
             .putExtra(NowPlayingService.EXTRA_PLAYING, call.getBoolean("isPlaying", false))
+            .putExtra(NowPlayingService.EXTRA_SHUFFLED, call.getBoolean("isShuffled", false))
+            .putExtra(
+                NowPlayingService.EXTRA_REPEAT_MODE,
+                call.getString("repeatMode") == null ? "off" : call.getString("repeatMode")
+            )
             .putExtra(
                 NowPlayingService.EXTRA_POSITION,
                 (long) (call.getDouble("position", 0.0) * 1000)
@@ -407,18 +460,6 @@ public class AndroidMusicLibraryPlugin extends Plugin {
         } catch (Exception error) {
             call.reject("Could not scan the Android audio library.", error);
         }
-    }
-
-    private Bitmap resizeArtwork(Bitmap artwork) {
-        int largestDimension = Math.max(artwork.getWidth(), artwork.getHeight());
-        if (largestDimension <= MAX_ARTWORK_DIMENSION) return artwork;
-        float scale = (float) MAX_ARTWORK_DIMENSION / largestDimension;
-        return Bitmap.createScaledBitmap(
-            artwork,
-            Math.max(1, Math.round(artwork.getWidth() * scale)),
-            Math.max(1, Math.round(artwork.getHeight() * scale)),
-            true
-        );
     }
 
     private EmbeddedLyrics extractEmbeddedLyrics(Uri trackUri) {

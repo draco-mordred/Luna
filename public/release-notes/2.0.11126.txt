@@ -1,0 +1,17 @@
+Luna Music v2.0.11126
+
+Highlights
+- **Smoother playback:** Improved crossfade and gapless track changes, with animated track details, artwork, artist backgrounds, and track-derived accent colors. Skipping tracks while paused now keeps playback paused.
+- **Refined player modes:** The mini player is limited to 640 × 490, can play or pause from its artwork, and hides its controls after three seconds of inactivity while playing. Artwork and lyrics adapt smoothly as controls appear or hide.
+- **Consistent controls:** Fullscreen controls are centered, mini-player seekbars follow the selected seekbar style, and transport controls respond to the available player width. Shuffle and repeat move into More Options when space is limited.
+- **Smoother seeking:** Seekbar progress updates continuously across styles, and album artwork scales smoothly when playback pauses or resumes.
+- **Improved Now Playing:** Like tracks, manage track actions, add tracks to existing or new playlists, and navigate directly to an artist or album. Deletion asks for confirmation.
+- **Queue and lyrics improvements:** The Now Playing queue uses a blurred overlay and temporarily replaces open plain lyrics, restoring them when the queue closes. Added a dedicated Play Queue page with queue management.
+- **New Home page:** Browse History, Favorites, and Most played; find recently played tracks and viewed albums or artists; shuffle recent tracks; and restore the previous queue when Remember recent media is enabled. History is capped at 30 items per media type.
+- **Easier navigation:** Added a hamburger-controlled sidebar, centered library tabs, collapsible playlist navigation with cover art and playlist details, and smoother page and drawer transitions.
+- **More useful settings:** Settings are grouped into expandable categories, the settings view fits between the top bar and player, and its back button follows settings navigation. Lyrics visibility and synchronization controls are easier to manage.
+- **Android playback controls:** Added a Now Playing notification with available album artwork, playback controls, shuffle and repeat actions, and more responsive seek-position updates.
+- **About and updates:** Added device details, a persistent app session ID, animated developer information with cached profile artwork and contact links, and a check for updates from GitHub releases.
+- **Google and GitHub sign-in:** Added Supabase OAuth for web, Windows desktop, and Android, including native callback links and clearer sign-in error handling.
+- **More reliable library and prompts:** Added a Fix action to unlink unreadable library items and animated app notifications. Improved use of the Windows system accent color and updated the Windows title-bar icon to Luna's app icon.
+- **Release notes:** Added bold formatting for labels wrapped in double asterisks and improved the release-notes dialog presentation.

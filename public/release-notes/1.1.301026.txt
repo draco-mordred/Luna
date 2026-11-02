@@ -1,0 +1,8 @@
+Luna Music v1.1.301026
+
+Highlights
+- **A refined mini player:** Keep the player within a compact 640 × 490 pixel window, play or pause by clicking the artwork, and let the controls smoothly hide during playback when idle.
+- **Improved player modes:** Fullscreen playback controls remain centered, and mini/fullscreen seekbars now match the selected seekbar style used throughout Luna.
+- **More useful playlist navigation:** Expand or collapse the sidebar playlist list; when the sidebar is collapsed, hover a playlist to see its cover, song count, and total play time.
+- **Desktop system details:** The About page now displays the device name, operating system, and architecture, along with a persistent 16-character installation session ID.
+- **Consistent player layouts:** Mini-player artwork moves smoothly when controls hide, lyrics receive responsive space, and shuffle/repeat controls are omitted from the mini-player dock.

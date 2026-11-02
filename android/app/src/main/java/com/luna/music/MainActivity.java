@@ -2,6 +2,7 @@ package com.luna.music;
 
 import android.os.Build;
 import android.os.Bundle;
+import android.graphics.Color;
 
 import com.getcapacitor.BridgeActivity;
 import com.google.android.material.color.DynamicColors;
@@ -45,11 +46,16 @@ public class MainActivity extends BridgeActivity {
 
     private void applyImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+        }
         WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         controller.setSystemBarsBehavior(
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         );
-        controller.hide(WindowInsetsCompat.Type.systemBars());
+        controller.show(WindowInsetsCompat.Type.statusBars());
+        controller.hide(WindowInsetsCompat.Type.navigationBars());
     }
 }

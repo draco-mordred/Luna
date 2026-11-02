@@ -38,18 +38,44 @@
   white-space: nowrap;
 }
 
+.navbar-back-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.navbar-back-button:hover {
+  background: var(--hover);
+  color: var(--system-accent);
+}
+
+html[data-android-app='true'] .navbar-back-button {
+  width: 34px;
+  height: 34px;
+}
+
 /* Tabs */
 .tabs-container {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   min-width: 0;
-  max-width: min(52vw, 720px);
+  max-width: min(60vw, 900px);
   overflow-x: auto;
   scrollbar-width: none;
   padding-bottom: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 .tabs-container::-webkit-scrollbar {
@@ -137,6 +163,26 @@
 
 .navbar-button .material-symbols-outlined {
   font-size: 1.2rem;
+}
+
+.android-sidebar-toggle {
+  display: none;
+}
+
+html[data-android-app='true'] .android-sidebar-toggle {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 12px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--system-accent);
+  cursor: pointer;
 }
 
 .search-inline {
@@ -270,6 +316,52 @@
 
 .account-menu {
   margin-right: 48px;
+  width: min(300px, calc(100vw - 24px));
+}
+
+.account-user,
+.account-auth-intro,
+.account-auth-hint,
+.account-auth-error {
+  display: block;
+  padding: 8px 16px;
+}
+
+.account-user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-user strong,
+.account-user small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-user small,
+.account-auth-intro,
+.account-auth-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.account-auth-button {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 8px;
+}
+
+.account-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.account-auth-error {
+  color: var(--error, #e05a5a);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
 }
 
 .menu-header {
@@ -367,10 +459,11 @@
     padding-right: 52px;
   }
 
-  .account-section {
-    display: none;
+  .account-menu {
+    right: 0;
+    margin-right: 0;
   }
-  
+
   .tabs-container {
     gap: 2px;
     max-width: calc(100% - 16px);

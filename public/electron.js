@@ -22,6 +22,43 @@ const { extractEmbeddedLyrics } = require('./lyrics');
 
 if (process.platform === 'win32') app.setAppUserModelId('com.avalon.luna');
 
+let pendingAuthCallbackUrl = null;
+let authCallbackRendererReady = false;
+let deliveredAuthCallbackUrl = null;
+const isAuthCallbackUrl = (value) => {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'luna-auth:' && url.hostname === 'callback';
+  } catch {
+    return false;
+  }
+};
+const deliverPendingAuthCallback = () => {
+  if (
+    !authCallbackRendererReady ||
+    !pendingAuthCallbackUrl ||
+    deliveredAuthCallbackUrl === pendingAuthCallbackUrl ||
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
+    return;
+  }
+  deliveredAuthCallbackUrl = pendingAuthCallbackUrl;
+  mainWindow.webContents.send('auth-callback', pendingAuthCallbackUrl);
+};
+const queueAuthCallback = (value) => {
+  if (!isAuthCallbackUrl(value)) return;
+  pendingAuthCallbackUrl = value;
+  deliveredAuthCallbackUrl = null;
+  deliverPendingAuthCallback();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+};
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'luna-media',
@@ -35,6 +72,7 @@ let normalWindowBounds = null;
 let normalWindowWasMaximized = false;
 let windowMaterialAppliedAtLaunch = 'default';
 let indexedAudioPaths = new Set();
+let appSessionIdPromise = null;
 const openedAudioPaths = new Set();
 let pendingOpenAudioPaths = [];
 let rendererReadyForAudioFiles = false;
@@ -107,6 +145,7 @@ const EDITABLE_ARTWORK_MIME_TYPES = new Set([
 
 const initialOpenAudioPaths = getAudioFilePaths(process.argv.slice(app.isPackaged ? 1 : 2));
 pendingOpenAudioPaths.push(...initialOpenAudioPaths);
+pendingAuthCallbackUrl = process.argv.find(isAuthCallbackUrl) ?? null;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -114,11 +153,16 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, commandLine) => {
     queueOpenAudioFiles(commandLine.slice(1));
+    queueAuthCallback(commandLine.find(isAuthCallbackUrl));
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
     }
+  });
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    queueAuthCallback(url);
   });
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
@@ -149,6 +193,8 @@ const DEFAULT_SETTINGS = {
   useSystemAccentColor: true,
   lastPlayedTrackPath: null,
   crossfadeSeconds: 0,
+  volumeNormalization: false,
+  gaplessPlayback: false,
   iconStyle: 'material',
   seekbarStyle: 'default',
   visualizerStyle: 'bars-alternating',
@@ -396,6 +442,14 @@ const readAppSettings = async () => {
       saved.crossfadeSeconds <= 10
         ? saved.crossfadeSeconds
         : DEFAULT_SETTINGS.crossfadeSeconds,
+    volumeNormalization:
+      typeof saved.volumeNormalization === 'boolean'
+        ? saved.volumeNormalization
+        : DEFAULT_SETTINGS.volumeNormalization,
+    gaplessPlayback:
+      typeof saved.gaplessPlayback === 'boolean'
+        ? saved.gaplessPlayback
+        : DEFAULT_SETTINGS.gaplessPlayback,
     iconStyle: ['material', 'windows', 'apple', 'vlc', 'round-filled', 'round-outline'].includes(
       saved.iconStyle
     )
@@ -475,6 +529,8 @@ const readAppSettings = async () => {
     saved.syncLyricsDisplay !== settings.syncLyricsDisplay ||
     saved.isShuffled !== settings.isShuffled ||
     saved.repeatMode !== settings.repeatMode ||
+    saved.volumeNormalization !== settings.volumeNormalization ||
+    saved.gaplessPlayback !== settings.gaplessPlayback ||
     saved.showBrowseSection !== settings.showBrowseSection ||
     saved.showRadioSection !== settings.showRadioSection ||
     saved.windowMaterial !== settings.windowMaterial ||
@@ -534,6 +590,12 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Crossfade duration must be a whole number between 0 and 10 seconds.');
     }
     next.crossfadeSeconds = patch.crossfadeSeconds;
+  }
+  for (const key of ['volumeNormalization', 'gaplessPlayback']) {
+    if (patch[key] !== undefined) {
+      if (typeof patch[key] !== 'boolean') throw new TypeError(`${key} must be a boolean.`);
+      next[key] = patch[key];
+    }
   }
   if (patch.iconStyle !== undefined) {
     if (
@@ -1237,6 +1299,50 @@ ipcMain.handle('save-playlists', async (_event, playlists) => {
 });
 ipcMain.handle('get-window-state', () => Boolean(mainWindow && mainWindow.isMaximized()));
 ipcMain.handle('get-window-mode', () => playerWindowMode);
+ipcMain.handle('set-window-zoom', (_event, factor) => {
+  if (typeof factor !== 'number' || !Number.isFinite(factor) || factor < 0.75 || factor > 1.25) {
+    throw new TypeError('Window zoom must be between 75% and 125%.');
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The main window is unavailable.');
+  mainWindow.webContents.setZoomFactor(factor);
+});
+ipcMain.handle('get-desktop-device-info', async () => {
+  if (!appSessionIdPromise) {
+    appSessionIdPromise = (async () => {
+      const sessionIdPath = path.join(app.getPath('userData'), 'app-session-id');
+      await fs.promises.mkdir(path.dirname(sessionIdPath), { recursive: true });
+      try {
+        const existingId = (await fs.promises.readFile(sessionIdPath, 'utf8')).trim();
+        if (/^[A-Za-z0-9]{16}$/.test(existingId)) return existingId;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      const sessionId = Array.from(
+        crypto.randomBytes(16),
+        (byte) => alphabet[byte % alphabet.length]
+      ).join('');
+      await fs.promises.writeFile(sessionIdPath, sessionId, 'utf8');
+      return sessionId;
+    })();
+  }
+
+  let sessionId;
+  try {
+    sessionId = await appSessionIdPromise;
+  } catch (error) {
+    appSessionIdPromise = null;
+    throw error;
+  }
+  return {
+    deviceName: os.hostname(),
+    systemName: os.type(),
+    systemVersion: os.version(),
+    architecture: os.arch(),
+    sessionId,
+  };
+});
 ipcMain.handle('enter-mini-player', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (playerWindowMode === 'normal') {
@@ -1247,7 +1353,8 @@ ipcMain.handle('enter-mini-player', () => {
   mainWindow.setFullScreen(false);
   mainWindow.setResizable(true);
   mainWindow.setMinimumSize(480, 420);
-  mainWindow.setSize(640, 560);
+  mainWindow.setMaximumSize(640, 490);
+  mainWindow.setSize(640, 490);
   mainWindow.center();
   playerWindowMode = 'mini';
   mainWindow.webContents.send('window-mode-changed', playerWindowMode);
@@ -1266,6 +1373,7 @@ ipcMain.handle('enter-fullscreen-player', () => {
 ipcMain.handle('exit-player-mode', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setFullScreen(false);
+  mainWindow.setMaximumSize(0, 0);
   mainWindow.setMinimumSize(720, 640);
   if (normalWindowBounds) mainWindow.setBounds(normalWindowBounds);
   if (normalWindowWasMaximized) mainWindow.maximize();
@@ -1304,6 +1412,56 @@ ipcMain.handle('remove-music-folder', async (_event, folder) => {
     library.folders.filter((savedFolder) => savedFolder !== folder),
     library.tracks
   );
+});
+
+ipcMain.handle('remove-library-track', async (_event, trackPath) => {
+  if (typeof trackPath !== 'string' || !trackPath.trim()) {
+    throw new TypeError('A valid track path is required.');
+  }
+  const library = await updateLibraryConfig((current) => ({
+    ...current,
+    tracks: current.tracks.filter((track) => track.path !== trackPath),
+  }));
+  indexedAudioPaths = new Set([...library.tracks.map((track) => track.path), ...openedAudioPaths]);
+  return { ...library, errors: [], playlists: await readPlaylists() };
+});
+
+ipcMain.handle('unlink-library-items', async (_event, items) => {
+  if (!items || typeof items !== 'object' || Array.isArray(items)) {
+    throw new TypeError('Library items to unlink must be provided.');
+  }
+  const folderPaths = items.folders;
+  const trackPaths = items.trackPaths;
+  if (
+    !Array.isArray(folderPaths) ||
+    !folderPaths.every((item) => typeof item === 'string' && item.trim()) ||
+    !Array.isArray(trackPaths) ||
+    !trackPaths.every((item) => typeof item === 'string' && item.trim()) ||
+    folderPaths.length + trackPaths.length > 500
+  ) {
+    throw new TypeError('Library item paths are invalid.');
+  }
+  const normalizedFolders = new Set(folderPaths.map((folder) => path.resolve(folder)));
+  const normalizedTrackPaths = new Set(trackPaths.map((trackPath) => path.resolve(trackPath)));
+  const belongsToRemovedFolder = (trackPath) =>
+    [...normalizedFolders].some((folder) => {
+      const relativePath = path.relative(folder, trackPath);
+      return (
+        relativePath === '' ||
+        (!relativePath.startsWith(`..${path.sep}`) &&
+          relativePath !== '..' &&
+          !path.isAbsolute(relativePath))
+      );
+    });
+  const library = await updateLibraryConfig((current) => ({
+    folders: current.folders.filter((folder) => !normalizedFolders.has(path.resolve(folder))),
+    tracks: current.tracks.filter(
+      (track) =>
+        !normalizedTrackPaths.has(path.resolve(track.path)) && !belongsToRemovedFolder(track.path)
+    ),
+  }));
+  indexedAudioPaths = new Set([...library.tracks.map((track) => track.path), ...openedAudioPaths]);
+  return { ...library, errors: [], playlists: await readPlaylists() };
 });
 
 ipcMain.handle('audiomack-has-credentials', async () => {
@@ -1452,8 +1610,37 @@ ipcMain.on('taskbar-playback-state', (_event, isPlaying) => {
   if (typeof isPlaying === 'boolean') setTaskbarPlaybackState(isPlaying);
 });
 
+ipcMain.on('auth-callback-ready', () => {
+  authCallbackRendererReady = true;
+  deliverPendingAuthCallback();
+});
+
+ipcMain.on('auth-callback-not-ready', () => {
+  authCallbackRendererReady = false;
+  deliveredAuthCallbackUrl = null;
+});
+
+ipcMain.on('auth-callback-processed', () => {
+  pendingAuthCallbackUrl = null;
+  deliveredAuthCallbackUrl = null;
+});
+
+ipcMain.handle('open-auth-url', async (_event, target) => {
+  let url;
+  try {
+    url = new URL(target);
+  } catch {
+    throw new Error('Invalid OAuth authorization URL.');
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    throw new Error('OAuth authorization URLs must use HTTPS.');
+  }
+  await shell.openExternal(url.href);
+});
+
 async function createWindow() {
   rendererReadyForAudioFiles = false;
+  authCallbackRendererReady = false;
   const savedSettings = await readSettingsFile();
   windowMaterialAppliedAtLaunch = normalizeWindowMaterial(savedSettings);
   const usesWindowMaterial = windowMaterialAppliedAtLaunch !== 'default';
@@ -1493,6 +1680,7 @@ async function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     rendererReadyForAudioFiles = false;
+    authCallbackRendererReady = false;
     playerWindowMode = 'normal';
     normalWindowBounds = null;
     normalWindowWasMaximized = false;
@@ -1506,6 +1694,17 @@ async function createWindow() {
 
 if (hasSingleInstanceLock)
   app.whenReady().then(async () => {
+    let authProtocolRegistered;
+    if (process.defaultApp && process.argv.length >= 2) {
+      authProtocolRegistered = app.setAsDefaultProtocolClient('luna-auth', process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
+    } else {
+      authProtocolRegistered = app.setAsDefaultProtocolClient('luna-auth');
+    }
+    if (!authProtocolRegistered) {
+      console.error('Could not register the luna-auth:// protocol for OAuth callbacks.');
+    }
     nativeTheme.themeSource = 'system';
     if (process.platform === 'win32') {
       systemPreferences.on('accent-color-changed', (_event, rgbaColor) => {

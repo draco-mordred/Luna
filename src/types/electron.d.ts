@@ -65,6 +65,8 @@ export interface AppSettings {
   useSystemAccentColor: boolean;
   lastPlayedTrackPath: string | null;
   crossfadeSeconds: number;
+  volumeNormalization: boolean;
+  gaplessPlayback: boolean;
   iconStyle: IconStyle;
   seekbarStyle: SeekbarStyle;
   visualizerStyle: VisualizerStyle;
@@ -89,6 +91,14 @@ export interface AppSettings {
 
 export type PlayerWindowMode = 'normal' | 'mini' | 'fullscreen';
 
+export interface DesktopDeviceInfo {
+  deviceName: string;
+  systemName: string;
+  systemVersion: string;
+  architecture: string;
+  sessionId: string;
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -98,6 +108,8 @@ declare global {
       toggleWindowMaximize: () => Promise<void>;
       getWindowState: () => Promise<boolean>;
       getWindowMode: () => Promise<PlayerWindowMode>;
+      setZoomFactor: (factor: number) => Promise<void>;
+      getDesktopDeviceInfo: () => Promise<DesktopDeviceInfo>;
       enterMiniPlayer: () => Promise<void>;
       enterFullscreenPlayer: () => Promise<void>;
       exitPlayerMode: () => Promise<void>;
@@ -130,6 +142,8 @@ declare global {
             | 'useSystemAccentColor'
             | 'lastPlayedTrackPath'
             | 'crossfadeSeconds'
+            | 'volumeNormalization'
+            | 'gaplessPlayback'
             | 'iconStyle'
             | 'seekbarStyle'
             | 'visualizerStyle'
@@ -151,6 +165,8 @@ declare global {
       selectMusicFolders: () => Promise<MusicLibraryResponse | null>;
       rescanMusicLibrary: () => Promise<MusicLibraryResponse>;
       removeMusicFolder: (folder: string) => Promise<MusicLibraryResponse>;
+      removeLibraryTrack: (trackPath: string) => Promise<MusicLibraryResponse>;
+      unlinkLibraryItems: (items: { folders: string[]; trackPaths: string[] }) => Promise<MusicLibraryResponse>;
       saveTrackMetadata: (
         trackPath: string,
         metadata: TrackMetadataUpdate
@@ -160,6 +176,9 @@ declare global {
       onWindowFocusChanged: (callback: (isFocused: boolean) => void) => () => void;
       onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void;
       onSystemAccentColorChanged: (callback: (color: string) => void) => () => void;
+      openAuthUrl: (url: string) => Promise<void>;
+      onAuthCallback: (callback: (url: string) => void) => () => void;
+      acknowledgeAuthCallback: () => void;
       setTaskbarPlaybackState: (isPlaying: boolean) => void;
       onTaskbarPrevious: (callback: () => void) => () => void;
       onTaskbarPlayPause: (callback: () => void) => () => void;

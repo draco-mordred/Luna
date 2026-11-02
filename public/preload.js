@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleWindowMaximize: () => ipcRenderer.invoke('toggle-window-maximize'),
   getWindowState: () => ipcRenderer.invoke('get-window-state'),
   getWindowMode: () => ipcRenderer.invoke('get-window-mode'),
+  setZoomFactor: (factor) => ipcRenderer.invoke('set-window-zoom', factor),
+  getDesktopDeviceInfo: () => ipcRenderer.invoke('get-desktop-device-info'),
   enterMiniPlayer: () => ipcRenderer.invoke('enter-mini-player'),
   enterFullscreenPlayer: () => ipcRenderer.invoke('enter-fullscreen-player'),
   exitPlayerMode: () => ipcRenderer.invoke('exit-player-mode'),
@@ -38,6 +40,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectMusicFolders: () => ipcRenderer.invoke('select-music-folders'),
   rescanMusicLibrary: () => ipcRenderer.invoke('rescan-music-library'),
   removeMusicFolder: (folder) => ipcRenderer.invoke('remove-music-folder', folder),
+  removeLibraryTrack: (trackPath) => ipcRenderer.invoke('remove-library-track', trackPath),
+  unlinkLibraryItems: (items) => ipcRenderer.invoke('unlink-library-items', items),
   saveTrackMetadata: (trackPath, metadata) =>
     ipcRenderer.invoke('save-track-metadata', trackPath, metadata),
   onWindowStateChanged: (callback) => subscribe('window-state-changed', callback),
@@ -45,6 +49,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWindowFocusChanged: (callback) => subscribe('window-focus-changed', callback),
   onSystemThemeChanged: (callback) => subscribe('system-theme-changed', callback),
   onSystemAccentColorChanged: (callback) => subscribe('system-accent-color-changed', callback),
+  openAuthUrl: (url) => ipcRenderer.invoke('open-auth-url', url),
+  onAuthCallback: (callback) => {
+    const unsubscribe = subscribe('auth-callback', callback);
+    ipcRenderer.send('auth-callback-ready');
+    return () => {
+      unsubscribe();
+      ipcRenderer.send('auth-callback-not-ready');
+    };
+  },
+  acknowledgeAuthCallback: () => ipcRenderer.send('auth-callback-processed'),
   onMusicLibraryScanProgress: (callback) => subscribe('music-library-scan-progress', callback),
   onOpenAudioFiles: (callback) => subscribe('open-audio-files', callback),
   setTaskbarPlaybackState: (isPlaying) => ipcRenderer.send('taskbar-playback-state', isPlaying),

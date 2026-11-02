@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.1.301026",
+    "summary": "**A refined mini player:** Keep the player within a compact 640 × 490 pixel window, play or pause by clicking the artwork, and let the controls smoothly hide during playback when idle. **Improved player modes:** Fullscreen playback controls remain centered, and mini/fullscreen seekbars now match the selected seekbar st"
+  },
+  {
+    "version": "1.1.271026",
+    "summary": "Added Windows 11 Default, Mica, and Frosty (Acrylic glass) app background materials, applied after restarting Luna. Refined the PlayBar layout with responsive track information and lyrics controls, and corrected the Apple-style volume slider thumb alignment. Resolved Node.js and webpack-dev-server deprecation warnings "
+  },
+  {
     "version": "1.1.261026",
     "summary": "Luna now follows the Windows system accent color by default, with an option to use a custom accent instead. Centered PlayBar lyrics now use the space remaining between track information and player actions without letting long song information shrink the lyrics area unnecessarily. Added a first-launch-per-version releas"
   },

@@ -1,0 +1,248 @@
+.play-queue-page {
+    /* max-width: 1080px; */
+    margin: 0 auto;
+    padding: 24px;
+    color: var(--text-primary);
+    margin: 0px -10px 0px -10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-queue-track,
+  .play-queue-clear,
+  .play-queue-save button {
+    transition: none;
+  }
+}
+
+.play-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.play-queue-header p,
+.play-queue-empty {
+  color: var(--text-secondary);
+}
+
+.play-queue-clear,
+.play-queue-save button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.play-queue-clear:hover,
+.play-queue-save button:not(:disabled):hover {
+  border-color: var(--system-accent);
+  color: var(--system-accent);
+}
+
+.play-queue-clear:disabled,
+.play-queue-save button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.play-queue-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.play-queue-save label {
+  display: grid;
+  min-width: 180px;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.play-queue-save select,
+.play-queue-save input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.play-queue-save form {
+  display: flex;
+  flex: 1 1 360px;
+  align-items: end;
+  gap: 10px;
+}
+
+.play-queue-save form label {
+  flex: 1;
+}
+
+.play-queue-feedback {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.play-queue-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.play-queue-item {
+  min-width: 0;
+  border-radius: 10px;
+}
+
+.play-queue-item.active {
+  background: var(--accent-muted);
+}
+
+.play-queue-track {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.play-queue-track:hover {
+  background: var(--hover);
+}
+
+.play-queue-track > img,
+.play-queue-art {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  object-fit: cover;
+}
+
+.play-queue-number {
+  width: 28px;
+  flex: 0 0 28px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.play-queue-item.active .play-queue-number {
+  color: var(--system-accent);
+}
+
+.play-queue-track-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.play-queue-track-copy strong,
+.play-queue-track-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-queue-track-copy small,
+.play-queue-duration {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.play-queue-empty {
+  padding: 40px 12px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .play-queue-page {
+    padding: 16px 12px;
+  }
+
+  .play-queue-save form {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+  }
+
+  .play-queue-save form label {
+    flex-basis: 100%;
+  }
+}
+
+html[data-window-material='mica'][data-theme='dark'] .play-queue-page {
+  --play-queue-surface: #272a31;
+  --play-queue-input-surface: #1d1f25;
+  --play-queue-hover-surface: #343740;
+}
+
+html[data-window-material='mica'][data-theme='light'] .play-queue-page {
+  --play-queue-surface: #f7f8fb;
+  --play-queue-input-surface: #ffffff;
+  --play-queue-hover-surface: #eaedf3;
+}
+
+html[data-window-material='mica'] .play-queue-save,
+html[data-window-material='mica'] .play-queue-clear,
+html[data-window-material='mica'] .play-queue-save button,
+html[data-window-material='mica'] .play-queue-track {
+  background: var(--play-queue-surface);
+}
+
+html[data-window-material='mica'] .play-queue-save select,
+html[data-window-material='mica'] .play-queue-save input,
+html[data-window-material='mica'] .play-queue-track > img,
+html[data-window-material='mica'] .play-queue-art {
+  background: var(--play-queue-input-surface);
+}
+
+html[data-window-material='mica'] .play-queue-track:hover {
+  background: var(--play-queue-hover-surface);
+}
+
+html[data-window-material='mica'] .play-queue-item.active .play-queue-track {
+  background: color-mix(in srgb, var(--system-accent) 16%, var(--play-queue-surface));
+}
+
+html[data-window-material='mica'] .play-queue-item.active .play-queue-track:hover {
+  background: color-mix(in srgb, var(--system-accent) 24%, var(--play-queue-surface));
+}
+
+html[data-window-material='mica'] .play-queue-save,
+html[data-window-material='mica'] .play-queue-clear,
+html[data-window-material='mica'] .play-queue-save button,
+html[data-window-material='mica'] .play-queue-save select,
+html[data-window-material='mica'] .play-queue-save input {
+  border-color: var(--border);
+}

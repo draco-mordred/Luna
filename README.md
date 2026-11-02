@@ -33,12 +33,12 @@ Luna is a music player for enjoying a personal music collection in a clean, cust
 ## Features
 
 - **Your local library:** Scan music folders, browse tracks and albums, and organize your listening with search, playlists, shuffle, repeat, and a play queue.
-- **A player that stays close:** Keep playback in the bottom PlayBar or expand it into Now Playing. In the Electron app, switch to a resizable mini player or a fullscreen player, and optionally keep Luna above other windows.
+- **A player that stays close:** Keep playback in the bottom PlayBar or expand it into Now Playing. In the Electron app, switch to a mini player capped at 640 × 490 pixels or a fullscreen player; click the mini player's artwork to play or pause, and its controls hide after three seconds of inactivity while music is playing. Optionally keep Luna above other windows.
 - **Lyrics your way:** Display embedded plain or timestamped lyrics, switch between plain and synchronized modes, adjust synchronized lyric timing in five steps in either direction, and share the timing across Now Playing and the PlayBar.
 - **Personalized playback:** Choose themes, accent colors, transport icon styles, seek bar designs, and audio visualizer styles. On Windows, use the system accent color throughout active navigation, player controls, and the current track.
 - **Rich track details:** View album artwork and metadata, edit supported audio tags and embedded lyrics, and explore artist images and biographies.
 - **Discover more music:** Connect to Jamendo or Audiomack for online catalog search and streaming. These integrations may require API credentials and are subject to each provider's access rules and terms.
-- **Desktop integration:** On Windows, use playback controls from the taskbar preview and install Luna through the branded setup wizard.
+- **Desktop integration:** On Windows, use playback controls from the taskbar preview and install Luna through the branded setup wizard. The About page shows device/system details and an installation session ID; the sidebar provides playlist dropdowns and compact playlist details on hover.
 - **Responsive layouts:** Use Luna in a desktop window or a narrower mobile-sized layout.
 
 ## Screenshots
@@ -87,6 +87,12 @@ Your local music library is indexed on your device. Online features are optional
 - Jamendo and Audiomack search and playback use their respective APIs and are subject to provider terms, access requirements, and licensing.
 
 Audiomack streaming requires authorized OAuth credentials and is available in the Electron desktop app. Jamendo requires a Client ID. Review each provider's terms and obtain any required permissions before using or distributing those integrations. Luna does not bundle music from these services.
+
+### Google and GitHub sign-in
+
+Copy `.env.example` to `.env.local` and set `REACT_APP_SUPABASE_URL` and `REACT_APP_SUPABASE_ANON_KEY` using the Supabase project URL and public anon/publishable key. Never put Google or GitHub client secrets in the app.
+
+Enable Google and GitHub under **Supabase → Authentication → Providers**. In each provider's developer console, set its OAuth callback to `https://<project-ref>.supabase.co/auth/v1/callback` and enter that provider's client ID and secret in Supabase (not in Luna). Add your web app's root URL (for example `http://localhost:3000/`) and `luna-auth://callback` to **Authentication → URL Configuration → Redirect URLs**. The custom URL is used by Electron and Android; web sign-in returns to the current app origin.
 
 ## Building from source
 

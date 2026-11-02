@@ -22,18 +22,28 @@
   font-weight: 500;
 }
 
+.window-titlebar-brand .window-titlebar-back{
+  width: 55px;
+}
+
+.window-titlebar-back {
+  margin-right: 4px;
+  position: relative;
+  z-index: 1;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: pointer;
+  width: 55px;
+  left: 0;
+  margin: 0px 0px 0px -11px;
+}
+
 .window-titlebar-icon {
   display: block;
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  background-color: var(--system-accent);
-  mask-position: center;
-  mask-repeat: no-repeat;
-  mask-size: contain;
-  -webkit-mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
+  object-fit: contain;
 }
 
 .window-titlebar-controls {

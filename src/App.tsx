@@ -1,5 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type TouchEvent as ReactTouchEvent,
+} from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PlayBar from './components/PlayBar';
 import StreamingPlayBar from './components/StreamingPlayBar';
 import Sidebar from './components/Sidebar';
@@ -20,6 +29,7 @@ import {
   loadAndroidMusicLibraryCache,
   saveAndroidMusicLibraryCache,
   scanAndroidMusicLibrary,
+  setAndroidStatusBarStyle,
   updateAndroidNowPlaying,
 } from './services/androidMusicLibrary';
 import type { AndroidAppearance, AndroidDeviceInfo } from './services/androidMusicLibrary';
@@ -39,9 +49,22 @@ import './App.css';
 import ReleaseNotesDialog from './components/ReleaseNotesDialog';
 import AndroidStartupSplash from './components/AndroidStartupSplash';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
+import {
+  loadRecentMediaHistory,
+  clearRecentQueue,
+  recordPlayedTrack,
+  recordViewedAlbum,
+  recordViewedArtist,
+  rememberRecentMediaEnabled,
+  REMEMBER_RECENT_MEDIA_KEY,
+  saveRecentQueue,
+} from './services/recentMedia';
+import { getLibraryItemPath } from './utils/libraryNavigation';
+import { splitArtistCredits } from './utils/artistCredits';
 import packageJson from '../package.json';
 
 const Tracks = lazy(() => import('./pages/Tracks'));
+const HomePage = lazy(() => import('./pages/Home'));
 const Albums = lazy(() => import('./pages/Albums'));
 const Artists = lazy(() => import('./pages/Artists'));
 const Composer = lazy(() => import('./pages/Composer'));
@@ -51,47 +74,9 @@ const Search = lazy(() => import('./pages/Search'));
 const CollectionDetails = lazy(() => import('./pages/CollectionDetails'));
 const PlaylistsPage = lazy(() => import('./pages/Playlists'));
 const RadioPage = lazy(() => import('./pages/Radio'));
+const PlayQueuePage = lazy(() => import('./pages/PlayQueue'));
 
-const SectionPlaceholder = ({ title }: { title: string }) => (
-  <section className='section-placeholder'>
-    <h2>{title}</h2>
-    <p>This section is coming soon.</p>
-  </section>
-);
-
-const AndroidBottomNav = ({ pathname }: { pathname: string }) => {
-  const isLibraryRoute = ['/', '/tracks', '/composer', '/genres'].some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
-  );
-  const items = [
-    { to: '/tracks', label: 'Library', icon: 'library_music' },
-    { to: '/albums', label: 'Albums', icon: 'album' },
-    { to: '/artists', label: 'Artists', icon: 'person' },
-    { to: '/playlists', label: 'Playlists', icon: 'queue_music' },
-    { to: '/search', label: 'Search', icon: 'search' },
-  ];
-
-  return (
-    <nav className='android-bottom-nav' aria-label='Main navigation'>
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className={({ isActive }) =>
-            `android-bottom-nav-item${
-              isActive || (item.to === '/tracks' && isLibraryRoute) ? ' active' : ''
-            }`
-          }
-        >
-          <span className='material-symbols-outlined' aria-hidden='true'>
-            {item.icon}
-          </span>
-          <span>{item.label}</span>
-        </NavLink>
-      ))}
-    </nav>
-  );
-};
+const ANDROID_LIBRARY_ROUTES = ['/tracks', '/albums', '/artists', '/composer', '/genres'];
 
 const getInitialThemeMode = (): ThemeMode => {
   const savedTheme = window.localStorage.getItem('luna-theme');
@@ -116,6 +101,24 @@ const getInitialVolume = (): number => {
   return Number.isFinite(parsedVolume) ? Math.max(0, Math.min(1, parsedVolume)) : 0.7;
 };
 
+const getInitialZoomSteps = (): number => {
+  const savedSteps = Number(window.localStorage.getItem('luna-zoom-steps'));
+  return Number.isInteger(savedSteps) ? Math.max(-5, Math.min(5, savedSteps)) : 0;
+};
+
+const getInitialLovedTrackIds = (): string[] => {
+  try {
+    const saved = window.localStorage.getItem('luna-loved-track-ids');
+    const parsed: unknown = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((trackId): trackId is string => typeof trackId === 'string')
+      : [];
+  } catch (error) {
+    console.error('Could not read saved favorite tracks:', error);
+    return [];
+  }
+};
+
 const normalizeCrossfadeSeconds = (value: unknown): number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10 ? value : 0;
 
@@ -130,6 +133,25 @@ const shuffleTracks = (tracks: Track[]): Track[] => {
   }
   return shuffled;
 };
+
+interface LibraryReadIssue {
+  path: string;
+  type: 'folder' | 'track';
+}
+
+const parseLibraryReadIssues = (errors: string[] = []): LibraryReadIssue[] =>
+  errors.flatMap((message) => {
+    const type = message.startsWith('Cannot read ')
+      ? 'folder'
+      : message.startsWith('Cannot index ')
+        ? 'track'
+        : null;
+    if (!type) return [];
+    const start = message.indexOf('"');
+    const end = message.indexOf('":', start + 1);
+    if (start < 0 || end <= start) return [];
+    return [{ path: message.slice(start + 1, end), type }];
+  });
 
 const mergeAndroidTracks = (existingTracks: Track[], scannedTracks: Track[]): Track[] => {
   const tracksByPath = new Map(existingTracks.map((track) => [track.path, track]));
@@ -334,11 +356,18 @@ const App = () => {
   const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
   const [playerWindowMode, setPlayerWindowMode] = useState<PlayerWindowMode>('normal');
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [zoomSteps, setZoomSteps] = useState(getInitialZoomSteps);
   const [lyricOffsetSteps, setLyricOffsetSteps] = useState(() => {
     const savedOffset = Number(window.localStorage.getItem('luna-lyrics-offset-steps'));
     return Number.isInteger(savedOffset) ? Math.max(-5, Math.min(5, savedOffset)) : 0;
   });
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(getInitialCrossfadeSeconds);
+  const [volumeNormalization, setVolumeNormalization] = useState(
+    () => window.localStorage.getItem('luna-volume-normalization') === 'true'
+  );
+  const [gaplessPlayback, setGaplessPlayback] = useState(
+    () => window.localStorage.getItem('luna-gapless-playback') === 'true'
+  );
   const [iconStyle, setIconStyle] = useState<IconStyle>(getInitialIconStyle);
   const [seekbarStyle, setSeekbarStyle] = useState<SeekbarStyle>(getInitialSeekbarStyle);
   const [visualizerStyle, setVisualizerStyle] =
@@ -358,8 +387,6 @@ const App = () => {
   const [showSyncedLyricsOnPlayBar, setShowSyncedLyricsOnPlayBar] = useState(
     () => window.localStorage.getItem('luna-show-synced-lyrics-on-playbar') !== 'false'
   );
-  const [openNowPlayingRequest, setOpenNowPlayingRequest] = useState(0);
-  const [toggleLyricsRequest, setToggleLyricsRequest] = useState(0);
   const [syncLyricsDisplay, setSyncLyricsDisplay] = useState(
     () => window.localStorage.getItem('luna-sync-lyrics-display') !== 'false'
   );
@@ -400,12 +427,22 @@ const App = () => {
   );
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [playbackNoticeExiting, setPlaybackNoticeExiting] = useState(false);
+  const [unavailableTrackForFix, setUnavailableTrackForFix] = useState<Track | null>(null);
+  const [libraryReadIssues, setLibraryReadIssues] = useState<LibraryReadIssue[]>([]);
   const [lastPlayedTrackPath, setLastPlayedTrackPath] = useState<string | null>(null);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [trackAccentColor, setTrackAccentColor] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSeekRevision, setPlaybackSeekRevision] = useState(0);
+  const [, setRecentMediaRevision] = useState(0);
+  const [rememberRecentMedia, setRememberRecentMedia] = useState(rememberRecentMediaEnabled);
+  const [androidAmoledDarkMode, setAndroidAmoledDarkMode] = useState(
+    () => window.localStorage.getItem('luna-amoled-dark-mode') === 'true'
+  );
   const [volume, setVolume] = useState(getInitialVolume);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (isAndroidApp) return true;
     if (typeof window === 'undefined') return false;
     const screenWidth = window.screen?.width ?? window.innerWidth;
     return Math.abs(window.innerWidth - screenWidth) > 4;
@@ -421,14 +458,16 @@ const App = () => {
   const [playQueueIndex, setPlayQueueIndex] = useState(0);
   const playQueueBaseRef = useRef<Track[]>([]);
   const [visualizerAnalyser, setVisualizerAnalyser] = useState<AnalyserNode | null>(null);
-  const [lovedTrackIds, setLovedTrackIds] = useState<string[]>([]);
+  const [lovedTrackIds, setLovedTrackIds] = useState<string[]>(getInitialLovedTrackIds);
   const audioARef = useRef<HTMLAudioElement>(null);
   const audioBRef = useRef<HTMLAudioElement>(null);
   const audiomackAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const audioCompressorRef = useRef<DynamicsCompressorNode | null>(null);
   const audioSourceNodesRef = useRef(new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>());
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const preloadedTrackRef = useRef<{ trackId: string; audio: HTMLAudioElement } | null>(null);
   const crossfadeFrameRef = useRef<number | null>(null);
   const crossfadeOutgoingRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeStartedRef = useRef(false);
@@ -439,6 +478,58 @@ const App = () => {
   const initialLoadStarted = useRef(false);
   const activeLibraryScanIdRef = useRef<string | null>(null);
   const playbackNotificationUnavailableRef = useRef(false);
+  const recentQueueRestoredRef = useRef(false);
+  const androidLibraryTouchRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(REMEMBER_RECENT_MEDIA_KEY, String(rememberRecentMedia));
+  }, [rememberRecentMedia]);
+
+  useEffect(() => {
+    window.localStorage.setItem('luna-amoled-dark-mode', String(androidAmoledDarkMode));
+  }, [androidAmoledDarkMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem('luna-loved-track-ids', JSON.stringify(lovedTrackIds));
+  }, [lovedTrackIds]);
+
+  useEffect(() => {
+    if (!initialLibraryLoaded || !rememberRecentMedia || recentQueueRestoredRef.current) return;
+    recentQueueRestoredRef.current = true;
+    const savedQueue = loadRecentMediaHistory();
+    const tracksByPath = new Map(libraryTracks.map((track) => [track.path, track]));
+    const restoredQueue = savedQueue.queuePaths
+      .map((path) => tracksByPath.get(path))
+      .filter((track): track is Track => Boolean(track));
+    if (!restoredQueue.length) return;
+    const restoredIndex = Math.min(savedQueue.queueIndex, restoredQueue.length - 1);
+    setPlayQueue(restoredQueue);
+    setPlayQueueIndex(restoredIndex);
+    playQueueBaseRef.current = restoredQueue;
+  }, [initialLibraryLoaded, libraryTracks, rememberRecentMedia]);
+
+  useEffect(() => {
+    if (rememberRecentMedia && playQueue.length) saveRecentQueue(playQueue, playQueueIndex);
+  }, [playQueue, playQueueIndex, rememberRecentMedia]);
+
+  useEffect(() => {
+    if (!rememberRecentMedia) return;
+    const query = new URLSearchParams(location.search);
+    if (location.pathname.startsWith('/albums/detail')) {
+      const album = query.get('name');
+      const artist = query.get('artist');
+      if (album && artist) {
+        recordViewedAlbum(album, artist);
+        setRecentMediaRevision((revision) => revision + 1);
+      }
+    } else if (location.pathname.startsWith('/artists/detail')) {
+      const artist = query.get('name');
+      if (artist) {
+        recordViewedArtist(artist);
+        setRecentMediaRevision((revision) => revision + 1);
+      }
+    }
+  }, [location.pathname, location.search, rememberRecentMedia]);
 
   useEffect(() => {
     if (!isAndroidApp) return undefined;
@@ -451,8 +542,8 @@ const App = () => {
       const historyIndex = window.history.state?.idx;
       if (typeof historyIndex === 'number' && historyIndex > 0) {
         navigate(-1);
-      } else if (location.pathname !== '/tracks') {
-        navigate('/tracks', { replace: true });
+      } else if (location.pathname !== '/') {
+        navigate('/', { replace: true });
       }
     };
     window.addEventListener('luna-android-back', handleAndroidBack);
@@ -469,7 +560,6 @@ const App = () => {
     }
     playbackNotificationUnavailableRef.current = false;
     let active = true;
-    let intervalId: number | null = null;
     const updatePlaybackState = async () => {
       if (!active || playbackNotificationUnavailableRef.current) return;
       const position = activeAudioRef.current?.currentTime ?? 0;
@@ -479,7 +569,9 @@ const App = () => {
           isPlaying,
           position,
           androidBackgroundPlaybackEnabled,
-          androidLockScreenControlsEnabled
+          androidLockScreenControlsEnabled,
+          isShuffled,
+          repeatMode
         );
       } catch (error: unknown) {
         playbackNotificationUnavailableRef.current = true;
@@ -491,23 +583,19 @@ const App = () => {
         );
       }
     };
-    void updatePlaybackState().then(() => {
-      if (active && isPlaying && !playbackNotificationUnavailableRef.current) {
-        intervalId = window.setInterval(() => {
-          void updatePlaybackState();
-        }, 1000);
-      }
-    });
+    void updatePlaybackState();
     return () => {
       active = false;
-      if (intervalId !== null) window.clearInterval(intervalId);
     };
   }, [
     androidBackgroundPlaybackEnabled,
     androidLockScreenControlsEnabled,
     currentTrack,
     isAndroidApp,
+    isShuffled,
     isPlaying,
+    playbackSeekRevision,
+    repeatMode,
   ]);
 
   useEffect(
@@ -584,18 +672,45 @@ const App = () => {
     setTrackMetadataDialog(track);
   }, []);
 
-  const notifyUnavailableTrack = useCallback((track: Track) => {
-    setPlaybackNotice(
-      `“${track.name}” can’t be played because its file is unavailable. Skipping to the next track.`
-    );
+  useEffect(() => {
+    const compressor = audioCompressorRef.current;
+    if (!compressor) return;
+    const now = audioContextRef.current?.currentTime ?? 0;
+    compressor.threshold.setTargetAtTime(volumeNormalization ? -18 : 0, now, 0.02);
+    compressor.knee.setTargetAtTime(volumeNormalization ? 12 : 0, now, 0.02);
+    compressor.ratio.setTargetAtTime(volumeNormalization ? 3 : 1, now, 0.02);
+    compressor.attack.setTargetAtTime(0.003, now, 0.02);
+    compressor.release.setTargetAtTime(0.25, now, 0.02);
+  }, [volumeNormalization]);
+
+  const showPlaybackNotice = useCallback((message: string) => {
     if (playbackNoticeTimeoutRef.current !== null) {
       window.clearTimeout(playbackNoticeTimeoutRef.current);
     }
+    setPlaybackNoticeExiting(false);
+    setPlaybackNotice(message);
     playbackNoticeTimeoutRef.current = window.setTimeout(() => {
-      setPlaybackNotice(null);
-      playbackNoticeTimeoutRef.current = null;
-    }, 7000);
+      setPlaybackNoticeExiting(true);
+      playbackNoticeTimeoutRef.current = window.setTimeout(() => {
+        setPlaybackNotice(null);
+        setPlaybackNoticeExiting(false);
+        setUnavailableTrackForFix(null);
+        setLibraryReadIssues([]);
+        playbackNoticeTimeoutRef.current = null;
+      }, 360);
+    }, 6500);
   }, []);
+
+  const notifyUnavailableTrack = useCallback(
+    (track: Track) => {
+      setLibraryReadIssues([]);
+      setUnavailableTrackForFix(track);
+      showPlaybackNotice(
+        `“${track.name}” can’t be played because its file is unavailable. Skipping to the next track.`
+      );
+    },
+    [showPlaybackNotice]
+  );
 
   const prepareVisualizerAudio = useCallback((audio: HTMLAudioElement) => {
     try {
@@ -610,14 +725,25 @@ const App = () => {
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.82;
-        analyser.connect(audioContext.destination);
         audioAnalyserRef.current = analyser;
         setVisualizerAnalyser(analyser);
+      }
+      let compressor = audioCompressorRef.current;
+      if (!compressor) {
+        compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.value = volumeNormalization ? -18 : 0;
+        compressor.knee.value = volumeNormalization ? 12 : 0;
+        compressor.ratio.value = volumeNormalization ? 3 : 1;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.25;
+        compressor.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioCompressorRef.current = compressor;
       }
 
       if (!audioSourceNodesRef.current.has(audio)) {
         const source = audioContext.createMediaElementSource(audio);
-        source.connect(analyser);
+        source.connect(compressor);
         audioSourceNodesRef.current.set(audio, source);
       }
 
@@ -630,7 +756,7 @@ const App = () => {
       console.error('Could not initialize audio visualization:', error);
       setLibraryError('Could not initialize the audio visualizer.');
     }
-  }, []);
+  }, [volumeNormalization]);
 
   useEffect(
     () => () => {
@@ -708,6 +834,14 @@ const App = () => {
           settings.crossfadeSeconds === undefined
             ? getInitialCrossfadeSeconds()
             : normalizeCrossfadeSeconds(settings.crossfadeSeconds)
+        );
+        setVolumeNormalization(
+          settings.volumeNormalization ??
+            window.localStorage.getItem('luna-volume-normalization') === 'true'
+        );
+        setGaplessPlayback(
+          settings.gaplessPlayback ??
+            window.localStorage.getItem('luna-gapless-playback') === 'true'
         );
         setIconStyle(normalizeIconStyle(settings.iconStyle));
         setSeekbarStyle(settings.seekbarStyle ?? getInitialSeekbarStyle());
@@ -810,15 +944,24 @@ const App = () => {
       if (progress.phase === 'complete') {
         activeLibraryScanIdRef.current = null;
         setIsLibraryLoading(false);
+        const scanErrors = progress.errors ?? [];
+        const repairItems = parseLibraryReadIssues(scanErrors);
+        setLibraryReadIssues(repairItems);
         setLibraryError(
-          progress.errors && progress.errors.length > 0
-            ? `${progress.errors.length} music folder item(s) could not be read. Check that the folders are accessible.`
+          scanErrors.length > 0
+            ? `${scanErrors.length} music folder item(s) could not be read. Check that the folders are accessible.`
             : null
         );
+        if (repairItems.length > 0) {
+          setUnavailableTrackForFix(null);
+          showPlaybackNotice(
+            `${repairItems.length} music folder item(s) could not be read. Use Fix to unlink them from the library.`
+          );
+        }
       }
     });
     return unsubscribe;
-  }, []);
+  }, [showPlaybackNotice]);
 
   useEffect(() => {
     if (initialLoadStarted.current || (!window.electronAPI && !isAndroidApp)) return;
@@ -826,6 +969,7 @@ const App = () => {
     setIsLibraryLoading(true);
     if (isAndroidApp) {
       let active = true;
+      let backgroundScanTimeout: number | null = null;
       void (async () => {
         try {
           let cachedLibrary: Awaited<ReturnType<typeof loadAndroidMusicLibraryCache>> = null;
@@ -839,10 +983,33 @@ const App = () => {
           }
           if (!active) return;
           if (cachedLibrary?.tracks.length) {
+            const cachedTracks = cachedLibrary.tracks;
             applyLibraryResponse(cachedLibrary);
             setInitialLibraryLoaded(true);
             setLibraryReconciled(true);
             setIsLibraryLoading(false);
+            backgroundScanTimeout = window.setTimeout(() => {
+              if (!active) return;
+              void scanAndroidMusicLibrary()
+                .then(async (freshLibrary) => {
+                  if (!active) return;
+                  const mergedLibrary = {
+                    ...freshLibrary,
+                    tracks: mergeAndroidTracks(cachedTracks, freshLibrary.tracks),
+                  };
+                  applyLibraryResponse(mergedLibrary);
+                  setLibraryReconciled(true);
+                  await saveAndroidMusicLibraryCache(mergedLibrary);
+                })
+                .catch((error: unknown) => {
+                  console.error('Could not refresh the cached Android music library:', error);
+                  if (active) {
+                    setLibraryError(
+                      'Luna could not check for newly added music in the background. Rescan from Settings to retry.'
+                    );
+                  }
+                });
+            }, 60000);
             return;
           }
 
@@ -876,6 +1043,7 @@ const App = () => {
       })();
       return () => {
         active = false;
+        if (backgroundScanTimeout !== null) window.clearTimeout(backgroundScanTimeout);
       };
     }
     if (!window.electronAPI) return;
@@ -950,6 +1118,8 @@ const App = () => {
       'luna-crossfade-seconds',
       String(normalizeCrossfadeSeconds(crossfadeSeconds))
     );
+    window.localStorage.setItem('luna-volume-normalization', String(volumeNormalization));
+    window.localStorage.setItem('luna-gapless-playback', String(gaplessPlayback));
     window.localStorage.setItem('luna-icon-style', iconStyle);
     window.localStorage.setItem('luna-seekbar-style', seekbarStyle);
     window.localStorage.setItem('luna-visualizer-style', visualizerStyle);
@@ -979,6 +1149,8 @@ const App = () => {
           alwaysOnTop,
           lastPlayedTrackPath,
           crossfadeSeconds: normalizeCrossfadeSeconds(crossfadeSeconds),
+          volumeNormalization,
+          gaplessPlayback,
           iconStyle,
           seekbarStyle,
           visualizerStyle,
@@ -1008,6 +1180,8 @@ const App = () => {
     lyricOffsetSteps,
     windowMaterial,
     crossfadeSeconds,
+    gaplessPlayback,
+    volumeNormalization,
     iconStyle,
     isShuffled,
     lastPlayedTrackPath,
@@ -1029,17 +1203,53 @@ const App = () => {
   ]);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
+    window.localStorage.setItem('luna-zoom-steps', String(zoomSteps));
+    void window.electronAPI.setZoomFactor(1 + zoomSteps * 0.05).catch((error: unknown) => {
+      console.error('Could not update app zoom:', error);
+      setLibraryError('Could not update the app zoom.');
+    });
+  }, [zoomSteps]);
+
+  useEffect(() => {
+    if (!window.electronAPI) return undefined;
+    const handleZoomShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.key === '+' || event.key === '=' || event.key === 'Add') {
+        event.preventDefault();
+        setZoomSteps((steps) => Math.min(5, steps + 1));
+      } else if (event.key === '-' || event.key === 'Subtract') {
+        event.preventDefault();
+        setZoomSteps((steps) => Math.max(-5, steps - 1));
+      } else if (event.key === '0' || event.key === 'Numpad0') {
+        event.preventDefault();
+        setZoomSteps(0);
+      }
+    };
+    window.addEventListener('keydown', handleZoomShortcut);
+    return () => window.removeEventListener('keydown', handleZoomShortcut);
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
     if (!currentTrack?.albumArt) {
-      setTrackAccentColor(null);
-      return;
+      return () => {
+        isCurrent = false;
+      };
     }
 
     const fallbackAccent = accentColor || '#ff4444';
     void getDominantImageColor(currentTrack.albumArt, fallbackAccent)
       .then((dominantColor) => {
-        setTrackAccentColor(dominantColor);
+        if (isCurrent) setTrackAccentColor(dominantColor);
       })
-      .catch(() => setTrackAccentColor(fallbackAccent));
+      .catch((error: unknown) => {
+        console.error('Could not derive an accent color from the track artwork:', error);
+        if (isCurrent) setTrackAccentColor(fallbackAccent);
+      });
+    return () => {
+      isCurrent = false;
+    };
   }, [accentColor, currentTrack?.albumArt]);
 
   useEffect(() => {
@@ -1195,14 +1405,53 @@ const App = () => {
     }
   }, []);
 
+  const clearPreloadedTrack = useCallback(() => {
+    const preloaded = preloadedTrackRef.current;
+    if (!preloaded) return;
+    preloaded.audio.pause();
+    preloaded.audio.removeAttribute('src');
+    preloaded.audio.load();
+    preloadedTrackRef.current = null;
+  }, []);
+
+  const preloadNextTrack = useCallback(
+    (track: Track | null) => {
+      if (!gaplessPlayback || !track || track.streamingProvider || !track.src) {
+        clearPreloadedTrack();
+        return;
+      }
+      if (preloadedTrackRef.current?.trackId === track.id) return;
+      clearPreloadedTrack();
+      const currentAudio = activeAudioRef.current;
+      const preloadAudio =
+        currentAudio === audioARef.current ? audioBRef.current : audioARef.current;
+      if (!preloadAudio || preloadAudio === currentAudio) return;
+      preloadAudio.pause();
+      preloadAudio.preload = 'auto';
+      preloadAudio.volume = 0;
+      preloadAudio.src = track.src;
+      preloadAudio.load();
+      preloadedTrackRef.current = { trackId: track.id, audio: preloadAudio };
+    },
+    [clearPreloadedTrack, gaplessPlayback]
+  );
+
+  useEffect(() => {
+    if (!gaplessPlayback) clearPreloadedTrack();
+    return () => clearPreloadedTrack();
+  }, [clearPreloadedTrack, gaplessPlayback]);
+
   const playAudioTrack = useCallback(
-    async (track: Track) => {
+    async (track: Track, shouldPlay = true) => {
+      const preloaded =
+        preloadedTrackRef.current?.trackId === track.id ? preloadedTrackRef.current : null;
       const audio =
-        track.streamingProvider === 'audiomack'
+        preloaded?.audio ??
+        (track.streamingProvider === 'audiomack'
           ? audiomackAudioRef.current
           : activeAudioRef.current !== audiomackAudioRef.current
             ? (activeAudioRef.current ?? audioARef.current ?? audioBRef.current)
-            : (audioARef.current ?? audioBRef.current);
+            : (audioARef.current ?? audioBRef.current));
       if (!audio) {
         setLibraryError('Could not start playback because the audio player is unavailable.');
         return false;
@@ -1228,19 +1477,29 @@ const App = () => {
       [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((otherAudio) => {
         if (!otherAudio || otherAudio === audio) return;
         otherAudio.pause();
-        otherAudio.removeAttribute('src');
-        otherAudio.load();
+        if (preloaded?.audio !== otherAudio) {
+          otherAudio.removeAttribute('src');
+          otherAudio.load();
+        }
         otherAudio.volume = 0;
       });
+      if (preloaded) preloadedTrackRef.current = null;
       activeAudioRef.current = audio;
       unavailableTrackHandlingRef.current = null;
       audio.volume = volumeRef.current;
       const playableTrack = { ...track, src: source };
+      window.dispatchEvent(new Event('luna-track-changed'));
       setCurrentTrack(playableTrack);
       setLastPlayedTrackPath(track.streamingProvider ? null : track.path);
       setLibraryError(null);
-      audio.src = source;
+      if (audio.getAttribute('src') !== source) audio.src = source;
+      audio.preload = 'auto';
       if (track.streamingProvider !== 'audiomack') prepareVisualizerAudio(audio);
+      if (!shouldPlay) {
+        audio.pause();
+        setIsPlaying(false);
+        return true;
+      }
       try {
         await audio.play();
         unavailableTrackHandlingRef.current = null;
@@ -1264,7 +1523,7 @@ const App = () => {
   );
 
   const playQueueFrom = useCallback(
-    async (queue: Track[], startIndex: number) => {
+    async (queue: Track[], startIndex: number, shouldPlay = true) => {
       for (let offset = 0; offset < queue.length; offset += 1) {
         const index = startIndex + offset;
         if (index >= queue.length && repeatMode !== 'all') break;
@@ -1279,8 +1538,17 @@ const App = () => {
         }
 
         setPlayQueueIndex(queueIndex);
-        const didPlay = await playAudioTrack(track);
-        if (didPlay) return true;
+        const didPlay = await playAudioTrack(track, shouldPlay);
+        if (didPlay) {
+          if (rememberRecentMedia) {
+            recordPlayedTrack(track, queue, queueIndex);
+            setRecentMediaRevision((revision) => revision + 1);
+          }
+          const nextTrack =
+            queue[queueIndex + 1] ?? (repeatMode === 'all' ? (queue[0] ?? null) : null);
+          preloadNextTrack(nextTrack ?? null);
+          return true;
+        }
 
         if (!(await isLocalTrackAvailable(track))) {
           notifyUnavailableTrack(track);
@@ -1297,7 +1565,14 @@ const App = () => {
       setIsPlaying(false);
       return false;
     },
-    [isLocalTrackAvailable, notifyUnavailableTrack, playAudioTrack, repeatMode]
+    [
+      isLocalTrackAvailable,
+      notifyUnavailableTrack,
+      playAudioTrack,
+      preloadNextTrack,
+      rememberRecentMedia,
+      repeatMode,
+    ]
   );
 
   const playTrack = useCallback(
@@ -1378,10 +1653,10 @@ const App = () => {
   );
 
   const playQueueAt = useCallback(
-    (index: number) => {
+    (index: number, shouldPlay = true) => {
       const queuedTrack = playQueue[index];
       if (!queuedTrack) return;
-      void playQueueFrom(playQueue, index);
+      void playQueueFrom(playQueue, index, shouldPlay);
     },
     [playQueue, playQueueFrom]
   );
@@ -1391,14 +1666,14 @@ const App = () => {
       if (playQueue.length === 0) return;
       const nextIndex = playQueueIndex + offset;
       if (nextIndex >= 0 && nextIndex < playQueue.length) {
-        playQueueAt(nextIndex);
+        playQueueAt(nextIndex, isPlaying);
       } else if (offset > 0 && repeatMode === 'all') {
-        playQueueAt(0);
+        playQueueAt(0, isPlaying);
       } else if (offset < 0 && repeatMode === 'all') {
-        playQueueAt(playQueue.length - 1);
+        playQueueAt(playQueue.length - 1, isPlaying);
       }
     },
-    [playQueue.length, playQueueAt, playQueueIndex, repeatMode]
+    [isPlaying, playQueue.length, playQueueAt, playQueueIndex, repeatMode]
   );
 
   const handleQueueTracks = useCallback(
@@ -1496,56 +1771,30 @@ const App = () => {
       const audio = activeAudioRef.current;
       const duration =
         audio && Number.isFinite(audio.duration) ? audio.duration : (currentTrack?.duration ?? 0);
-      if (audio) audio.currentTime = Math.max(0, Math.min(duration, time));
+      if (audio) {
+        audio.currentTime = Math.max(0, Math.min(duration, time));
+        setPlaybackSeekRevision((revision) => revision + 1);
+      }
     },
     [currentTrack?.duration]
   );
-
-  useEffect(() => {
-    if (!isAndroidApp) return undefined;
-    let active = true;
-    let removeListener: (() => Promise<void>) | undefined;
-    listenForAndroidMediaControls((event) => {
-      if (!active) return;
-      if (event.control === 'play') {
-        if (!isPlaying) handlePlayPause();
-      } else if (event.control === 'pause') {
-        if (isPlaying) handlePlayPause();
-      } else if (event.control === 'next') {
-        handleNext();
-      } else if (event.control === 'previous') {
-        handlePrevious();
-      } else if (event.control === 'seek' && Number.isFinite(event.position)) {
-        handleSeek(event.position ?? 0);
-      }
-    })
-      .then((listener) => {
-        if (!active) {
-          void listener.remove();
-          return;
-        }
-        removeListener = () => listener.remove();
-      })
-      .catch((error: unknown) => {
-        console.error('Could not listen for Android playback controls:', error);
-      });
-    return () => {
-      active = false;
-      if (removeListener) void removeListener();
-    };
-  }, [handleNext, handlePlayPause, handlePrevious, handleSeek, isAndroidApp, isPlaying]);
 
   const beginCrossfade = useCallback(
     async (outgoing: HTMLAudioElement, nextTrack: Track) => {
       if (crossfadeStartedRef.current || !nextTrack.src) return;
       const fadeDuration = Math.min(crossfadeSeconds, outgoing.duration / 2);
-      const incoming = outgoing === audioARef.current ? audioBRef.current : audioARef.current;
+      const preloaded =
+        preloadedTrackRef.current?.trackId === nextTrack.id ? preloadedTrackRef.current : null;
+      const incoming =
+        preloaded?.audio ??
+        (outgoing === audioARef.current ? audioBRef.current : audioARef.current);
       if (!incoming || !Number.isFinite(fadeDuration) || fadeDuration <= 0) return;
 
+      if (preloaded) preloadedTrackRef.current = null;
       crossfadeStartedRef.current = true;
       const requestId = crossfadeRequestIdRef.current + 1;
       crossfadeRequestIdRef.current = requestId;
-      incoming.src = nextTrack.src;
+      if (incoming.getAttribute('src') !== nextTrack.src) incoming.src = nextTrack.src;
       incoming.currentTime = 0;
       incoming.volume = 0;
       prepareVisualizerAudio(incoming);
@@ -1574,12 +1823,16 @@ const App = () => {
 
       activeAudioRef.current = incoming;
       crossfadeOutgoingRef.current = outgoing;
-      setPlayQueueIndex((currentIndex) =>
-        playQueue[currentIndex + 1] === nextTrack ? currentIndex + 1 : 0
-      );
+      const nextQueueIndex = playQueue[playQueueIndex + 1] === nextTrack ? playQueueIndex + 1 : 0;
+      setPlayQueueIndex(nextQueueIndex);
+      window.dispatchEvent(new Event('luna-track-changed'));
       setCurrentTrack(nextTrack);
       setLastPlayedTrackPath(nextTrack.streamingProvider ? null : nextTrack.path);
       setLibraryError(null);
+      if (rememberRecentMedia) {
+        recordPlayedTrack(nextTrack, playQueue, nextQueueIndex);
+        setRecentMediaRevision((revision) => revision + 1);
+      }
 
       const startedAt = performance.now();
       const fadeDurationMs = fadeDuration * 1000;
@@ -1603,13 +1856,20 @@ const App = () => {
       };
       crossfadeFrameRef.current = window.requestAnimationFrame(updateFade);
     },
-    [crossfadeSeconds, playQueue, prepareVisualizerAudio]
+    [crossfadeSeconds, playQueue, playQueueIndex, prepareVisualizerAudio, rememberRecentMedia]
   );
 
   const handleAudioTimeUpdate = useCallback(
     (audio: HTMLAudioElement) => {
-      if (audio !== activeAudioRef.current) return;
-      if (repeatMode !== 'all' || crossfadeSeconds <= 0 || !Number.isFinite(audio.duration)) return;
+      if (
+        audio !== activeAudioRef.current ||
+        audio.paused ||
+        repeatMode === 'one' ||
+        crossfadeSeconds <= 0 ||
+        !Number.isFinite(audio.duration)
+      ) {
+        return;
+      }
       const nextTrack =
         playQueue[playQueueIndex + 1] ?? (repeatMode === 'all' ? playQueue[0] : null);
       const fadeDuration = Math.min(crossfadeSeconds, audio.duration / 2);
@@ -1644,7 +1904,7 @@ const App = () => {
               const currentIndex = playQueue.findIndex((track) => track.id === currentTrack.id);
               const nextIndex = (currentIndex >= 0 ? currentIndex : playQueueIndex) + 1;
               if (nextIndex < playQueue.length) {
-                playQueueAt(nextIndex);
+                playQueueAt(nextIndex, true);
               }
               return;
             }
@@ -1659,9 +1919,9 @@ const App = () => {
         return;
       }
       if (playQueueIndex + 1 < playQueue.length) {
-        playQueueAt(playQueueIndex + 1);
+        playQueueAt(playQueueIndex + 1, true);
       } else if (repeatMode === 'all' && playQueue.length > 0) {
-        playQueueAt(0);
+        playQueueAt(0, true);
       } else {
         setIsPlaying(false);
       }
@@ -1765,6 +2025,53 @@ const App = () => {
   }, [repeatMode]);
 
   useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    let active = true;
+    let removeListener: (() => Promise<void>) | undefined;
+    listenForAndroidMediaControls((event) => {
+      if (!active) return;
+      if (event.control === 'play') {
+        if (!isPlaying) handlePlayPause();
+      } else if (event.control === 'pause') {
+        if (isPlaying) handlePlayPause();
+      } else if (event.control === 'next') {
+        handleNext();
+      } else if (event.control === 'previous') {
+        handlePrevious();
+      } else if (event.control === 'seek' && Number.isFinite(event.position)) {
+        handleSeek(event.position ?? 0);
+      } else if (event.control === 'shuffle') {
+        handleToggleShuffle();
+      } else if (event.control === 'repeat') {
+        handleToggleRepeat();
+      }
+    })
+      .then((listener) => {
+        if (!active) {
+          void listener.remove();
+          return;
+        }
+        removeListener = () => listener.remove();
+      })
+      .catch((error: unknown) => {
+        console.error('Could not listen for Android playback controls:', error);
+      });
+    return () => {
+      active = false;
+      if (removeListener) void removeListener();
+    };
+  }, [
+    handleNext,
+    handlePlayPause,
+    handlePrevious,
+    handleSeek,
+    handleToggleRepeat,
+    handleToggleShuffle,
+    isAndroidApp,
+    isPlaying,
+  ]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const isEditable =
@@ -1807,11 +2114,11 @@ const App = () => {
           break;
         case 'p':
           event.preventDefault();
-          setOpenNowPlayingRequest((request) => request + 1);
+          window.dispatchEvent(new Event('luna-open-now-playing'));
           break;
         case 'l':
           event.preventDefault();
-          setToggleLyricsRequest((request) => request + 1);
+          window.dispatchEvent(new Event('luna-toggle-lyrics'));
           break;
         default:
           break;
@@ -1844,6 +2151,79 @@ const App = () => {
         activeAudioRef.current.pause();
         activeAudioRef.current.src = '';
       }
+    }
+  };
+
+  const handleUnlinkUnavailableTrack = async () => {
+    if (libraryReadIssues.length > 0) {
+      const api = window.electronAPI;
+      if (!api) {
+        setLibraryError('Unlinking unreadable library items is available in the desktop app.');
+        return;
+      }
+      try {
+        const response = await api.unlinkLibraryItems({
+          folders: libraryReadIssues
+            .filter((issue) => issue.type === 'folder')
+            .map((issue) => issue.path),
+          trackPaths: libraryReadIssues
+            .filter((issue) => issue.type === 'track')
+            .map((issue) => issue.path),
+        });
+        applyLibraryResponse(response);
+        const remainingTrackIds = new Set(response.tracks.map((track) => track.id));
+        persistPlaylists(
+          playlists.map((playlist) => ({
+            ...playlist,
+            trackIds: playlist.trackIds.filter((trackId) => remainingTrackIds.has(trackId)),
+            coverTrackIds: playlist.coverTrackIds?.filter((trackId) =>
+              remainingTrackIds.has(trackId)
+            ),
+          }))
+        );
+        setLibraryReadIssues([]);
+        setPlaybackNotice(null);
+        setPlaybackNoticeExiting(false);
+        if (playbackNoticeTimeoutRef.current !== null) {
+          window.clearTimeout(playbackNoticeTimeoutRef.current);
+          playbackNoticeTimeoutRef.current = null;
+        }
+        return;
+      } catch (error) {
+        console.error('Could not unlink unreadable music library items:', error);
+        setLibraryError('Could not unlink the unreadable music library items.');
+        return;
+      }
+    }
+    const track = unavailableTrackForFix;
+    if (!track) return;
+    try {
+      if (window.electronAPI && track.path) {
+        const response = await window.electronAPI.removeLibraryTrack(track.path);
+        applyLibraryResponse(response);
+      } else {
+        const updatedTracks = libraryTracks.filter((item) => item.path !== track.path);
+        setLibraryTracks(updatedTracks);
+        if (isAndroidApp) {
+          await saveAndroidMusicLibraryCache({ tracks: updatedTracks, folders: musicFolders });
+        }
+      }
+      const updatedPlaylists = playlists.map((playlist) => ({
+        ...playlist,
+        trackIds: playlist.trackIds.filter((trackId) => trackId !== track.id),
+        coverTrackIds: playlist.coverTrackIds?.filter((trackId) => trackId !== track.id),
+      }));
+      persistPlaylists(updatedPlaylists);
+      setPlaybackNotice(null);
+      setPlaybackNoticeExiting(false);
+      setUnavailableTrackForFix(null);
+      if (playbackNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(playbackNoticeTimeoutRef.current);
+        playbackNoticeTimeoutRef.current = null;
+      }
+    } catch (error) {
+      console.error(`Could not unlink unavailable track "${track.name}":`, error);
+      setLibraryError(`Could not unlink “${track.name}” from the library.`);
     }
   };
   const persistPlaylists = useCallback((updatedPlaylists: Playlist[]) => {
@@ -1952,22 +2332,21 @@ const App = () => {
     (playlistId: string, tracks: Track[]) => {
       let addedCount = 0;
       const updatedPlaylists = playlists.map((playlist) =>
-        playlist.id !== playlistId
-          ? playlist
-          : {
-              ...playlist,
-              trackIds: [
-                ...playlist.trackIds,
-                ...tracks
-                  .map((track) => track.id)
-                  .filter((id) => {
-                    if (playlist.trackIds.includes(id)) return false;
-                    addedCount += 1;
-                    return true;
-                  }),
-              ],
-            }
+        {
+          if (playlist.id !== playlistId) return playlist;
+          const trackIds = new Set(playlist.trackIds);
+          const addedTrackIds = tracks
+            .map((track) => track.id)
+            .filter((id) => {
+              if (trackIds.has(id)) return false;
+              trackIds.add(id);
+              addedCount += 1;
+              return true;
+            });
+          return { ...playlist, trackIds: [...playlist.trackIds, ...addedTrackIds] };
+        }
       );
+
       persistPlaylists(updatedPlaylists);
       const playlistName =
         playlists.find((playlist) => playlist.id === playlistId)?.name ?? 'playlist';
@@ -1979,6 +2358,55 @@ const App = () => {
     },
     [persistPlaylists, playlists]
   );
+
+  const handleSaveQueueAsNewPlaylist = useCallback(
+    (name: string, tracks: Track[]) => {
+      const normalizedName = name.trim();
+      if (!normalizedName || tracks.length === 0) return false;
+      if (
+        playlists.some(
+          (playlist) => playlist.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
+        )
+      ) {
+        setLibraryError(`A playlist named “${normalizedName}” already exists.`);
+        return false;
+      }
+      const id =
+        typeof window.crypto?.randomUUID === 'function'
+          ? window.crypto.randomUUID()
+          : `playlist-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      persistPlaylists([
+        ...playlists,
+        {
+          id,
+          name: normalizedName,
+          trackIds: tracks.map((track) => track.id),
+          createdAt: Date.now(),
+        },
+      ]);
+      return true;
+    },
+    [persistPlaylists, playlists]
+  );
+
+  const handleClearPlayQueue = useCallback(() => {
+    cancelCrossfade();
+    [audioARef.current, audioBRef.current, audiomackAudioRef.current].forEach((audio) => {
+      if (!audio) return;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    });
+    activeAudioRef.current = null;
+    preloadedTrackRef.current = null;
+    playQueueBaseRef.current = [];
+    setPlayQueue([]);
+    setPlayQueueIndex(0);
+    setCurrentTrack(null);
+    setLastPlayedTrackPath(null);
+    setIsPlaying(false);
+    if (rememberRecentMedia) clearRecentQueue();
+  }, [cancelCrossfade, rememberRecentMedia]);
 
   const handleRemoveTrackFromPlaylist = useCallback(
     (playlistId: string, trackId: string) => {
@@ -1994,12 +2422,17 @@ const App = () => {
   );
 
   const handleAddTrackToPlaylist = (
-    track: { id: string; name: string; artist: string; album: string; path?: string } | null
+    track: { id: string; name: string; artist: string; album: string; path?: string } | null,
+    playlistId?: string
   ) => {
     if (!track) return;
     const fullTrack = libraryTracks.find((libraryTrack) => libraryTrack.id === track.id);
     if (!fullTrack) {
       setLibraryError(`Could not add “${track.name}” because it is not in your library.`);
+      return;
+    }
+    if (playlistId) {
+      handleAddTracksToPlaylist(playlistId, [fullTrack]);
       return;
     }
     setPlaylistDialog({ type: 'add-track', track: fullTrack });
@@ -2059,7 +2492,14 @@ const App = () => {
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => {
     if (!track) return;
-    setLibraryError(`Showing album: ${track.album}`);
+    navigate(getLibraryItemPath('album', track.album, track.artist));
+  };
+  const handleShowArtist = (
+    track: { id: string; name: string; artist: string; album: string; path?: string } | null
+  ) => {
+    if (!track) return;
+    const artist = splitArtistCredits(track.artist)[0];
+    if (artist) navigate(getLibraryItemPath('artist', artist));
   };
   const handleToggleLove = (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
@@ -2107,7 +2547,7 @@ const App = () => {
       if (mode === 'mini') await api.enterMiniPlayer();
       else await api.enterFullscreenPlayer();
       setPlayerWindowMode(mode);
-      setOpenNowPlayingRequest((request) => request + 1);
+      window.dispatchEvent(new Event('luna-open-now-playing'));
     } catch (error) {
       console.error(`Could not enter ${mode} player mode:`, error);
       setLibraryError(`Could not enter ${mode} player mode.`);
@@ -2130,6 +2570,14 @@ const App = () => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
     const root = document.documentElement;
     root.setAttribute('data-android-app', String(isAndroidApp));
+    root.setAttribute(
+      'data-native-titlebar',
+      String(window.electronAPI?.platform === 'win32')
+    );
+    root.setAttribute(
+      'data-amoled',
+      String(isAndroidApp && androidAmoledDarkMode && resolvedTheme === 'dark')
+    );
     const materialColors =
       isAndroidApp && androidMaterialYouEnabled && androidAppearance?.supportsMaterialYou
         ? androidAppearance.colors
@@ -2157,7 +2605,8 @@ const App = () => {
     root.style.setProperty('--system-accent', appliedSystemAccent);
     root.style.setProperty('--system-accent-rgb', systemRgb.join(', '));
 
-    const playerAccent = trackAccentColor ?? activeAccent;
+    const playerAccent =
+      currentTrack?.albumArt ? (trackAccentColor ?? activeAccent) : activeAccent;
     const playerRgbString = colorToRgbString(playerAccent);
     const [playerRed, playerGreen, playerBlue] = playerRgbString
       .split(',')
@@ -2240,9 +2689,6 @@ const App = () => {
     } else {
       root.removeAttribute('data-android-material-you');
       [
-        '--accent',
-        '--accent-rgb',
-        '--accent-muted',
         '--bg-primary',
         '--bg-secondary',
         '--bg-tertiary',
@@ -2252,15 +2698,21 @@ const App = () => {
         '--surface-subtle',
         '--surface-muted',
         '--surface-strong',
-        '--system-accent',
-        '--system-accent-rgb',
         '--text-primary',
         '--text-secondary',
         '--text-tertiary',
         '--text-on-accent',
-        '--play-button-accent',
-        '--play-button-accent-rgb',
       ].forEach((property) => root.style.removeProperty(property));
+    }
+    if (isAndroidApp && androidAmoledDarkMode && resolvedTheme === 'dark') {
+      root.style.setProperty('--bg-primary', '#000000');
+      root.style.setProperty('--bg-secondary', '#000000');
+      root.style.setProperty('--bg-tertiary', '#050505');
+    }
+    if (isAndroidApp) {
+      void setAndroidStatusBarStyle(resolvedTheme === 'light').catch((error: unknown) => {
+        console.error('Could not update the Android status bar:', error);
+      });
     }
   }, [
     accentColor,
@@ -2268,21 +2720,69 @@ const App = () => {
     androidMaterialYouEnabled,
     useSystemAccentColor,
     isAndroidApp,
+    androidAmoledDarkMode,
     iconStyle,
     seekbarStyle,
     systemAccentColor,
     systemTheme,
     themeMode,
     trackAccentColor,
+    currentTrack?.albumArt,
     windowMaterialAppliedAtLaunch,
     playerWindowMode,
   ]);
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => setSidebarCollapsed((collapsed) => !collapsed), []);
+  const handleLibraryTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
+    if (!isAndroidApp || !ANDROID_LIBRARY_ROUTES.includes(location.pathname)) {
+      androidLibraryTouchRef.current = null;
+      return;
+    }
+
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        'button, a, input, textarea, select, [role="button"], .alpha-numeric-index, .track-menu-popover, .play-bar, .sidebar'
+      )
+    ) {
+      androidLibraryTouchRef.current = null;
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    androidLibraryTouchRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const handleLibraryTouchEnd = (event: ReactTouchEvent<HTMLElement>) => {
+    const start = androidLibraryTouchRef.current;
+    androidLibraryTouchRef.current = null;
+    if (!start || !isAndroidApp) return;
+
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
+
+    const currentIndex = ANDROID_LIBRARY_ROUTES.indexOf(location.pathname);
+    const nextIndex = currentIndex + (deltaX < 0 ? 1 : -1);
+    if (nextIndex >= 0 && nextIndex < ANDROID_LIBRARY_ROUTES.length) {
+      navigate(ANDROID_LIBRARY_ROUTES[nextIndex]);
+    }
+  };
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      {isAndroidApp && !sidebarCollapsed && (
+        <button
+          type='button'
+          className='android-sidebar-backdrop'
+          aria-label='Close navigation menu'
+          onClick={toggleSidebar}
+        />
+      )}
       {isAndroidApp && androidStartupSplashVisible && (
         <AndroidStartupSplash
           apiLevel={androidAppearance?.apiLevel ?? null}
@@ -2302,6 +2802,7 @@ const App = () => {
           tracks={libraryTracks}
           showBrowseSection={showBrowseSection}
           showRadioSection={showRadioSection}
+          isAndroidApp={isAndroidApp}
         />
 
         {/* Main Content Area */}
@@ -2310,13 +2811,21 @@ const App = () => {
           <TopNavbar
             tracks={libraryTracks}
             isAndroidApp={isAndroidApp}
+            sidebarOpen={!sidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
             onSelectMusicFolders={handleSelectMusicFolders}
             onRescanMusicLibrary={handleRescanMusicLibrary}
           />
-          {isAndroidApp && <AndroidBottomNav pathname={location.pathname} />}
 
           {/* Page Content */}
-          <main className='page-content'>
+          <main
+            className={`page-content${location.pathname.startsWith('/settings') ? ' settings-route-content' : ''}`}
+            onTouchStart={handleLibraryTouchStart}
+            onTouchEnd={handleLibraryTouchEnd}
+            onTouchCancel={() => {
+              androidLibraryTouchRef.current = null;
+            }}
+          >
             <div key={location.pathname} className='page-transition'>
               <Suspense
                 fallback={
@@ -2330,22 +2839,15 @@ const App = () => {
                     <Route
                       path='/'
                       element={
-                        <Tracks
+                        <HomePage
                           tracks={libraryTracks}
-                          selectedTrackId={currentTrack?.id ?? null}
-                          isPlaying={isPlaying}
-                          isLoading={isLibraryLoading}
-                          scanProgress={libraryScanProgress}
-                          libraryError={libraryError}
-                          isDesktopApp={Boolean(window.electronAPI)}
-                          isAndroidApp={isAndroidApp}
+                          lovedTrackIds={lovedTrackIds}
+                          autoDownloadArtistImages={autoDownloadArtistImages}
                           onPlayTrack={playTrack}
-                          onShufflePlay={shufflePlayTracks}
-                          onQueueTracks={handleQueueTracks}
-                          playlists={playlists}
-                          onAddTracksToPlaylist={handleAddTracksToPlaylist}
-                          onEditTrack={handleOpenTrackMetadata}
-                          onAddMusicFolder={handleSelectMusicFolders}
+                          onToggleLove={(track) => handleToggleLove(track)}
+                          onShufflePlay={rememberRecentMedia ? shufflePlayTracks : () => {
+                            setLibraryError('Enable Remember recent media in Settings to shuffle recent tracks.');
+                          }}
                         />
                       }
                     />
@@ -2368,6 +2870,21 @@ const App = () => {
                           onAddTracksToPlaylist={handleAddTracksToPlaylist}
                           onEditTrack={handleOpenTrackMetadata}
                           onAddMusicFolder={handleSelectMusicFolders}
+                        />
+                      }
+                    />
+                    <Route
+                      path='/queue'
+                      element={
+                        <PlayQueuePage
+                          queue={playQueue}
+                          currentIndex={playQueueIndex}
+                          isPlaying={isPlaying}
+                          playlists={playlists}
+                          onSelectTrack={playQueueAt}
+                          onClearQueue={handleClearPlayQueue}
+                          onAddTracksToPlaylist={handleAddTracksToPlaylist}
+                          onSaveAsNewPlaylist={handleSaveQueueAsNewPlaylist}
                         />
                       }
                     />
@@ -2464,7 +2981,15 @@ const App = () => {
                         />
                       }
                     />
-                    <Route path='/browse' element={<SectionPlaceholder title='Browse' />} />
+                    <Route
+                      path='/browse'
+                      element={
+                        <div className='section-placeholder'>
+                          <h2>Browse</h2>
+                          <p>Browse features are not available yet.</p>
+                        </div>
+                      }
+                    />
                     <Route
                       path='/radio'
                       element={
@@ -2525,6 +3050,10 @@ const App = () => {
                           onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
                           crossfadeSeconds={crossfadeSeconds}
                           onCrossfadeChange={setCrossfadeSeconds}
+                          volumeNormalization={volumeNormalization}
+                          onVolumeNormalizationChange={setVolumeNormalization}
+                          gaplessPlayback={gaplessPlayback}
+                          onGaplessPlaybackChange={setGaplessPlayback}
                           systemAccentColor={systemAccentColor}
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
@@ -2544,6 +3073,10 @@ const App = () => {
                           androidMaterialYouLoading={!androidAppearanceLoaded}
                           androidMaterialYouError={androidAppearanceError}
                           onAndroidMaterialYouChange={setAndroidMaterialYouEnabled}
+                          androidAmoledDarkMode={androidAmoledDarkMode}
+                          onAndroidAmoledDarkModeChange={setAndroidAmoledDarkMode}
+                          rememberRecentMedia={rememberRecentMedia}
+                          onRememberRecentMediaChange={setRememberRecentMedia}
                           onAddMusicFolder={() => {
                             void handleSelectMusicFolders();
                           }}
@@ -2600,6 +3133,10 @@ const App = () => {
                           onShowSyncedLyricsOnPlayBarChange={setShowSyncedLyricsOnPlayBar}
                           crossfadeSeconds={crossfadeSeconds}
                           onCrossfadeChange={setCrossfadeSeconds}
+                          volumeNormalization={volumeNormalization}
+                          onVolumeNormalizationChange={setVolumeNormalization}
+                          gaplessPlayback={gaplessPlayback}
+                          onGaplessPlaybackChange={setGaplessPlayback}
                           systemAccentColor={systemAccentColor}
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
@@ -2619,6 +3156,10 @@ const App = () => {
                           androidMaterialYouLoading={!androidAppearanceLoaded}
                           androidMaterialYouError={androidAppearanceError}
                           onAndroidMaterialYouChange={setAndroidMaterialYouEnabled}
+                          androidAmoledDarkMode={androidAmoledDarkMode}
+                          onAndroidAmoledDarkModeChange={setAndroidAmoledDarkMode}
+                          rememberRecentMedia={rememberRecentMedia}
+                          onRememberRecentMediaChange={setRememberRecentMedia}
                           onAddMusicFolder={() => {
                             void handleSelectMusicFolders();
                           }}
@@ -2699,13 +3240,29 @@ const App = () => {
         hidden
       />
       {playbackNotice && (
-        <div className='playback-notice' role='status' aria-live='polite'>
+        <div
+          className={`playback-notice${playbackNoticeExiting ? ' exiting' : ''}`}
+          role='status'
+          aria-live='polite'
+        >
           <span>{playbackNotice}</span>
+          {(unavailableTrackForFix || libraryReadIssues.length > 0) && (
+            <button
+              type='button'
+              className='playback-notice-fix'
+              onClick={() => void handleUnlinkUnavailableTrack()}
+            >
+              Fix
+            </button>
+          )}
           <button
             type='button'
             aria-label='Dismiss playback notice'
             onClick={() => {
               setPlaybackNotice(null);
+              setPlaybackNoticeExiting(false);
+              setUnavailableTrackForFix(null);
+              setLibraryReadIssues([]);
               if (playbackNoticeTimeoutRef.current !== null) {
                 window.clearTimeout(playbackNoticeTimeoutRef.current);
                 playbackNoticeTimeoutRef.current = null;
@@ -2750,7 +3307,9 @@ const App = () => {
           onNext={handleNext}
           onDeleteTrackFromLibrary={handleDeleteTrackFromLibrary}
           onAddTrackToPlaylist={handleAddTrackToPlaylist}
+          playlists={playlists}
           onShowAlbum={handleShowAlbum}
+          onShowArtist={handleShowArtist}
           onToggleLove={handleToggleLove}
           onSuggestTrackLess={handleSuggestTrackLess}
           volume={volume}
@@ -2771,8 +3330,6 @@ const App = () => {
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
           onQueueTracks={handleQueueTracks}
-          openNowPlayingRequest={openNowPlayingRequest}
-          toggleLyricsRequest={toggleLyricsRequest}
           isDesktopApp={Boolean(window.electronAPI)}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}

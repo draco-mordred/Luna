@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReleaseNotesData } from '../types/electron';
 import './ReleaseNotesDialog.css';
+
+const renderReleaseNotesText = (text: string) =>
+  text.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={`${index}-${part}`}>{part.slice(2, -2)}</strong>
+    ) : (
+      part
+    )
+  );
 
 interface ReleaseNotesDialogProps {
   version: string;
@@ -10,8 +20,38 @@ interface ReleaseNotesDialogProps {
 const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNotesData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const continueButtonRef = useRef<HTMLButtonElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const isClosingRef = useRef(false);
+
+  const finishClosing = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    onClose();
+  }, [onClose]);
+
+  const handleClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      isClosingRef.current = true;
+      finishClosing();
+      return;
+    }
+    isClosingRef.current = true;
+    setIsClosing(true);
+    closeTimerRef.current = window.setTimeout(finishClosing, 260);
+  }, [finishClosing]);
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -55,7 +95,7 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') handleClose();
       if (event.key === 'Tab') {
         if (event.shiftKey && document.activeElement === closeButtonRef.current) {
           event.preventDefault();
@@ -69,10 +109,21 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
     window.addEventListener('keydown', handleKeyDown);
     closeButtonRef.current?.focus();
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [handleClose]);
 
-  return (
-    <div className='release-notes-backdrop'>
+  return createPortal(
+    <div
+      className={`release-notes-backdrop${isClosing ? ' is-closing' : ''}`}
+      onAnimationEnd={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          event.animationName === 'release-notes-backdrop-exit' &&
+          isClosing
+        ) {
+          finishClosing();
+        }
+      }}
+    >
       <section
         className='release-notes-dialog'
         role='dialog'
@@ -84,7 +135,7 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
           type='button'
           className='release-notes-close'
           aria-label='Close release notes'
-          onClick={onClose}
+          onClick={handleClose}
           ref={closeButtonRef}
         >
           <span className='material-symbols-outlined' aria-hidden='true'>
@@ -99,7 +150,9 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
           </p>
         ) : releaseNotes ? (
           <div className='release-notes-content'>
-            <pre className='release-notes-current'>{releaseNotes.current.trim()}</pre>
+            <pre className='release-notes-current'>
+              {renderReleaseNotesText(releaseNotes.current.trim())}
+            </pre>
             {releaseNotes.previous.length > 0 && (
               <section className='release-notes-previous' aria-labelledby='previous-releases-title'>
                 <h3 id='previous-releases-title'>Previous releases</h3>
@@ -119,13 +172,14 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
         <button
           type='button'
           className='release-notes-done'
-          onClick={onClose}
+          onClick={handleClose}
           ref={continueButtonRef}
         >
           Continue to Luna
         </button>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 };
 

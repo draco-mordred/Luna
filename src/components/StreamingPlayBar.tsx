@@ -51,8 +51,16 @@ const StreamingPlayBar = ({
   repeatMode,
   onToggleRepeat,
 }: StreamingPlayBarProps) => {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(track.duration);
+  const [playbackPosition, setPlaybackPosition] = useState({
+    trackId: track.id,
+    currentTime: 0,
+  });
+  const [trackDuration, setTrackDuration] = useState({
+    trackId: track.id,
+    duration: track.duration,
+  });
+  const currentTime = playbackPosition.trackId === track.id ? playbackPosition.currentTime : 0;
+  const duration = trackDuration.trackId === track.id ? trackDuration.duration : track.duration;
   const [showLyrics, setShowLyrics] = useState(false);
   const primaryArtist = splitArtistCredits(track.artist)[0] ?? '';
   const { imageUrl: artistImageUrl } = useArtistImage(primaryArtist, {
@@ -69,17 +77,12 @@ const StreamingPlayBar = ({
   const lyricsText = currentSyncedLyric || track.lyrics || '';
 
   useEffect(() => {
-    if (!activeAudio) {
-      setCurrentTime(0);
-      setDuration(track.duration);
-      return undefined;
-    }
-
-    setDuration(track.duration);
-    const updateTime = () => setCurrentTime(activeAudio.currentTime || 0);
+    if (!activeAudio) return undefined;
+    const updateTime = () =>
+      setPlaybackPosition({ trackId: track.id, currentTime: activeAudio.currentTime || 0 });
     const updateDuration = () => {
       if (Number.isFinite(activeAudio.duration) && activeAudio.duration > 0) {
-        setDuration(activeAudio.duration);
+        setTrackDuration({ trackId: track.id, duration: activeAudio.duration });
       }
     };
     updateTime();
@@ -94,7 +97,7 @@ const StreamingPlayBar = ({
       activeAudio.removeEventListener('loadedmetadata', updateDuration);
       activeAudio.removeEventListener('seeked', updateTime);
     };
-  }, [activeAudio, track.duration, track.id]);
+  }, [activeAudio, track.id]);
 
   return (
     <section
@@ -241,11 +244,15 @@ const StreamingPlayBar = ({
         </>
       )}
       {playerWindowMode !== 'normal' && (
-        <button type='button' className='streaming-player-mode-exit' onClick={onExitPlayerMode}>
+        <button
+          type='button'
+          className='streaming-player-mode-exit'
+          aria-label='Exit player mode'
+          onClick={onExitPlayerMode}
+        >
           <span className='material-symbols-outlined' aria-hidden='true'>
             close_fullscreen
           </span>
-          Exit player mode
         </button>
       )}
       <div className='streaming-play-bar-progress'>

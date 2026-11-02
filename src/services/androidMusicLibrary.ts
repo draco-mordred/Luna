@@ -11,6 +11,7 @@ interface AndroidMusicLibraryPlugin {
   scan: () => Promise<AndroidMusicLibraryResult>;
   getAppearance: () => Promise<AndroidAppearance>;
   getDeviceInfo: () => Promise<AndroidDeviceInfo>;
+  setStatusBarStyle: (options: { darkIcons: boolean }) => Promise<void>;
   getAlbumArtwork: (options: { albumId: string }) => Promise<{ dataUrl: string | null }>;
   updateNowPlaying: (options: {
     enabled: boolean;
@@ -18,9 +19,12 @@ interface AndroidMusicLibraryPlugin {
     title: string;
     artist: string;
     album: string;
+    albumId: string | null;
     isPlaying: boolean;
     position: number;
     duration: number;
+    isShuffled: boolean;
+    repeatMode: 'off' | 'one' | 'all';
   }) => Promise<void>;
   clearNowPlaying: () => Promise<void>;
   addListener: (
@@ -30,7 +34,7 @@ interface AndroidMusicLibraryPlugin {
 }
 
 export interface AndroidMediaControlEvent {
-  control: 'play' | 'pause' | 'next' | 'previous' | 'seek';
+  control: 'play' | 'pause' | 'next' | 'previous' | 'seek' | 'shuffle' | 'repeat';
   position?: number;
 }
 
@@ -38,6 +42,7 @@ const LIBRARY_DATABASE_NAME = 'luna-android-library';
 const LIBRARY_DATABASE_VERSION = 1;
 const LIBRARY_STORE_NAME = 'library';
 const LIBRARY_CACHE_KEY = 'current';
+const MAX_CACHED_ALBUM_ARTWORK = 24;
 
 let libraryDatabasePromise: Promise<IDBDatabase> | null = null;
 const albumArtworkCache = new Map<string, string | null>();
@@ -203,7 +208,7 @@ export const getAndroidAlbumArtwork = (albumId: string): Promise<string | null> 
     .getAlbumArtwork({ albumId })
     .then(({ dataUrl }) => {
       albumArtworkCache.set(albumId, dataUrl);
-      if (albumArtworkCache.size > 48) {
+      if (albumArtworkCache.size > MAX_CACHED_ALBUM_ARTWORK) {
         const oldestAlbumId = albumArtworkCache.keys().next().value;
         if (oldestAlbumId) albumArtworkCache.delete(oldestAlbumId);
       }
@@ -220,12 +225,17 @@ export const getAndroidAppearance = (): Promise<AndroidAppearance> =>
 export const getAndroidDeviceInfo = (): Promise<AndroidDeviceInfo> =>
   androidMusicLibrary.getDeviceInfo();
 
+export const setAndroidStatusBarStyle = (darkIcons: boolean): Promise<void> =>
+  androidMusicLibrary.setStatusBarStyle({ darkIcons });
+
 export const updateAndroidNowPlaying = (
   track: Track,
   isPlaying: boolean,
   position: number,
   enabled: boolean,
-  lockScreen: boolean
+  lockScreen: boolean,
+  isShuffled: boolean,
+  repeatMode: 'off' | 'one' | 'all'
 ): Promise<void> =>
   androidMusicLibrary.updateNowPlaying({
     enabled,
@@ -233,9 +243,12 @@ export const updateAndroidNowPlaying = (
     title: track.name,
     artist: track.artist,
     album: track.album,
+    albumId: track.androidAlbumId ?? null,
     isPlaying,
     position,
     duration: track.duration,
+    isShuffled,
+    repeatMode,
   });
 
 export const clearAndroidNowPlaying = (): Promise<void> => androidMusicLibrary.clearNowPlaying();

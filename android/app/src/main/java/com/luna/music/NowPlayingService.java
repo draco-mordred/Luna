@@ -5,15 +5,23 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ContentUris;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
 import androidx.core.app.NotificationManagerCompat;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
 
 public class NowPlayingService extends Service {
     public static final String ACTION_UPDATE = "com.luna.music.action.UPDATE";
@@ -23,18 +31,30 @@ public class NowPlayingService extends Service {
     public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_ARTIST = "artist";
     public static final String EXTRA_ALBUM = "album";
+    public static final String EXTRA_ALBUM_ID = "albumId";
     public static final String EXTRA_PLAYING = "playing";
     public static final String EXTRA_POSITION = "position";
     public static final String EXTRA_DURATION = "duration";
+    public static final String EXTRA_SHUFFLED = "shuffled";
+    public static final String EXTRA_REPEAT_MODE = "repeatMode";
     public static final String EXTRA_CONTROL = "control";
 
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "luna_media_playback";
+    private static final String CUSTOM_ACTION_SHUFFLE = "com.luna.music.action.SHUFFLE";
+    private static final String CUSTOM_ACTION_REPEAT = "com.luna.music.action.REPEAT";
+    private static final int MAX_ARTWORK_DIMENSION = 320;
     private MediaSession mediaSession;
     private String title = "Luna Music";
     private String artist = "";
     private String album = "";
+    private String albumId = "";
+    private String artworkAlbumId;
+    private String repeatMode = "off";
+    private Bitmap albumArtwork;
+    private Bitmap replacedArtwork;
     private boolean playing;
+    private boolean shuffled;
     private boolean lockScreenControls = true;
     private long position;
     private long duration;
@@ -67,7 +87,18 @@ public class NowPlayingService extends Service {
 
             @Override
             public void onSeekTo(long newPosition) {
+                position = Math.max(0, newPosition);
+                updateMediaSession();
                 sendControl("seek", newPosition);
+            }
+
+            @Override
+            public void onCustomAction(String action, android.os.Bundle extras) {
+                if (CUSTOM_ACTION_SHUFFLE.equals(action)) {
+                    sendControl("shuffle", -1);
+                } else if (CUSTOM_ACTION_REPEAT.equals(action)) {
+                    sendControl("repeat", -1);
+                }
             }
         });
         mediaSession.setFlags(
@@ -100,11 +131,17 @@ public class NowPlayingService extends Service {
             ? "" : intent.getStringExtra(EXTRA_ARTIST);
         album = intent.getStringExtra(EXTRA_ALBUM) == null
             ? "" : intent.getStringExtra(EXTRA_ALBUM);
+        albumId = intent.getStringExtra(EXTRA_ALBUM_ID) == null
+            ? "" : intent.getStringExtra(EXTRA_ALBUM_ID);
+        shuffled = intent.getBooleanExtra(EXTRA_SHUFFLED, false);
+        repeatMode = intent.getStringExtra(EXTRA_REPEAT_MODE) == null
+            ? "off" : intent.getStringExtra(EXTRA_REPEAT_MODE);
         playing = intent.getBooleanExtra(EXTRA_PLAYING, false);
         lockScreenControls = intent.getBooleanExtra(EXTRA_LOCK_SCREEN, true);
         position = Math.max(0, intent.getLongExtra(EXTRA_POSITION, 0));
         duration = Math.max(0, intent.getLongExtra(EXTRA_DURATION, 0));
 
+        updateArtwork();
         updateMediaSession();
         updatePlaybackWakeLock();
         Notification notification = buildNotification();
@@ -122,12 +159,21 @@ public class NowPlayingService extends Service {
     }
 
     private void updateMediaSession() {
-        mediaSession.setMetadata(new MediaMetadata.Builder()
+        MediaMetadata.Builder metadata = new MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
-            .build());
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration);
+        if (albumArtwork != null) {
+            metadata
+                .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, albumArtwork)
+                .putBitmap(MediaMetadata.METADATA_KEY_ART, albumArtwork);
+        }
+        mediaSession.setMetadata(metadata.build());
+        if (replacedArtwork != null && replacedArtwork != albumArtwork && !replacedArtwork.isRecycled()) {
+            replacedArtwork.recycle();
+        }
+        replacedArtwork = null;
 
         long actions = PlaybackState.ACTION_PLAY |
             PlaybackState.ACTION_PAUSE |
@@ -135,15 +181,82 @@ public class NowPlayingService extends Service {
             PlaybackState.ACTION_SKIP_TO_PREVIOUS |
             PlaybackState.ACTION_SKIP_TO_NEXT |
             PlaybackState.ACTION_SEEK_TO;
-        mediaSession.setPlaybackState(new PlaybackState.Builder()
+        PlaybackState.Builder playbackState = new PlaybackState.Builder()
             .setActions(actions)
+            .addCustomAction(CUSTOM_ACTION_SHUFFLE, shuffled ? "Shuffle on" : "Shuffle off",
+                R.drawable.ic_media_shuffle)
+            .addCustomAction(CUSTOM_ACTION_REPEAT, repeatActionLabel(), repeatActionIcon())
             .setState(
                 playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
                 position,
-                playing ? 1f : 0f
-            )
-            .build());
+                playing ? 1f : 0f,
+                android.os.SystemClock.elapsedRealtime()
+            );
+        mediaSession.setPlaybackState(playbackState.build());
         mediaSession.setActive(lockScreenControls);
+    }
+
+    private void updateArtwork() {
+        if (albumId.equals(artworkAlbumId)) return;
+        Bitmap previousArtwork = albumArtwork;
+        albumArtwork = decodeArtwork(albumId);
+        artworkAlbumId = albumId;
+        replacedArtwork = previousArtwork;
+    }
+
+    private Bitmap decodeArtwork(String id) {
+        if (id.isEmpty()) return null;
+        long numericId;
+        try {
+            numericId = Long.parseLong(id);
+        } catch (NumberFormatException invalidAlbumId) {
+            android.util.Log.w("Luna", "Ignoring invalid Android album artwork ID.", invalidAlbumId);
+            return null;
+        }
+
+        Uri artworkUri = ContentUris.withAppendedId(
+            Uri.parse("content://media/external/audio/albumart"),
+            numericId
+        );
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        try (InputStream stream = getContentResolver().openInputStream(artworkUri)) {
+            if (stream == null) return null;
+            BitmapFactory.decodeStream(stream, null, options);
+        } catch (FileNotFoundException missingArtwork) {
+            return null;
+        } catch (IOException error) {
+            android.util.Log.e("Luna", "Could not inspect Android album artwork.", error);
+            return null;
+        }
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+
+        options.inJustDecodeBounds = false;
+        options.inSampleSize = 1;
+        while (options.outWidth / options.inSampleSize > MAX_ARTWORK_DIMENSION ||
+            options.outHeight / options.inSampleSize > MAX_ARTWORK_DIMENSION) {
+            options.inSampleSize *= 2;
+        }
+        try (InputStream stream = getContentResolver().openInputStream(artworkUri)) {
+            return stream == null ? null : BitmapFactory.decodeStream(stream, null, options);
+        } catch (FileNotFoundException missingArtwork) {
+            return null;
+        } catch (IOException error) {
+            android.util.Log.e("Luna", "Could not load Android album artwork.", error);
+            return null;
+        }
+    }
+
+    private String repeatActionLabel() {
+        if ("one".equals(repeatMode)) return "Repeat one";
+        if ("all".equals(repeatMode)) return "Repeat all";
+        return "Repeat off";
+    }
+
+    private int repeatActionIcon() {
+        return "one".equals(repeatMode)
+            ? R.drawable.ic_media_repeat_one
+            : R.drawable.ic_media_repeat;
     }
 
     private void updatePlaybackWakeLock() {
@@ -195,6 +308,7 @@ public class NowPlayingService extends Service {
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
             .setShowWhen(false)
+            .setLargeIcon(albumArtwork)
             .addAction(action(android.R.drawable.ic_media_previous, "Previous", "previous"))
             .addAction(
                 action(
@@ -203,7 +317,9 @@ public class NowPlayingService extends Service {
                     playing ? "pause" : "play"
                 )
             )
-            .addAction(action(android.R.drawable.ic_media_next, "Next", "next"));
+            .addAction(action(android.R.drawable.ic_media_next, "Next", "next"))
+            .addAction(action(R.drawable.ic_media_shuffle, shuffled ? "Shuffle on" : "Shuffle off", "shuffle"))
+            .addAction(action(repeatActionIcon(), repeatActionLabel(), "repeat"));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             builder.setSubText(album + " · " + getString(R.string.app_name));
         }
@@ -255,6 +371,7 @@ public class NowPlayingService extends Service {
             mediaSession.release();
             mediaSession = null;
         }
+        releaseArtwork();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } else {
@@ -272,7 +389,16 @@ public class NowPlayingService extends Service {
             mediaSession.release();
             mediaSession = null;
         }
+        releaseArtwork();
         super.onDestroy();
+    }
+
+    private void releaseArtwork() {
+        if (albumArtwork != null && !albumArtwork.isRecycled()) albumArtwork.recycle();
+        if (replacedArtwork != null && !replacedArtwork.isRecycled()) replacedArtwork.recycle();
+        albumArtwork = null;
+        replacedArtwork = null;
+        artworkAlbumId = null;
     }
 
     @Override

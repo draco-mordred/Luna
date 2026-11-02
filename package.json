@@ -1,6 +1,6 @@
 {
   "name": "luna-player",
-  "version": "1.1.291026",
+  "version": "2.0.11126",
   "private": true,
   "main": "public/electron.js",
   "description": "A music player built with React, Electron, and Capacitor.",
@@ -13,10 +13,13 @@
   "homepage": ".",
   "dependencies": {
     "@capacitor/android": "^6.2.2",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/browser": "^6.0.6",
     "@fontsource/material-symbols-outlined": "^5.3.9",
     "@fontsource/material-symbols-rounded": "^5.3.9",
     "@fontsource/material-symbols-sharp": "^5.3.9",
     "@fontsource/poppins": "^5.3.0",
+    "@supabase/supabase-js": "^2.118.0",
     "chardet": "^2.2.0",
     "iconv-lite": "^0.7.3",
     "music-metadata": "^7.14.0",

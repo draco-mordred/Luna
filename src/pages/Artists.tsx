@@ -257,6 +257,7 @@ const ArtistsPage = ({
           entries={artistIndexEntries}
           ariaLabel='Artist list index'
           scrollContainerSelector='.page-content'
+          viewportFixed
         />
       )}
     </div>

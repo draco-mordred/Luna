@@ -458,6 +458,7 @@ const TracksPage = ({
           entries={trackIndexEntries}
           ariaLabel='Track list index'
           scrollContainerSelector='.page-content'
+          viewportFixed
           activeTargetId={activeIndexTargetId}
           onJumpToEntry={jumpToTrackIndex}
         />

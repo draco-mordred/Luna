@@ -20,20 +20,20 @@
 
 .navbar-left {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-start;
   gap: 18px;
   height: 100%;
   min-width: 0;
   flex: 1 1 auto;
-  padding-right: 160px;
+  padding: 40px 160px 0 0;
 }
 
 .navbar-title {
   color: var(--text-primary);
-  font-size: clamp(2.3rem, 2vw, 2.5rem);
+  font-size: clamp(1.35rem, 1.6vw, 1.55rem);
   font-weight: 700;
-  line-height: 3.5;
+  line-height: 1.2;
   margin: 0;
   white-space: nowrap;
 }

@@ -9,9 +9,7 @@ const WindowTitleBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const canNavigateBack =
-    playerWindowMode === 'normal' &&
-    location.pathname !== '/' &&
-    location.pathname !== '/tracks';
+    playerWindowMode === 'normal' && location.pathname !== '/' && location.pathname !== '/tracks';
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -91,6 +89,11 @@ const WindowTitleBar = () => {
   const navigateBack = () => {
     const historyIndex = window.history.state?.idx;
     if (typeof historyIndex === 'number' && historyIndex > 0) navigate(-1);
+    else if (location.pathname.startsWith('/settings/')) navigate('/settings');
+    else if (location.pathname.startsWith('/playlists/')) navigate('/playlists');
+    else if (location.pathname.startsWith('/albums/')) navigate('/albums');
+    else if (location.pathname.startsWith('/artists/')) navigate('/artists');
+    else if (location.pathname.startsWith('/genres/')) navigate('/genres');
     else navigate('/');
   };
 
@@ -108,7 +111,9 @@ const WindowTitleBar = () => {
             onClick={navigateBack}
             onDoubleClick={(event) => event.stopPropagation()}
           >
-            <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              arrow_back
+            </span>
           </button>
         )}
         <AppIcon className='window-titlebar-icon' />

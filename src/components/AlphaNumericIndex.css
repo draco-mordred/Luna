@@ -18,13 +18,17 @@
   min-width: 0;
 }
 
-.indexed-page-layout > .alpha-numeric-index {
+.alpha-numeric-index.alpha-numeric-index--viewport {
   position: fixed;
   z-index: 25;
-  top: calc((100vh + 14px) / 2);
+  top: 25%;
   right: 8px;
-  transform: translateY(-50%);
-  max-height: max(120px, calc(100vh - var(--playbar-collapsed-height) - 24px));
+  height: 50%;
+  /* height: auto; */
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 2px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg-primary) 76%, transparent);
@@ -75,21 +79,11 @@
   color: var(--text-on-accent);
 }
 
-html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
-  top: calc(
-    (100dvh + 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px)) / 2
-  );
+html[data-android-app='true'] .alpha-numeric-index--viewport {
   right: 6px;
-  height: max(
-    88px,
-    calc(
-      100dvh - 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px) - 16px
-    )
-  ) !important;
-  max-height: none;
 }
 
-html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
+html[data-android-app='true'] .alpha-numeric-index--viewport {
   padding: 1px;
   border: 0;
   border-radius: 0;
@@ -115,19 +109,5 @@ html[data-android-app='true'] .alpha-numeric-index-button.active {
 
   .indexed-page-layout.has-index {
     display: block;
-  }
-}
-
-@media (max-height: 540px) {
-  html[data-android-app='true'] .indexed-page-layout > .alpha-numeric-index {
-    top: calc(
-      (100dvh + 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px)) / 2
-    );
-    height: max(
-      80px,
-      calc(
-        100dvh - 116px - var(--playbar-collapsed-height) - env(safe-area-inset-bottom, 0px) - 12px
-      )
-    ) !important;
   }
 }

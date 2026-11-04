@@ -23,6 +23,7 @@ const { extractEmbeddedLyrics } = require('./lyrics');
 if (process.platform === 'win32') app.setAppUserModelId('com.avalon.luna');
 
 let pendingAuthCallbackUrl = null;
+let processedAuthCallbackUrl = null;
 let authCallbackRendererReady = false;
 let deliveredAuthCallbackUrl = null;
 const isAuthCallbackUrl = (value) => {
@@ -49,6 +50,10 @@ const deliverPendingAuthCallback = () => {
 };
 const queueAuthCallback = (value) => {
   if (!isAuthCallbackUrl(value)) return;
+  if (value === pendingAuthCallbackUrl || value === processedAuthCallbackUrl) {
+    deliverPendingAuthCallback();
+    return;
+  }
   pendingAuthCallbackUrl = value;
   deliveredAuthCallbackUrl = null;
   deliverPendingAuthCallback();
@@ -1575,14 +1580,21 @@ ipcMain.handle('set-always-on-top', (_event, enabled) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(enabled);
 });
 
-const taskbarIconDirectory = app.isPackaged
-  ? path.join(process.resourcesPath, 'public')
-  : __dirname;
+const createTaskbarIcon = (svg) =>
+  nativeImage.createFromDataURL(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">${svg}</svg>`
+    )}`
+  );
 const taskbarIcons = {
-  previous: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-previous.png')),
-  play: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-play.png')),
-  pause: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-pause.png')),
-  next: nativeImage.createFromPath(path.join(taskbarIconDirectory, 'taskbar-next.png')),
+  previous: createTaskbarIcon(
+    '<path d="M11.2 5.5v13a1 1 0 0 1-1.6.8L2.2 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Zm10.6 0v13a1 1 0 0 1-1.6.8L12.8 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+  ),
+  play: createTaskbarIcon('<path d="M7.5 4.8a1 1 0 0 1 1.5-.86l11 7.1a1.1 1.1 0 0 1 0 1.86l-11 7.1a1 1 0 0 1-1.5-.86Z" fill="#fff"/>'),
+  pause: createTaskbarIcon('<path d="M8 6.5v11M16 6.5v11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>'),
+  next: createTaskbarIcon(
+    '<path d="M2.8 5.5a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Zm10.6 0a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+  ),
 };
 
 const setTaskbarPlaybackState = (isPlaying) => {
@@ -1621,6 +1633,7 @@ ipcMain.on('auth-callback-not-ready', () => {
 });
 
 ipcMain.on('auth-callback-processed', () => {
+  processedAuthCallbackUrl = pendingAuthCallbackUrl;
   pendingAuthCallbackUrl = null;
   deliveredAuthCallbackUrl = null;
 });

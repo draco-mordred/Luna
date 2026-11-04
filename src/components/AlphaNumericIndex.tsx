@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './AlphaNumericIndex.css';
 
 export interface AlphaNumericIndexEntry {
@@ -55,6 +56,7 @@ interface AlphaNumericIndexProps {
   entries: AlphaNumericIndexEntry[];
   ariaLabel: string;
   scrollContainerSelector: string;
+  viewportFixed?: boolean;
   activeTargetId?: string | null;
   onJumpToEntry?: (entry: AlphaNumericIndexEntry) => void;
 }
@@ -63,6 +65,7 @@ const AlphaNumericIndex = ({
   entries,
   ariaLabel,
   scrollContainerSelector,
+  viewportFixed = false,
   activeTargetId,
   onJumpToEntry,
 }: AlphaNumericIndexProps) => {
@@ -136,12 +139,16 @@ const AlphaNumericIndex = ({
 
   if (entries.length === 0) return null;
 
-  return (
+  const index = (
     <nav
-      className='alpha-numeric-index'
+      className={`alpha-numeric-index ${viewportFixed ? 'alpha-numeric-index--viewport' : ''}`}
       aria-label={ariaLabel}
       ref={railRef}
-      style={{ height: `min(88vh, ${Math.max(120, Math.min(entries.length * 19, 620))}px)` }}
+      style={
+        viewportFixed
+          ? undefined
+          : { height: `min(88vh, ${Math.max(120, Math.min(entries.length * 19, 620))}px)` }
+      }
       onPointerDown={(event) => {
         if (event.pointerType !== 'mouse') return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -167,6 +174,8 @@ const AlphaNumericIndex = ({
       ))}
     </nav>
   );
+
+  return viewportFixed ? createPortal(index, document.body) : index;
 };
 
 export default AlphaNumericIndex;

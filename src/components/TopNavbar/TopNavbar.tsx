@@ -70,6 +70,7 @@ const TopNavbar = ({
   const [authBusy, setAuthBusy] = useState<Provider | 'signout' | 'finishing' | null>(null);
   const [authError, setAuthError] = useState('');
   const authTimeoutRef = useRef<number | null>(null);
+  const processedAuthCallbacksRef = useRef(new Set<string>());
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,8 @@ const TopNavbar = ({
     });
 
     const processCallback = (url: string) => {
+      if (processedAuthCallbacksRef.current.has(url)) return;
+      processedAuthCallbacksRef.current.add(url);
       setAuthBusy('finishing');
       if (authTimeoutRef.current !== null) window.clearTimeout(authTimeoutRef.current);
       authTimeoutRef.current = window.setTimeout(() => {

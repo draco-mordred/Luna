@@ -345,6 +345,7 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
           entries={albumIndexEntries}
           ariaLabel='Album list index'
           scrollContainerSelector='.page-content'
+          viewportFixed
         />
       )}
     </div>

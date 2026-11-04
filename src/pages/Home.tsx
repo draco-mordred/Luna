@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import { useArtistImage } from '../services/artistImages';
@@ -77,9 +77,42 @@ const HomePage = ({
   onShufflePlay,
 }: HomePageProps) => {
   const [activeTab, setActiveTab] = useState<HomeTab>('history');
+  const [celebratingTrackId, setCelebratingTrackId] = useState<string | null>(null);
+  const favoriteCelebrationTimeoutRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const rememberEnabled = rememberRecentMediaEnabled();
   const history = loadRecentMediaHistory();
+
+  useEffect(
+    () => () => {
+      if (favoriteCelebrationTimeoutRef.current !== null) {
+        window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  const toggleFavorite = (track: Track, isLoved: boolean) => {
+    onToggleLove(track);
+    if (isLoved) {
+      if (celebratingTrackId === track.id) {
+        setCelebratingTrackId(null);
+        if (favoriteCelebrationTimeoutRef.current !== null) {
+          window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+          favoriteCelebrationTimeoutRef.current = null;
+        }
+      }
+      return;
+    }
+    setCelebratingTrackId(track.id);
+    if (favoriteCelebrationTimeoutRef.current !== null) {
+      window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+    }
+    favoriteCelebrationTimeoutRef.current = window.setTimeout(() => {
+      setCelebratingTrackId(null);
+      favoriteCelebrationTimeoutRef.current = null;
+    }, 3_000);
+  };
 
   const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const trackHistory = useMemo(() => {
@@ -252,13 +285,27 @@ const HomePage = ({
                 </button>
                 <button
                   type='button'
-                  className={`home-favorite-button${lovedTrackIds.includes(track.id) ? ' loved' : ''}`}
+                  className={`home-favorite-button${lovedTrackIds.includes(track.id) ? ' loved' : ''}${celebratingTrackId === track.id ? ' celebrating' : ''}`}
                   aria-label={`${lovedTrackIds.includes(track.id) ? 'Remove' : 'Add'} ${track.name} ${lovedTrackIds.includes(track.id) ? 'from' : 'to'} favorites`}
-                  onClick={() => onToggleLove(track)}
+                  onClick={() => toggleFavorite(track, lovedTrackIds.includes(track.id))}
                 >
                   <span className='material-symbols-outlined' aria-hidden='true'>
-                    {lovedTrackIds.includes(track.id) ? 'favorite' : 'favorite_border'}
+                    {lovedTrackIds.includes(track.id) || celebratingTrackId === track.id
+                      ? 'favorite'
+                      : 'favorite_border'}
                   </span>
+                  {celebratingTrackId === track.id && (
+                    <span className='favorite-heart-burst' aria-hidden='true'>
+                      {[0, 1, 2, 3, 4].map((heart) => (
+                        <span
+                          key={heart}
+                          className={`material-symbols-outlined favorite-heart-${heart + 1}`}
+                        >
+                          favorite
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </button>
               </div>
             ))}

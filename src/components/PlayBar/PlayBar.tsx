@@ -350,7 +350,9 @@ const MiniSyncedLyrics = memo<{ text: string }>(({ text }) => {
     const container = containerRef.current;
     if (!container) return undefined;
 
+    let frame = 0;
     const fitText = () => {
+      frame = 0;
       const availableWidth = container.clientWidth;
       const availableHeight = container.clientHeight;
       if (!availableWidth || !availableHeight) return;
@@ -374,10 +376,18 @@ const MiniSyncedLyrics = memo<{ text: string }>(({ text }) => {
       container.style.setProperty('--mini-lyric-font-size', `${fittedSize}px`);
     };
 
-    fitText();
-    const observer = new ResizeObserver(fitText);
+    const scheduleFitText = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(fitText);
+    };
+
+    scheduleFitText();
+    const observer = new ResizeObserver(scheduleFitText);
     observer.observe(container);
-    return () => observer.disconnect();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [text]);
 
   return (
@@ -408,7 +418,9 @@ const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text
   useEffect(() => {
     const element = elementRef.current;
     if (!element) return undefined;
+    let updateFrame = 0;
     const updateOverflow = () => {
+      updateFrame = 0;
       const textContent = element.firstElementChild;
       if (!(textContent instanceof HTMLElement)) return;
       const nextIsOverflowing = textContent.getBoundingClientRect().width > element.clientWidth + 1;
@@ -416,11 +428,15 @@ const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text
       isOverflowingRef.current = nextIsOverflowing;
       setIsOverflowing(nextIsOverflowing);
     };
-    const frame = window.requestAnimationFrame(updateOverflow);
-    const observer = new ResizeObserver(updateOverflow);
+    const scheduleOverflowUpdate = () => {
+      if (updateFrame) return;
+      updateFrame = window.requestAnimationFrame(updateOverflow);
+    };
+    scheduleOverflowUpdate();
+    const observer = new ResizeObserver(scheduleOverflowUpdate);
     observer.observe(element);
     return () => {
-      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(updateFrame);
       observer.disconnect();
     };
   }, [text]);
@@ -507,6 +523,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   }>({ trackId: null, visible: false });
   const [showPlayQueue, setShowPlayQueue] = useState(false);
   const [isMiniDockVisible, setIsMiniDockVisible] = useState(true);
+  const [celebratingFavoriteTrackId, setCelebratingFavoriteTrackId] = useState<string | null>(null);
   const [playBarWidth, setPlayBarWidth] = useState(0);
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
   const [lyricsHintTrackId, setLyricsHintTrackId] = useState<string | null>(null);
@@ -522,6 +539,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const trackMenuToggleRef = useRef<HTMLButtonElement>(null);
   const trackMenuPopoverRef = useRef<HTMLDivElement>(null);
   const trackMenuCloseTimeoutRef = useRef<number | null>(null);
+  const favoriteCelebrationTimeoutRef = useRef<number | null>(null);
   const trackDeletionBackdropRef = useRef<HTMLDivElement>(null);
   const deleteConfirmationCancelRef = useRef<HTMLButtonElement>(null);
   const currentTime = playbackPosition.currentTime;
@@ -536,6 +554,16 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const visualizerLocationRef = useRef<string | null>(null);
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
+
+  useEffect(
+    () => () => {
+      if (favoriteCelebrationTimeoutRef.current !== null) {
+        window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+      }
+    },
+    []
+  );
+
   const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
   const showLyrics = Boolean(
     lyricsEnabled &&
@@ -1044,7 +1072,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
     if (!miniPlayer) return undefined;
 
     const updatePlayBarWidth = () => {
-      setPlayBarWidth(miniPlayer.clientWidth);
+      const nextWidth = miniPlayer.clientWidth;
+      setPlayBarWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
     };
 
     const initialMeasure = window.requestAnimationFrame(updatePlayBarWidth);
@@ -1099,6 +1128,22 @@ const PlayBar: React.FC<PlayBarProps> = ({
         closeTrackMenu();
         break;
       case 'love':
+        if (isLoved) {
+          setCelebratingFavoriteTrackId(null);
+          if (favoriteCelebrationTimeoutRef.current !== null) {
+            window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+            favoriteCelebrationTimeoutRef.current = null;
+          }
+        } else if (onToggleLove) {
+          setCelebratingFavoriteTrackId(track.id);
+          if (favoriteCelebrationTimeoutRef.current !== null) {
+            window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+          }
+          favoriteCelebrationTimeoutRef.current = window.setTimeout(() => {
+            setCelebratingFavoriteTrackId(null);
+            favoriteCelebrationTimeoutRef.current = null;
+          }, 3_000);
+        }
         onToggleLove?.(track);
         closeTrackMenu();
         break;
@@ -1503,15 +1548,29 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   <div className='track-title-menu-wrap' ref={trackMenuRef}>
                     <button
                       type='button'
-                      className={`track-love-toggle${isLoved ? ' is-loved' : ''}`}
+                      className={`track-love-toggle${isLoved ? ' is-loved' : ''}${celebratingFavoriteTrackId === track.id ? ' celebrating' : ''}`}
                       aria-label={isLoved ? 'Remove from favorites' : 'Add to favorites'}
                       aria-pressed={isLoved}
                       title={isLoved ? 'Remove from favorites' : 'Add to favorites'}
                       onClick={() => handleTrackMenuAction('love')}
                     >
                       <span className='material-symbols-outlined' aria-hidden='true'>
-                        {isLoved ? 'favorite' : 'favorite_border'}
+                        {isLoved || celebratingFavoriteTrackId === track.id
+                          ? 'favorite'
+                          : 'favorite_border'}
                       </span>
+                      {celebratingFavoriteTrackId === track.id && (
+                        <span className='favorite-heart-burst' aria-hidden='true'>
+                          {[0, 1, 2, 3, 4].map((heart) => (
+                            <span
+                              key={heart}
+                              className={`material-symbols-outlined favorite-heart-${heart + 1}`}
+                            >
+                              favorite
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </button>
                     <button
                       type='button'

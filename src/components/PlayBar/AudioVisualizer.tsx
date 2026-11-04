@@ -10,7 +10,9 @@ interface AudioVisualizerProps {
   className?: string;
 }
 
-const BAR_COUNT = 72;
+const MIN_BAR_COUNT = 16;
+const MAX_BAR_COUNT = 160;
+const BAR_WIDTH = 8;
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
 
@@ -23,7 +25,6 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const levelsRef = useRef(new Float32Array(BAR_COUNT));
   const audioStateRef = useRef({ isPlaying, volume });
 
   useEffect(() => {
@@ -37,25 +38,15 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
     const frequencyData = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
     let animationFrame = 0;
+    let resizeFrame = 0;
+    let renderFrame: ((now: number) => void) | null = null;
     let previousFrameTime = performance.now();
     let bounds = { width: 0, height: 0, pixelRatio: 1 };
     let accentColor =
       getComputedStyle(canvas).getPropertyValue('--play-button-accent').trim() || '#ff4444';
-    const levels = levelsRef.current;
-    const frequencyIndices = frequencyData && analyser ? new Uint16Array(BAR_COUNT) : null;
-
-    if (frequencyData && frequencyIndices && analyser) {
-      const nyquistFrequency = Math.min(MAX_FREQUENCY, analyser.context.sampleRate / 2);
-      const frequencyStep = analyser.context.sampleRate / analyser.fftSize;
-      for (let index = 0; index < BAR_COUNT; index += 1) {
-        const sampleFrequency =
-          MIN_FREQUENCY * (nyquistFrequency / MIN_FREQUENCY) ** (index / (BAR_COUNT - 1));
-        frequencyIndices[index] = Math.max(
-          0,
-          Math.min(frequencyData.length - 1, Math.round(sampleFrequency / frequencyStep))
-        );
-      }
-    }
+    let levels = new Float32Array(0);
+    let frequencyIndices: Uint16Array | null = null;
+    let barCount = 0;
 
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
@@ -67,10 +58,49 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         canvas.width = width;
         canvas.height = height;
       }
+      const nextBarCount = Math.max(
+        MIN_BAR_COUNT,
+        Math.min(MAX_BAR_COUNT, Math.floor(rect.width / BAR_WIDTH))
+      );
+      if (nextBarCount !== barCount) {
+        const nextLevels = new Float32Array(nextBarCount);
+        for (let index = 0; index < nextBarCount; index += 1) {
+          nextLevels[index] = levels[Math.floor((index / nextBarCount) * levels.length)] ?? 0;
+        }
+        levels = nextLevels;
+        barCount = nextBarCount;
+
+        if (frequencyData && analyser) {
+          frequencyIndices = new Uint16Array(barCount);
+          const nyquistFrequency = Math.min(MAX_FREQUENCY, analyser.context.sampleRate / 2);
+          const frequencyStep = analyser.context.sampleRate / analyser.fftSize;
+          for (let index = 0; index < barCount; index += 1) {
+            const sampleFrequency =
+              MIN_FREQUENCY *
+              (nyquistFrequency / MIN_FREQUENCY) ** (index / Math.max(1, barCount - 1));
+            frequencyIndices[index] = Math.max(
+              0,
+              Math.min(frequencyData.length - 1, Math.round(sampleFrequency / frequencyStep))
+            );
+          }
+        }
+        if (renderFrame && !audioStateRef.current.isPlaying) {
+          window.cancelAnimationFrame(animationFrame);
+          animationFrame = window.requestAnimationFrame(renderFrame);
+        }
+      }
     };
 
     const resizeObserver =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resizeCanvas);
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            if (resizeFrame) return;
+            resizeFrame = window.requestAnimationFrame(() => {
+              resizeFrame = 0;
+              resizeCanvas();
+            });
+          });
     resizeObserver?.observe(canvas);
     resizeCanvas();
 
@@ -82,7 +112,13 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       attributes: true,
       attributeFilter: ['class', 'data-theme', 'style'],
     });
-    const handleWindowResize = () => resizeCanvas();
+    const handleWindowResize = () => {
+      if (resizeFrame) return;
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        resizeCanvas();
+      });
+    };
     window.addEventListener('resize', handleWindowResize);
 
     const draw = (now: number) => {
@@ -104,7 +140,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       const volumeGain = Math.pow(Math.max(0, Math.min(1, appVolume)), 0.72);
       let maxLevel = 0;
 
-      for (let index = 0; index < BAR_COUNT; index += 1) {
+      for (let index = 0; index < barCount; index += 1) {
         let target = 0;
         if (frequencyData && frequencyIndices && playing && analyser && appVolume > 0) {
           const normalizedMagnitude = Math.max(
@@ -121,7 +157,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
       const centerY = bounds.height / 2;
       const amplitude = Math.max(2, bounds.height * 0.48);
-      const step = bounds.width / (BAR_COUNT - 1);
+      const step = bounds.width / Math.max(1, barCount - 1);
 
       if (style.startsWith('wave-')) {
         context.beginPath();
@@ -145,10 +181,10 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         context.stroke();
       } else {
         const gap = style === 'bars-dense' ? 1 : style === 'bars-thin' ? 2 : 3;
-        const barWidth = Math.max(1, bounds.width / BAR_COUNT - gap);
+        const barWidth = Math.max(1, bounds.width / barCount - gap);
         levels.forEach((level, index) => {
           const height = Math.max(1, level * amplitude * (style === 'bars-alternating' ? 1 : 2));
-          const x = index * (bounds.width / BAR_COUNT) + gap / 2;
+          const x = index * (bounds.width / barCount) + gap / 2;
           const y =
             style === 'bars-alternating'
               ? index % 2 === 0
@@ -186,9 +222,11 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       }
     };
 
+    renderFrame = animate;
     animationFrame = window.requestAnimationFrame(animate);
     return () => {
       window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       rootStyleObserver.disconnect();
       window.removeEventListener('resize', handleWindowResize);

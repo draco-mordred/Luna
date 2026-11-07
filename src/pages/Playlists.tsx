@@ -16,6 +16,7 @@ interface PlaylistsPageProps {
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onPlaylistAction: (playlist: Playlist, action: PlaylistAction) => void;
+  isDesktopApp: boolean;
   message: string | null;
 }
 
@@ -29,6 +30,7 @@ const PlaylistsPage = ({
   onPlayTrack,
   onShufflePlay,
   onPlaylistAction,
+  isDesktopApp,
   message,
 }: PlaylistsPageProps) => {
   const { playlistId } = useParams<{ playlistId?: string }>();
@@ -130,6 +132,7 @@ const PlaylistsPage = ({
             <PlaylistOptionsMenu
               playlist={selectedPlaylist}
               className='playlist-header-options'
+              isDesktopApp={isDesktopApp}
               onAction={onPlaylistAction}
             >
               <span className='visually-hidden'></span>
@@ -184,6 +187,7 @@ const PlaylistsPage = ({
                   key={playlist.id}
                   playlist={playlist}
                   className='playlist-card-menu'
+                  isDesktopApp={isDesktopApp}
                   onAction={onPlaylistAction}
                 >
                   <button

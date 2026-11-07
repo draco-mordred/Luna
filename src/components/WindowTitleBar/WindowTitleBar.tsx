@@ -1,15 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppIcon from '../AppIcon';
-import type { PlayerWindowMode } from '../../types/electron';
+import type { PlayerWindowMode, UsbSyncProgress } from '../../types/electron';
+import { USB_SYNC_INDICATOR_EVENT, type UsbSyncIndicator } from '../../services/usbSyncIndicator';
 
 const WindowTitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [playerWindowMode, setPlayerWindowMode] = useState<PlayerWindowMode>('normal');
+  const [syncIndicator, setSyncIndicator] = useState<UsbSyncIndicator | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const syncIndicatorTimeoutRef = useRef<number | null>(null);
   const canNavigateBack =
     playerWindowMode === 'normal' && location.pathname !== '/' && location.pathname !== '/tracks';
+  const syncProgressPercent =
+    syncIndicator?.status === 'complete'
+      ? 100
+      : syncIndicator?.status === 'running'
+        ? syncIndicator.progress.phase === 'manifest'
+          ? 99
+          : Math.min(
+              96,
+              Math.round(
+                (syncIndicator.progress.current / Math.max(syncIndicator.progress.total, 1)) * 96
+              )
+            )
+        : 0;
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -32,6 +48,39 @@ const WindowTitleBar = () => {
     return () => {
       unsubscribeMaximized();
       unsubscribeMode();
+    };
+  }, []);
+
+  useEffect(() => {
+    const clearIndicatorTimeout = () => {
+      if (syncIndicatorTimeoutRef.current !== null) {
+        window.clearTimeout(syncIndicatorTimeoutRef.current);
+        syncIndicatorTimeoutRef.current = null;
+      }
+    };
+    const showTerminalIndicator = (indicator: UsbSyncIndicator) => {
+      clearIndicatorTimeout();
+      setSyncIndicator(indicator);
+      if (indicator.status !== 'running') {
+        syncIndicatorTimeoutRef.current = window.setTimeout(
+          () => setSyncIndicator(null),
+          indicator.status === 'complete' ? 3000 : 5000
+        );
+      }
+    };
+    const handleIndicatorEvent = (event: Event) => {
+      showTerminalIndicator((event as CustomEvent<UsbSyncIndicator>).detail);
+    };
+    const unsubscribeProgress = window.electronAPI?.onUsbSyncProgress(
+      (progress: UsbSyncProgress) => {
+        showTerminalIndicator({ status: 'running', progress });
+      }
+    );
+    window.addEventListener(USB_SYNC_INDICATOR_EVENT, handleIndicatorEvent);
+    return () => {
+      clearIndicatorTimeout();
+      unsubscribeProgress?.();
+      window.removeEventListener(USB_SYNC_INDICATOR_EVENT, handleIndicatorEvent);
     };
   }, []);
 
@@ -99,7 +148,7 @@ const WindowTitleBar = () => {
 
   return (
     <header
-      className={`window-titlebar ${playerWindowMode}`}
+      className={`window-titlebar ${playerWindowMode}${syncIndicator ? ` syncing-${syncIndicator.status}` : ''}`}
       onDoubleClick={playerWindowMode === 'normal' ? toggleMaximize : undefined}
     >
       <div className='window-titlebar-brand'>
@@ -119,6 +168,51 @@ const WindowTitleBar = () => {
         <AppIcon className='window-titlebar-icon' />
         <span>Luna Music</span>
       </div>
+      {syncIndicator && (
+        <div
+          className={`window-titlebar-sync ${syncIndicator.status}`}
+          role='status'
+          aria-live='polite'
+          title={
+            syncIndicator.status === 'error'
+              ? syncIndicator.message
+              : syncIndicator.status === 'running'
+                ? `${syncIndicator.progress.trackName} (${syncIndicator.progress.fileName})`
+                : syncIndicator.message
+          }
+        >
+          <span className='material-symbols-outlined window-titlebar-sync-icon' aria-hidden='true'>
+            {syncIndicator.status === 'complete'
+              ? 'check_circle'
+              : syncIndicator.status === 'error'
+                ? 'error'
+                : 'sync'}
+          </span>
+          <span className='window-titlebar-sync-label'>
+            {syncIndicator.status === 'complete'
+              ? 'Sync complete'
+              : syncIndicator.status === 'error'
+                ? 'Sync failed'
+                : syncIndicator.progress.phase === 'manifest'
+                  ? 'Saving sync details'
+                  : syncIndicator.progress.phase === 'preparing'
+                    ? `Preparing ${syncIndicator.progress.trackName} · ${Math.min(syncIndicator.progress.current + 1, syncIndicator.progress.total)} of ${syncIndicator.progress.total}`
+                    : `Syncing ${syncIndicator.progress.trackName} · ${syncIndicator.progress.current} of ${syncIndicator.progress.total}`}
+          </span>
+        </div>
+      )}
+      {syncIndicator && syncIndicator.status !== 'error' && (
+        <div
+          className='window-titlebar-sync-progress'
+          role='progressbar'
+          aria-label='Android sync progress'
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={syncProgressPercent}
+        >
+          <span style={{ width: `${syncProgressPercent}%` }} />
+        </div>
+      )}
       <div className='window-titlebar-controls' onDoubleClick={(event) => event.stopPropagation()}>
         {playerWindowMode !== 'mini' && (
           <button

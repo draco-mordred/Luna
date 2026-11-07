@@ -99,6 +99,36 @@ export interface DesktopDeviceInfo {
   sessionId: string;
 }
 
+export interface UsbSyncDevice {
+  serial: string;
+  status: 'device' | 'unauthorized' | 'offline' | 'other';
+  model: string | null;
+}
+
+export interface UsbSyncStatus {
+  adbPath: string | null;
+  devices: UsbSyncDevice[];
+}
+
+export interface UsbSyncProgress {
+  phase: 'preparing' | 'copying' | 'manifest';
+  current: number;
+  total: number;
+  trackName: string;
+  fileName: string;
+}
+
+export interface UsbSyncTrack {
+  id: string;
+  path: string;
+  filename: string;
+  name: string;
+  artist: string;
+  album: string;
+  duration: number;
+  size: number;
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -133,6 +163,15 @@ declare global {
       audiomackSearchTracks: (query: string) => Promise<unknown>;
       audiomackPlayTrack: (musicId: string, session: string) => Promise<string>;
       savePlaylists: (playlists: Playlist[]) => Promise<Playlist[]>;
+      getUsbSyncStatus: () => Promise<UsbSyncStatus>;
+      selectUsbSyncAdb: () => Promise<UsbSyncStatus | null>;
+      syncTracksToAndroid: (options: {
+        serial: string;
+        tracks: UsbSyncTrack[];
+        playlists: Playlist[];
+        lovedTrackIds: string[];
+      }) => Promise<{ copied: number; skipped: number; manifestWritten: boolean }>;
+      onUsbSyncProgress: (callback: (progress: UsbSyncProgress) => void) => () => void;
       saveAppSettings: (
         settings: Partial<
           Pick<

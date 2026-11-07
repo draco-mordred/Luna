@@ -242,6 +242,7 @@ interface TracksPageProps {
   playlists: Playlist[];
   onAddTracksToPlaylist: (playlistId: string, tracks: Track[]) => void;
   onEditTrack?: (track: Track) => void;
+  onSyncTrack?: (track: Track) => void;
   onAddMusicFolder: () => void;
 }
 
@@ -260,6 +261,7 @@ const TracksPage = ({
   playlists,
   onAddTracksToPlaylist,
   onEditTrack,
+  onSyncTrack,
   onAddMusicFolder,
 }: TracksPageProps) => {
   const [sortBy, setSortBy] = useState<SortField>('name');
@@ -441,6 +443,7 @@ const TracksPage = ({
               playlists={playlists}
               onAddTracksToPlaylist={onAddTracksToPlaylist}
               onEditTrack={isDesktopApp ? onEditTrack : undefined}
+              onSyncTrack={isDesktopApp ? onSyncTrack : undefined}
             >
               <VirtualizedTrackRows
                 tracks={sortedTracks}

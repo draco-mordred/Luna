@@ -4,11 +4,18 @@ import { createPortal } from 'react-dom';
 import type { Playlist } from '../services/MusicLibrary';
 import './PlaylistOptionsMenu.css';
 
-export type PlaylistAction = 'rename' | 'mix-cover-art' | 'delete' | 'play-now' | 'add-to-queue';
+export type PlaylistAction =
+  | 'rename'
+  | 'mix-cover-art'
+  | 'delete'
+  | 'play-now'
+  | 'add-to-queue'
+  | 'sync-to-device';
 
 interface PlaylistOptionsMenuProps {
   playlist: Playlist;
   className?: string;
+  isDesktopApp?: boolean;
   onAction: (playlist: Playlist, action: PlaylistAction) => void;
   children: ReactNode;
 }
@@ -19,11 +26,13 @@ const MENU_ACTIONS: Array<{ id: PlaylistAction; label: string; icon: string }> =
   { id: 'delete', label: 'Delete', icon: 'delete' },
   { id: 'play-now', label: 'Play now', icon: 'play_arrow' },
   { id: 'add-to-queue', label: 'Add to play queue', icon: 'queue_music' },
+  { id: 'sync-to-device', label: 'Add to device', icon: 'usb' },
 ];
 
 const PlaylistOptionsMenu = ({
   playlist,
   className = '',
+  isDesktopApp = false,
   onAction,
   children,
 }: PlaylistOptionsMenuProps) => {
@@ -99,7 +108,9 @@ const PlaylistOptionsMenu = ({
           style={{ position: 'fixed', top: position.y, left: position.x, zIndex: 1200 }}
           onClick={(event) => event.stopPropagation()}
         >
-          {MENU_ACTIONS.map((action) => (
+          {MENU_ACTIONS.filter(
+            (action) => isDesktopApp || action.id !== 'sync-to-device'
+          ).map((action) => (
             <button
               type="button"
               className={`playlist-options-item ${action.id === 'delete' ? 'is-destructive' : ''}`}

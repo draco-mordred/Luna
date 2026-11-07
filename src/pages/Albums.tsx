@@ -29,6 +29,7 @@ interface AlbumsPageProps {
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  onSyncTracks?: (tracks: Track[]) => void;
 }
 
 interface AlbumCardProps {
@@ -175,7 +176,13 @@ const formatDuration = (seconds: number) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
-const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: AlbumsPageProps) => {
+const AlbumsPage = ({
+  tracks,
+  onPlayTrack,
+  onShufflePlay,
+  onQueueTracks,
+  onSyncTracks,
+}: AlbumsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'artist' | 'year' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -310,6 +317,7 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
                     key={album.id}
                     tracks={album.tracks}
                     onQueueTracks={onQueueTracks}
+                    onSyncTracks={onSyncTracks}
                   >
                     <AlbumCard
                       album={album}
@@ -326,6 +334,7 @@ const AlbumsPage = ({ tracks, onPlayTrack, onShufflePlay, onQueueTracks }: Album
                     key={album.id}
                     tracks={album.tracks}
                     onQueueTracks={onQueueTracks}
+                    onSyncTracks={onSyncTracks}
                   >
                     <AlbumListItem
                       album={album}

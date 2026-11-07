@@ -75,6 +75,7 @@ const CollectionDetails = lazy(() => import('./pages/CollectionDetails'));
 const PlaylistsPage = lazy(() => import('./pages/Playlists'));
 const RadioPage = lazy(() => import('./pages/Radio'));
 const PlayQueuePage = lazy(() => import('./pages/PlayQueue'));
+const SyncPage = lazy(() => import('./pages/Sync'));
 
 const ANDROID_LIBRARY_ROUTES = ['/tracks', '/albums', '/artists', '/composer', '/genres'];
 
@@ -2321,11 +2322,21 @@ const App = () => {
             setLibraryError(`“${playlist.name}” has no available tracks to queue.`);
           }
           break;
+        case 'sync-to-device':
+          if (window.electronAPI) {
+            navigate('/sync', {
+              state: {
+                syncTrackIds: playlistTracks.map((track) => track.id),
+                syncPlaylistIds: [playlist.id],
+              },
+            });
+          }
+          break;
         default:
           break;
       }
     },
-    [handleQueueTracks, libraryTracks, persistPlaylists, playTrack, playlists]
+    [handleQueueTracks, libraryTracks, navigate, persistPlaylists, playTrack, playlists]
   );
 
   const handleAddTracksToPlaylist = useCallback(
@@ -2508,6 +2519,11 @@ const App = () => {
     setLovedTrackIds((current) =>
       current.includes(track.id) ? current.filter((id) => id !== track.id) : [...current, track.id]
     );
+  };
+  const handleSyncTracks = (tracksToSync: Track[] | Track) => {
+    if (!window.electronAPI) return;
+    const selectedTracks = Array.isArray(tracksToSync) ? tracksToSync : [tracksToSync];
+    navigate('/sync', { state: { syncTrackIds: selectedTracks.map((track) => track.id) } });
   };
   const handleSuggestTrackLess = (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
@@ -2803,6 +2819,7 @@ const App = () => {
           showBrowseSection={showBrowseSection}
           showRadioSection={showRadioSection}
           isAndroidApp={isAndroidApp}
+          isDesktopApp={Boolean(window.electronAPI)}
         />
 
         {/* Main Content Area */}
@@ -2869,6 +2886,7 @@ const App = () => {
                           playlists={playlists}
                           onAddTracksToPlaylist={handleAddTracksToPlaylist}
                           onEditTrack={handleOpenTrackMetadata}
+                          onSyncTrack={handleSyncTracks}
                           onAddMusicFolder={handleSelectMusicFolders}
                         />
                       }
@@ -2896,6 +2914,7 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onQueueTracks={handleQueueTracks}
+                          onSyncTracks={handleSyncTracks}
                         />
                       }
                     />
@@ -2919,6 +2938,7 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onQueueTracks={handleQueueTracks}
+                          onSyncTracks={handleSyncTracks}
                         />
                       }
                     />
@@ -2977,8 +2997,23 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onPlaylistAction={handlePlaylistAction}
+                          isDesktopApp={Boolean(window.electronAPI)}
                           message={libraryError}
                         />
+                      }
+                    />
+                    <Route
+                      path='/sync'
+                      element={
+                        window.electronAPI ? (
+                          <SyncPage
+                            tracks={libraryTracks}
+                            playlists={playlists}
+                            lovedTrackIds={lovedTrackIds}
+                          />
+                        ) : (
+                          <Navigate to='/' replace />
+                        )
                       }
                     />
                     <Route

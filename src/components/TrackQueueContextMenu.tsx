@@ -10,6 +10,7 @@ interface TrackQueueContextMenuProps {
   playlists?: Playlist[];
   onAddTracksToPlaylist?: (playlistId: string, tracks: Track[]) => void;
   onEditTrack?: (track: Track) => void;
+  onSyncTrack?: (track: Track) => void;
   children: ReactNode;
 }
 
@@ -19,6 +20,7 @@ const TrackQueueContextMenu = ({
   playlists = [],
   onAddTracksToPlaylist,
   onEditTrack,
+  onSyncTrack,
   children,
 }: TrackQueueContextMenuProps) => {
   const [menu, setMenu] = useState<{ track: Track; x: number; y: number } | null>(null);
@@ -146,6 +148,19 @@ const TrackQueueContextMenu = ({
                 }}
               >
                 Info
+              </button>
+            )}
+            {onSyncTrack && (
+              <button
+                type='button'
+                className='queue-context-menu-item'
+                role='menuitem'
+                onClick={() => {
+                  onSyncTrack(menu.track);
+                  setMenu(null);
+                }}
+              >
+                Add to device
               </button>
             )}
             <button

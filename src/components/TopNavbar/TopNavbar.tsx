@@ -213,23 +213,27 @@ const TopNavbar = ({
 
   const path = location.pathname.split('/')[1] ?? '';
   const libraryTab = LIBRARY_TABS.find((tab) => tab.id === path);
-  const section: Section = libraryTab
-    ? 'library'
-    : path === ''
-      ? 'home'
-      : path === 'tracks'
-      ? 'library'
-      : path === 'queue'
-        ? 'queue'
-      : path.startsWith('settings')
-        ? 'settings'
-        : path === 'playlists'
-          ? 'playlists'
-        : path === 'browse' ||
-            path === 'radio' ||
-            path === 'search'
-          ? path
-          : 'library';
+  const section: Section | null = (() => {
+    if (libraryTab || path === 'tracks') return 'library';
+    if (!path) return 'home';
+    if (path === 'queue') return 'queue';
+    if (path.startsWith('settings')) return 'settings';
+    if (path === 'playlists') return 'playlists';
+    if (path === 'browse') return 'browse';
+    if (path === 'radio') return 'radio';
+    if (path === 'search') return 'search';
+    return null;
+  })();
+  const pageTitle =
+    (section && SECTION_TITLES[section]) ??
+    (path === 'sync' ? 'USB Sync' : null) ??
+    (path
+      ? path
+          .split(/[-_]/)
+          .filter(Boolean)
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ')
+      : SECTION_TITLES.home);
   const canNavigateBack = isAndroidApp && path !== '' && path !== 'tracks';
 
   // Handle tab change
@@ -315,7 +319,7 @@ const TopNavbar = ({
             <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
           </button>
         )}
-        <h1 className="navbar-title">{SECTION_TITLES[section]}</h1>
+        <h1 className="navbar-title">{pageTitle}</h1>
         {section === 'library' && (
           <div className="tabs-container" role="tablist" aria-label="Library views">
             {LIBRARY_TABS.map((tab) => (

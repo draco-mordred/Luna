@@ -1,0 +1,301 @@
+.sync-page {
+  display: grid;
+  width: min(1120px, 100%);
+  gap: 20px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--text-primary);
+}
+
+.sync-page-header,
+.sync-tracks-heading,
+.sync-device-row,
+.sync-track-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sync-page-header h1 {
+  margin: 2px 0 6px;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+}
+
+.sync-page-header p,
+.sync-card-heading p,
+.sync-tracks-heading p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.sync-eyebrow {
+  color: var(--system-accent) !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sync-setup-card,
+.sync-tracks-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+}
+
+.sync-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sync-card-heading > .material-symbols-outlined {
+  color: var(--system-accent);
+  font-size: 1.8rem;
+}
+
+.sync-card-heading h2,
+.sync-tracks-heading h2 {
+  margin: 0 0 4px;
+  font-size: 1.12rem;
+}
+
+.sync-setup-steps {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  padding-left: 24px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.sync-setup-steps code,
+.sync-safety-note code {
+  color: var(--text-primary);
+}
+
+.sync-device-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.sync-device-select {
+  display: grid;
+  flex: 1 1 320px;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.sync-device-select select,
+.sync-search input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.sync-adb-path {
+  overflow: hidden;
+  max-width: 240px;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-primary-button,
+.sync-secondary-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sync-primary-button {
+  border-color: color-mix(in srgb, var(--system-accent) 70%, var(--border));
+  background: var(--system-accent);
+  color: var(--text-on-accent);
+}
+
+.sync-secondary-button {
+  background: var(--surface-subtle);
+}
+
+.sync-primary-button:disabled,
+.sync-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.sync-primary-button .material-symbols-outlined,
+.sync-secondary-button .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.sync-inline-notice,
+.sync-error,
+.sync-success,
+.sync-progress {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
+}
+
+.sync-inline-notice,
+.sync-progress {
+  color: var(--text-secondary);
+}
+
+.sync-error {
+  color: #ff8282;
+}
+
+.sync-success {
+  color: #81d6a1;
+}
+
+.sync-tracks-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+}
+
+.sync-track-tools {
+  justify-content: flex-start;
+  margin: 16px 0 10px;
+}
+
+.sync-search {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-search > .material-symbols-outlined {
+  color: var(--text-tertiary);
+}
+
+.sync-search input {
+  width: 100%;
+}
+
+.sync-text-button {
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--system-accent);
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.sync-track-list {
+  min-height: 180px;
+  max-height: min(52vh, 560px);
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-track-row {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  cursor: pointer;
+}
+
+.sync-track-row:last-child {
+  border-bottom: 0;
+}
+
+.sync-track-row:hover {
+  background: var(--hover);
+}
+
+.sync-track-row input {
+  accent-color: var(--system-accent);
+}
+
+.sync-track-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.sync-track-copy strong,
+.sync-track-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-track-copy strong {
+  font-size: 0.9rem;
+}
+
+.sync-track-copy span,
+.sync-track-size {
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+}
+
+.sync-track-size {
+  flex: 0 0 auto;
+}
+
+.sync-empty-state {
+  padding: 28px 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.sync-safety-note {
+  margin: 12px 0 0;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .sync-page {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .sync-page-header,
+  .sync-tracks-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sync-setup-card,
+  .sync-tracks-card {
+    padding: 14px;
+  }
+
+  .sync-track-tools {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+}

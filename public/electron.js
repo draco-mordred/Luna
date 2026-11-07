@@ -15,7 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { Readable } = require('stream');
-const { execFileSync } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const { parseFile, selectCover } = require('music-metadata');
 const { ByteVector, File: TagLibFile, Picture, PictureType } = require('node-taglib-sharp');
 const { extractEmbeddedLyrics } = require('./lyrics');
@@ -181,7 +181,81 @@ const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.ini')
 const getLegacySettingsPath = () => path.join(app.getPath('userData'), 'app-settings.json');
 const getAudiomackCredentialsPath = () =>
   path.join(app.getPath('userData'), 'audiomack-credentials.bin');
+const getUsbSyncSettingsPath = () => path.join(app.getPath('userData'), 'usb-sync-settings.json');
 const getArtworkPath = (fileName) => path.join(app.getPath('userData'), 'artwork', fileName);
+const USB_SYNC_DIRECTORY = '/sdcard/Luna music';
+const runExecutable = (executable, args, options = {}) =>
+  new Promise((resolve, reject) => {
+    execFile(
+      executable,
+      args,
+      { encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024, ...options },
+      (error, stdout, stderr) => {
+        if (error) {
+          error.message = (stderr || error.message).trim();
+          reject(error);
+          return;
+        }
+        resolve({ stdout, stderr });
+      }
+    );
+  });
+const getConfiguredAdbPath = async () => {
+  const saved = await readJsonFile(getUsbSyncSettingsPath(), {});
+  if (
+    saved &&
+    typeof saved === 'object' &&
+    typeof saved.adbPath === 'string' &&
+    fs.existsSync(saved.adbPath)
+  ) {
+    return saved.adbPath;
+  }
+
+  const platformTools = process.platform === 'win32' ? 'adb.exe' : 'adb';
+  const candidates = [
+    process.env.ANDROID_HOME && path.join(process.env.ANDROID_HOME, 'platform-tools', platformTools),
+    process.env.ANDROID_SDK_ROOT &&
+      path.join(process.env.ANDROID_SDK_ROOT, 'platform-tools', platformTools),
+    process.env.LOCALAPPDATA &&
+      path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk', 'platform-tools', platformTools),
+    process.env.HOME &&
+      path.join(process.env.HOME, 'Android', 'Sdk', 'platform-tools', platformTools),
+  ].filter(Boolean);
+  const candidate = candidates.find((candidatePath) => fs.existsSync(candidatePath));
+  if (candidate) return candidate;
+
+  try {
+    const lookupCommand = process.platform === 'win32' ? 'where.exe' : 'which';
+    const lookup = execFileSync(lookupCommand, [platformTools], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const foundPath = lookup.split(/\r?\n/).find((line) => line.trim());
+    if (foundPath) return foundPath.trim();
+  } catch {
+    return null;
+  }
+  return null;
+};
+const getUsbSyncDevices = async (adbPath) => {
+  const { stdout } = await runExecutable(adbPath, ['devices', '-l'], { timeout: 15000 });
+  return stdout
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [serial, state, ...details] = line.split(/\s+/);
+      const status = ['device', 'unauthorized', 'offline'].includes(state) ? state : 'other';
+      const modelValue = details.find((detail) => detail.startsWith('model='));
+      return {
+        serial,
+        status,
+        model: modelValue ? modelValue.slice('model='.length).replace(/_/g, ' ') : null,
+      };
+    });
+};
 const supportsWindowMaterial =
   process.platform === 'win32' && Number.parseInt(os.release().split('.')[2] || '0', 10) >= 22621;
 const normalizeWindowMaterial = (settings) => {
@@ -1272,6 +1346,225 @@ ipcMain.handle('load-release-notes', async (_event, version) => {
     throw new TypeError('The previous release notes index is invalid.');
   }
   return { current, previous: parsedPrevious };
+});
+ipcMain.handle('get-usb-sync-status', async () => {
+  const adbPath = await getConfiguredAdbPath();
+  if (!adbPath) return { adbPath: null, devices: [] };
+  return { adbPath, devices: await getUsbSyncDevices(adbPath) };
+});
+ipcMain.handle('select-usb-sync-adb', async () => {
+  const dialogOptions = {
+    title: 'Select Android Platform Tools',
+    properties: ['openFile'],
+  };
+  if (process.platform === 'win32') {
+    dialogOptions.filters = [{ name: 'ADB executable', extensions: ['exe'] }];
+  }
+  const selection = await dialog.showOpenDialog(mainWindow, dialogOptions);
+  if (selection.canceled || selection.filePaths.length === 0) return null;
+
+  const adbPath = selection.filePaths[0];
+  const executableName = path.basename(adbPath).toLowerCase();
+  if (executableName !== (process.platform === 'win32' ? 'adb.exe' : 'adb')) {
+    throw new TypeError('Select the adb executable from the Android SDK platform-tools folder.');
+  }
+  await runExecutable(adbPath, ['version'], { timeout: 15000 });
+  await writeJsonFile(getUsbSyncSettingsPath(), { adbPath });
+  return { adbPath, devices: await getUsbSyncDevices(adbPath) };
+});
+ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
+  if (
+    !options ||
+    typeof options.serial !== 'string' ||
+    !options.serial.trim() ||
+    options.serial.length > 1024 ||
+    !Array.isArray(options.tracks)
+  ) {
+    throw new TypeError('The Android sync request is invalid.');
+  }
+  if (options.tracks.length === 0 || options.tracks.length > 2000) {
+    throw new TypeError('Select between 1 and 2,000 library tracks to sync.');
+  }
+  if (
+    !Array.isArray(options.playlists) ||
+    options.playlists.length > 1000 ||
+    !Array.isArray(options.lovedTrackIds) ||
+    options.lovedTrackIds.length > 50000 ||
+    !options.lovedTrackIds.every(
+      (trackId) => typeof trackId === 'string' && trackId.length <= 256
+    )
+  ) {
+    throw new TypeError('Playlist or favorite metadata is invalid for Android sync.');
+  }
+
+  let totalPlaylistTrackIds = 0;
+  const manifestPlaylists = options.playlists.map((playlist) => {
+    if (
+      !playlist ||
+      typeof playlist.id !== 'string' ||
+      playlist.id.length > 256 ||
+      typeof playlist.name !== 'string' ||
+      playlist.name.length > 256 ||
+      !Array.isArray(playlist.trackIds) ||
+      playlist.trackIds.length > 10000 ||
+      !playlist.trackIds.every((trackId) => typeof trackId === 'string' && trackId.length <= 256)
+    ) {
+      throw new TypeError('Playlist metadata is invalid for Android sync.');
+    }
+    totalPlaylistTrackIds += playlist.trackIds.length;
+    if (totalPlaylistTrackIds > 50000) {
+      throw new TypeError('Playlist metadata exceeds the Android sync limit.');
+    }
+    return {
+      id: playlist.id,
+      name: playlist.name,
+      trackIds: playlist.trackIds,
+    };
+  });
+
+  const adbPath = await getConfiguredAdbPath();
+  if (!adbPath) throw new Error('Android Platform Tools (ADB) was not found. Select adb first.');
+  const devices = await getUsbSyncDevices(adbPath);
+  const device = devices.find((candidate) => candidate.serial === options.serial);
+  if (!device || device.status !== 'device') {
+    throw new Error('The selected Android device is no longer authorized. Reconnect it and approve the USB debugging prompt.');
+  }
+
+  const library = await readLibraryConfig();
+  const normalizeTrackPath = (trackPath) =>
+    process.platform === 'win32' ? path.resolve(trackPath).toLowerCase() : path.resolve(trackPath);
+  const libraryTracks = new Map(
+    library.tracks
+      .filter((track) => typeof track.path === 'string')
+      .map((track) => [normalizeTrackPath(track.path), track])
+  );
+  const selectedTracks = options.tracks.map((selection) => {
+    if (!selection || typeof selection.path !== 'string' || typeof selection.id !== 'string') {
+      throw new TypeError('A selected track reference is invalid.');
+    }
+    const track = libraryTracks.get(normalizeTrackPath(selection.path));
+    if (!track || track.id !== selection.id || !indexedAudioPaths.has(track.path)) {
+      throw new Error('A selected track is no longer part of the indexed music library. Rescan and try again.');
+    }
+    if (!AUDIO_EXTENSIONS.has(path.extname(track.path).toLowerCase())) {
+      throw new Error(`"${path.basename(track.path)}" is not a supported audio format.`);
+    }
+    return track;
+  });
+  if (
+    new Set(selectedTracks.map((track) => normalizeTrackPath(track.path))).size !==
+    selectedTracks.length
+  ) {
+    throw new TypeError('The selected tracks contain duplicates.');
+  }
+
+  await runExecutable(adbPath, [
+    '-s',
+    device.serial,
+    'shell',
+    `mkdir -p '${USB_SYNC_DIRECTORY}'`,
+  ]);
+  const { stdout: remoteListing } = await runExecutable(adbPath, [
+    '-s',
+    device.serial,
+    'shell',
+    `ls -1 '${USB_SYNC_DIRECTORY}'`,
+  ]);
+  const existingFiles = new Set(remoteListing.split(/\r?\n/).map((line) => line.trim()));
+  const manifestTracks = [];
+  let copied = 0;
+  let skipped = 0;
+  const sendSyncProgress = (phase, current, fileName, trackName) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('usb-sync-progress', {
+      phase,
+      current,
+      total: selectedTracks.length,
+      trackName,
+      fileName,
+    });
+  };
+
+  const hashTrack = (trackPath) =>
+    new Promise((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
+      const stream = fs.createReadStream(trackPath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('error', reject);
+      stream.on('end', () => resolve(hash.digest('hex')));
+    });
+
+  for (let index = 0; index < selectedTracks.length; index += 1) {
+    const track = selectedTracks[index];
+    const fileName = path.basename(track.path);
+    sendSyncProgress('preparing', index, fileName, track.name || fileName);
+    const stat = await fs.promises.stat(track.path);
+    if (!stat.isFile()) throw new Error(`"${fileName}" is no longer a file.`);
+    const sha256 = await hashTrack(track.path);
+    const extension = path.extname(fileName).toLowerCase();
+    const originalName = path.basename(fileName, path.extname(fileName));
+    const safeName =
+      originalName
+        .replace(/[<>:"/\\|?*\u0000-\u001f']/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 100) || 'Track';
+    const destinationName = `${safeName} [${sha256.slice(0, 12)}]${extension}`;
+
+    manifestTracks.push({
+      id: track.id,
+      sha256,
+      fileName: destinationName,
+      name: track.name,
+      artist: track.artist,
+      album: track.album,
+      duration: track.duration,
+      size: stat.size,
+    });
+    if (existingFiles.has(destinationName)) {
+      skipped += 1;
+      sendSyncProgress('copying', index + 1, fileName, track.name || fileName);
+      continue;
+    }
+    await runExecutable(
+      adbPath,
+      ['-s', device.serial, 'push', track.path, `${USB_SYNC_DIRECTORY}/${destinationName}`],
+      { timeout: 15 * 60 * 1000 }
+    );
+    existingFiles.add(destinationName);
+    copied += 1;
+    sendSyncProgress('copying', index + 1, fileName, track.name || fileName);
+  }
+
+  const manifest = {
+    formatVersion: 1,
+    createdAt: new Date().toISOString(),
+    source: 'Luna Desktop',
+    tracks: manifestTracks,
+    playlists: manifestPlaylists,
+    lovedTrackIds: options.lovedTrackIds,
+  };
+  const manifestPath = path.join(os.tmpdir(), `luna-sync-${crypto.randomUUID()}.json`);
+  try {
+    await fs.promises.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+    sendSyncProgress(
+      'manifest',
+      selectedTracks.length,
+      'luna-sync-manifest.json',
+      'Playlist and favorite details'
+    );
+    await runExecutable(adbPath, [
+      '-s',
+      device.serial,
+      'push',
+      manifestPath,
+      `${USB_SYNC_DIRECTORY}/luna-sync-manifest.json`,
+    ]);
+  } finally {
+    await fs.promises.rm(manifestPath, { force: true });
+  }
+
+  return { copied, skipped, manifestWritten: true };
 });
 ipcMain.handle('save-playlists', async (_event, playlists) => {
   if (!Array.isArray(playlists)) throw new TypeError('Playlists must be an array.');

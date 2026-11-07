@@ -15,6 +15,7 @@ interface SidebarProps {
   showBrowseSection: boolean;
   showRadioSection: boolean;
   isAndroidApp: boolean;
+  isDesktopApp: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   showBrowseSection,
   showRadioSection,
   isAndroidApp,
+  isDesktopApp,
 }) => {
   const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const [playlistsExpanded, setPlaylistsExpanded] = useState(false);
@@ -133,6 +135,19 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <span className='nav-icon'>radio</span>
                 {!collapsed && <span className='nav-label'>Radio</span>}
+              </Link>
+            </li>
+          )}
+
+          {isDesktopApp && (
+            <li className='nav-item'>
+              <Link
+                to='/sync'
+                className={`nav-button ${activeSection === 'sync' ? 'active' : ''}`}
+                title={collapsed ? 'USB Sync' : undefined}
+              >
+                <span className='nav-icon'>usb</span>
+                {!collapsed && <span className='nav-label'>USB Sync</span>}
               </Link>
             </li>
           )}

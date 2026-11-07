@@ -10,6 +10,7 @@ interface QueueContextMenuProps {
   children: ReactNode;
   asListItem?: boolean;
   lockPageScroll?: boolean;
+  onSyncTracks?: (tracks: Track[]) => void;
 }
 
 const QueueContextMenu = ({
@@ -18,6 +19,7 @@ const QueueContextMenu = ({
   children,
   asListItem = false,
   lockPageScroll = false,
+  onSyncTracks,
 }: QueueContextMenuProps) => {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,20 @@ const QueueContextMenu = ({
             {action.label}
           </button>
         ))}
+        {onSyncTracks && (
+          <button
+            type='button'
+            className='queue-context-menu-item'
+            role='menuitem'
+            disabled={tracks.length === 0}
+            onClick={() => {
+              onSyncTracks(tracks);
+              setPosition(null);
+            }}
+          >
+            Add {tracks.length === 1 ? 'track' : `${tracks.length} tracks`} to device
+          </button>
+        )}
       </div>,
       document.body
     );

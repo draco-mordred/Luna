@@ -112,6 +112,7 @@ interface ArtistsPageProps {
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  onSyncTracks?: (tracks: Track[]) => void;
 }
 
 const ArtistsPage = ({
@@ -120,6 +121,7 @@ const ArtistsPage = ({
   onPlayTrack,
   onShufflePlay,
   onQueueTracks,
+  onSyncTracks,
 }: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -240,6 +242,7 @@ const ArtistsPage = ({
                 key={artist.id}
                 tracks={artist.tracks}
                 onQueueTracks={onQueueTracks}
+                onSyncTracks={onSyncTracks}
               >
                 <ArtistCard
                   artist={artist}

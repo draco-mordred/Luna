@@ -46,6 +46,73 @@
   object-fit: contain;
 }
 
+.window-titlebar-sync {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  display: flex;
+  width: min(440px, calc(100% - 280px));
+  min-width: 0;
+  height: 27px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  padding: 0 8px 3px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.window-titlebar-sync-icon {
+  flex: 0 0 auto;
+  color: var(--system-accent);
+  font-size: 15px;
+}
+
+.window-titlebar-sync.running .window-titlebar-sync-icon {
+  animation: window-titlebar-sync-spin 1.2s linear infinite;
+}
+
+.window-titlebar-sync.complete .window-titlebar-sync-icon {
+  color: #43b581;
+}
+
+.window-titlebar-sync.error .window-titlebar-sync-icon {
+  color: #e05b5b;
+}
+
+.window-titlebar-sync-label {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-titlebar-sync-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--system-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.window-titlebar-sync-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--system-accent);
+  transition: width 240ms ease;
+}
+
+.window-titlebar.syncing-complete .window-titlebar-sync-progress > span {
+  background: #43b581;
+}
+
 .window-titlebar-controls {
   display: flex;
   height: 100%;
@@ -77,4 +144,34 @@
 .window-titlebar-button .material-symbols-outlined {
   font-size: 1rem;
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+@keyframes window-titlebar-sync-spin {
+  0% {
+    transform: rotate(0deg) scale(0.82);
+  }
+
+  50% {
+    transform: rotate(180deg) scale(1.12);
+  }
+
+  100% {
+    transform: rotate(360deg) scale(0.82);
+  }
+}
+
+@media (max-width: 560px) {
+  .window-titlebar-sync {
+    width: calc(100% - 190px);
+  }
+
+  .window-titlebar-sync-label {
+    font-size: 0.62rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-titlebar-sync.running .window-titlebar-sync-icon {
+    animation-duration: 3s;
+  }
 }

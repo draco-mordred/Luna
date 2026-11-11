@@ -565,14 +565,21 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
   const dragFrameRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
+  const dragVelocityRef = useRef(0);
+  const lastDragSampleRef = useRef<{ y: number; t: number } | null>(null);
+  const commitDurationClearRef = useRef<number | null>(null);
   const visualizerLocationRef = useRef<string | null>(null);
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
+  const [commitDuration, setCommitDuration] = useState<number | null>(null);
 
   useEffect(
     () => () => {
       if (favoriteCelebrationTimeoutRef.current !== null) {
         window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+      }
+      if (commitDurationClearRef.current !== null) {
+        window.clearTimeout(commitDurationClearRef.current);
       }
     },
     []
@@ -989,6 +996,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
       if (dragStartYRef.current === null) return;
       const deltaY = dragStartYRef.current - event.clientY;
       if (Math.abs(deltaY) > 4) didDragRef.current = true;
+      const sampleTime = event.timeStamp;
+      const previousSample = lastDragSampleRef.current;
+      if (previousSample) {
+        const elapsed = sampleTime - previousSample.t;
+        if (elapsed > 0) {
+          // Positive velocity = dragging upward = expanding (px per ms)
+          const instantVelocity = (previousSample.y - event.clientY) / elapsed;
+          dragVelocityRef.current =
+            dragVelocityRef.current * 0.6 + instantVelocity * 0.4;
+        }
+      }
+      lastDragSampleRef.current = { y: event.clientY, t: sampleTime };
       const nextHeight = Math.max(
         COLLAPSED_HEIGHT,
         Math.min(getExpandedHeight(), dragStartHeightRef.current + deltaY)
@@ -1011,11 +1030,38 @@ const PlayBar: React.FC<PlayBarProps> = ({
     const handlePointerEnd = () => {
       if (dragStartYRef.current === null) return;
       dragStartYRef.current = null;
+      lastDragSampleRef.current = null;
       if (dragFrameRef.current !== null) {
         window.cancelAnimationFrame(dragFrameRef.current);
         dragFrameRef.current = null;
       }
-      const shouldExpand = currentHeightRef.current > (COLLAPSED_HEIGHT + getExpandedHeight()) / 2;
+      // Velocity-aware commit: a fast flick (>= 0.55 px/ms) decides the
+      // direction regardless of how far the bar was dragged.
+      const velocity = dragVelocityRef.current;
+      dragVelocityRef.current = 0;
+      const midpoint = (COLLAPSED_HEIGHT + getExpandedHeight()) / 2;
+      const shouldExpand =
+        Math.abs(velocity) >= 0.55
+          ? velocity > 0
+          : currentHeightRef.current > midpoint;
+      const remainingDistance = shouldExpand
+        ? getExpandedHeight() - currentHeightRef.current
+        : currentHeightRef.current - COLLAPSED_HEIGHT;
+      // Faster flicks (or short remaining distances) produce a snappier
+      // commit animation: 420ms base down to ~180ms.
+      const speedFactor = Math.min(
+        1,
+        Math.max(Math.abs(velocity), remainingDistance / 420) / 1.6
+      );
+      const nextCommitDuration = Math.round(420 - speedFactor * 240);
+      if (commitDurationClearRef.current !== null) {
+        window.clearTimeout(commitDurationClearRef.current);
+      }
+      setCommitDuration(nextCommitDuration);
+      commitDurationClearRef.current = window.setTimeout(() => {
+        commitDurationClearRef.current = null;
+        setCommitDuration(null);
+      }, nextCommitDuration + 60);
       setState(shouldExpand ? 'expanded' : 'collapsed');
       setHeight(currentHeightRef.current);
       setIsDragging(false);
@@ -1040,9 +1086,23 @@ const PlayBar: React.FC<PlayBarProps> = ({
       )
     )
       return;
+    // When the Now Playing screen is already open, only allow the
+    // collapse drag to begin from the top region of the screen so that
+    // interacting with lyrics, sliders or the artwork never drags it shut.
+    if (state === 'expanded') {
+      const barRect = playBarRef.current?.getBoundingClientRect();
+      if (barRect) {
+        const topZoneHeight = Math.max(48, Math.min(barRect.height * 0.16, 120));
+        if (event.clientY - barRect.top > topZoneHeight && !target.closest('.drag-handle')) {
+          return;
+        }
+      }
+    }
     dragStartYRef.current = event.clientY;
     dragStartHeightRef.current = currentHeightRef.current;
     didDragRef.current = false;
+    dragVelocityRef.current = 0;
+    lastDragSampleRef.current = { y: event.clientY, t: event.timeStamp };
     if (state === 'collapsed') setState('expanded');
     setIsDragging(true);
   };
@@ -1340,6 +1400,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
     height: `${displayHeight}px`,
     '--expand-progress': expandProgress,
+    ...(commitDuration !== null ? { transitionDuration: `${commitDuration}ms` } : {}),
   };
 
   return (
@@ -1449,7 +1510,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               if (
                 !track ||
                 target.closest(
-                  'button, input, select, textarea, a, [role="button"], .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .track-menu-popover'
+                  'button, input, select, textarea, a, [role="button"], .album-art, .track-info, .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .np-android-volume, .np-android-bottom-actions, .now-playing-header, .drag-handle, .track-menu-popover, .now-playing-artist-background, .player-mode-background'
                 )
               ) {
                 return;
@@ -2555,5 +2616,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
 };
 
 export default PlayBar;
+
 
 

@@ -4371,18 +4371,18 @@ html[data-android-app='true'] .track-menu-timing-label {
 
   /* Artwork: large rounded card, no accent border */
   html[data-android-app='true'] .now-playing-container > .album-art {
-    width: min(calc(100vw - 48px), 44vh);
+    width: min(calc(100vw - 48px), 33dvh);
     min-height: 0;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
     border: 0;
-    border-radius: 12px;
+    border-radius: 22px;
     box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 55%, transparent);
   }
 
   html[data-android-app='true'] .now-playing-container > .album-art img,
   html[data-android-app='true'] .now-playing-container > .album-art .default-art,
   html[data-android-app='true'] .now-playing-container > .album-art .track-image-crossfade {
-    border-radius: 12px;
+    border-radius: 22px;
   }
 
   /* Track info: left-aligned title and artist, "..." menu on the right */
@@ -4588,4 +4588,105 @@ html[data-android-app='true'] .track-menu-timing-label {
     opacity: 0.4;
     cursor: default;
   }
+
+  /* ===== Android phone: album art scale states (squircle, ~1/3 of screen height) ===== */
+  html[data-android-app='true'] .now-playing-container {
+    --np-art-scale: 1;
+  }
+
+  html[data-android-app='true'] .now-playing-container[data-playback-state='paused'] {
+    --np-art-scale: 0.75;
+  }
+
+  html[data-android-app='true'] .now-playing-container.has-synced-lyric {
+    --np-art-scale: 0.65;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .album-art {
+    transform: translate3d(0, calc((1 - var(--expand-progress)) * 24vh), 0)
+      scale(calc(var(--np-art-scale) * (0.25 + var(--expand-progress) * 0.75)));
+    transition:
+      transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 220ms ease;
+  }
+
+  /* Scale is applied by the container; neutralize the inner paused shrink */
+  html[data-android-app='true'] .now-playing-container[data-playback-state='paused'] > .album-art .track-image-crossfade,
+  html[data-android-app='true'] .now-playing-container[data-playback-state='paused'] > .album-art > .default-art {
+    transform: none;
+  }
+
+  /* ===== Android phone: synced lyrics gap between track info and seek bar ===== */
+  html[data-android-app='true'] .now-playing-container > .synced-lyric-caption {
+    position: static;
+    width: 100%;
+    min-height: 0;
+    max-height: 0;
+    padding: 0;
+    margin: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition:
+      max-height 460ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      padding 460ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      margin 460ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 320ms ease,
+      visibility 0s linear 460ms;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .synced-lyric-caption.is-visible {
+    max-height: 170px;
+    padding: 6px 16px;
+    margin: 0 0 6px;
+    opacity: 1;
+  }
+
+  /* ===== Android phone: plain lyrics glassmorphism popup over the lower half of the artwork ===== */
+  html[data-android-app='true'] .now-playing-container > .lyrics-panel {
+    top: calc(52px + 16.5dvh);
+    bottom: 200px;
+    left: 50%;
+    width: min(calc(100vw - 48px), 33dvh);
+    margin-left: calc(min(calc(100vw - 48px), 33dvh) / -2);
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    backdrop-filter: blur(26px) saturate(160%);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 45%, transparent);
+  }
+
+  /* ===== Android phone: transport button animations ===== */
+  @keyframes np-play-pause-pop {
+    0% {
+      transform: scale(0.78);
+    }
+    60% {
+      transform: scale(1.07);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  html[data-android-app='true'] .now-playing-container[data-playback-state='playing'] .expanded-controls .control-btn.play-pause {
+    animation: np-play-pause-pop 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  html[data-android-app='true'] .now-playing-container[data-playback-state='paused'] .expanded-controls .control-btn.play-pause {
+    animation: np-play-pause-pop 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  html[data-android-app='true'] .now-playing .expanded-controls .control-btn {
+    transition:
+      background 160ms ease,
+      color 160ms ease,
+      transform 140ms ease;
+  }
+
+  html[data-android-app='true'] .now-playing .expanded-controls .control-btn:active:not(:disabled) {
+    transform: scale(0.84);
+  }
 }
+

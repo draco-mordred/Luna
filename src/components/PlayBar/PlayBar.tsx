@@ -5,6 +5,7 @@ import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex'
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
+import { isAndroidApp } from '../../services/androidMusicLibrary';
 import './PlayBar.css';
 import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
 import type { Playlist, Track } from '../../services/MusicLibrary';
@@ -496,6 +497,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 }) => {
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: trackArtworkUrl } = useAndroidAlbumArtwork(track, true);
+  const androidApp = isAndroidApp();
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
     allowDownload: showArtistImageBackground,
@@ -1581,7 +1583,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                       onClick={toggleTrackMenu}
                     >
                       <span className='material-symbols-outlined' aria-hidden='true'>
-                        more_vert
+                        {androidApp ? 'more_horiz' : 'more_vert'}
                       </span>
                     </button>
                     {isTrackMenuMounted && (
@@ -1973,6 +1975,56 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <TransportIcon name={getRepeatIcon()} />
               </button>
             </div>
+
+            {/* Android: Apple Music-style inline volume row */}
+            {androidApp && (
+              <div className='np-android-volume'>
+                <span className='material-symbols-outlined np-android-volume-icon' aria-hidden='true'>
+                  {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+                </span>
+                <input
+                  aria-label='Volume'
+                  type='range'
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(event) => onVolumeChange(event.currentTarget.valueAsNumber)}
+                  className='np-android-volume-slider'
+                  style={volumeSliderStyle}
+                />
+                <span className='material-symbols-outlined np-android-volume-icon' aria-hidden='true'>
+                  volume_up
+                </span>
+              </div>
+            )}
+
+            {/* Android: Apple Music-style bottom lyrics and queue actions */}
+            {androidApp && (
+              <div className='np-android-bottom-actions'>
+                <button
+                  type='button'
+                  className={`np-android-action${showLyrics ? ' active' : ''}`}
+                  aria-pressed={showLyrics}
+                  aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                  disabled={!lyricsEnabled || !track?.lyrics?.trim()}
+                  onClick={handleLyricsToggle}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>lyrics</span>
+                  <span>Lyrics</span>
+                </button>
+                <button
+                  type='button'
+                  className={`np-android-action${showPlayQueue ? ' active' : ''}`}
+                  aria-pressed={showPlayQueue}
+                  aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
+                  onClick={() => setShowPlayQueue((visible) => !visible)}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>queue_music</span>
+                  <span>Queue</span>
+                </button>
+              </div>
+            )}
           </div>
           {playerWindowMode !== 'normal' && (
             <div className='player-mode-dock'>
@@ -2428,3 +2480,4 @@ const PlayBar: React.FC<PlayBarProps> = ({
 };
 
 export default PlayBar;
+

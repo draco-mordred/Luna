@@ -498,6 +498,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: trackArtworkUrl } = useAndroidAlbumArtwork(track, true);
   const androidApp = isAndroidApp();
+  const compactAndroidLayoutQuery = '(max-width: 820px)';
+  const [useCompactAndroidLayout, setUseCompactAndroidLayout] = useState(
+    () => androidApp && window.matchMedia(compactAndroidLayoutQuery).matches
+  );
+  useEffect(() => {
+    if (!androidApp) return undefined;
+    const query = window.matchMedia(compactAndroidLayoutQuery);
+    const update = () => setUseCompactAndroidLayout(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [androidApp]);
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
     allowDownload: showArtistImageBackground,
@@ -1583,7 +1595,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                       onClick={toggleTrackMenu}
                     >
                       <span className='material-symbols-outlined' aria-hidden='true'>
-                        {androidApp ? 'more_horiz' : 'more_vert'}
+                        {useCompactAndroidLayout ? 'more_horiz' : 'more_vert'}
                       </span>
                     </button>
                     {isTrackMenuMounted && (
@@ -1691,6 +1703,69 @@ const PlayBar: React.FC<PlayBarProps> = ({
                               <span>{item.label}</span>
                             </button>
                           )
+                        )}
+                        {/* Android: lyrics mode and synced timing controls in the "..." menu */}
+                        {androidApp && track.syncedLyrics && track.syncedLyrics.length > 0 && (
+                          <div
+                            className='track-menu-lyrics-section'
+                            role='group'
+                            aria-label='Lyrics options'
+                          >
+                            <button
+                              type='button'
+                              className='track-menu-item'
+                              role='menuitemcheckbox'
+                              aria-checked={showSyncedLyrics}
+                              onClick={() => setShowSyncedLyrics(!showSyncedLyrics)}
+                            >
+                              <span className='material-symbols-outlined' aria-hidden='true'>
+                                timelapse
+                              </span>
+                              <span>{showSyncedLyrics ? 'Synced lyrics on' : 'Synced lyrics off'}</span>
+                            </button>
+                            {showSyncedLyrics && (
+                              <div
+                                className='track-menu-item track-menu-timing-row'
+                                aria-label='Synchronized lyrics timing'
+                              >
+                                <button
+                                  type='button'
+                                  className='lyrics-delay-button'
+                                  aria-label='Show synchronized lyrics 0.1 seconds earlier'
+                                  title='Show lyrics earlier'
+                                  disabled={lyricOffsetSteps <= -5}
+                                  onClick={() =>
+                                    onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))
+                                  }
+                                >
+                                  <span className='material-symbols-outlined' aria-hidden='true'>
+                                    fast_rewind
+                                  </span>
+                                </button>
+                                <span
+                                  className='track-menu-timing-label'
+                                  aria-live='polite'
+                                  title='Positive values delay lyrics'
+                                >
+                                  {lyricOffsetLabel}
+                                </span>
+                                <button
+                                  type='button'
+                                  className='lyrics-delay-button'
+                                  aria-label='Delay synchronized lyrics by 0.1 seconds'
+                                  title='Delay lyrics'
+                                  disabled={lyricOffsetSteps >= 5}
+                                  onClick={() =>
+                                    onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))
+                                  }
+                                >
+                                  <span className='material-symbols-outlined' aria-hidden='true'>
+                                    fast_forward
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -1977,7 +2052,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             </div>
 
             {/* Android: Apple Music-style inline volume row */}
-            {androidApp && (
+            {useCompactAndroidLayout && (
               <div className='np-android-volume'>
                 <span className='material-symbols-outlined np-android-volume-icon' aria-hidden='true'>
                   {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
@@ -2000,7 +2075,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
 
             {/* Android: Apple Music-style bottom lyrics and queue actions */}
-            {androidApp && (
+            {useCompactAndroidLayout && (
               <div className='np-android-bottom-actions'>
                 <button
                   type='button'
@@ -2480,4 +2555,5 @@ const PlayBar: React.FC<PlayBarProps> = ({
 };
 
 export default PlayBar;
+
 

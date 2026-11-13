@@ -4879,3 +4879,101 @@ html[data-android-app='true'] .np-android-action:disabled {
   color: rgba(255, 255, 255, 0.4);
 }
 
+/* =====================================================================
+   Android: Now Playing layout rebalance (reference-matched rhythm)
+   ===================================================================== */
+
+/* Lighter overlay so the blurred artwork reads across the full screen */
+html[data-android-app='true'] .np-android-artwork-background .track-image-crossfade img {
+  filter: blur(52px) saturate(1.6);
+  transform: scale(1.35);
+}
+
+html[data-android-app='true'] .np-android-artwork-background-overlay {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--player-accent) 14%, rgba(0, 0, 0, 0.08)) 0%,
+      color-mix(in srgb, var(--player-accent) 8%, rgba(0, 0, 0, 0.22)) 55%,
+      rgba(0, 0, 0, 0.45) 100%
+    );
+}
+
+@media (max-width: 820px) {
+  /* Column rhythm: artwork centered in the upper region, controls evenly
+     spaced in the lower region, free space split above/below the controls */
+  html[data-android-app='true'] .now-playing-container {
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0 24px;
+  }
+
+  /* Artwork: ~56% of screen width like the reference, centered up top */
+  html[data-android-app='true'] .now-playing-container > .album-art {
+    width: min(56vw, 34dvh);
+    aspect-ratio: 1 / 1;
+    flex: 0 0 auto;
+    margin: 2dvh auto 0;
+    /* pushes the control stack down; grows on tall screens */
+    margin-bottom: auto;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info {
+    margin-bottom: 14px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-name {
+    font-size: 1.3rem;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .artist-name {
+    font-size: 1.02rem;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .progress-bar-container {
+    margin-bottom: 2px;
+  }
+
+  html[data-android-app='true'] .now-playing .expanded-controls {
+    margin: 12px 0 8px;
+    gap: 52px;
+  }
+
+  html[data-android-app='true'] .now-playing .expanded-controls .control-btn {
+    width: 56px;
+    height: 56px;
+  }
+
+  html[data-android-app='true'] .now-playing .expanded-controls .control-btn.play-pause {
+    width: 74px;
+    height: 74px;
+  }
+
+  html[data-android-app='true'] .np-android-volume {
+    margin: 6px 0 2px;
+  }
+
+  /* Bottom icons: keep a comfortable floor of space below on short screens */
+  html[data-android-app='true'] .np-android-bottom-actions {
+    margin-top: 8px;
+    margin-bottom: auto;
+    padding-bottom: 3dvh;
+  }
+
+  /* Synced lyrics caption participates in the rhythm without breaking it */
+  html[data-android-app='true'] .now-playing-container > .synced-lyric-caption.is-visible {
+    max-height: 150px;
+    margin-bottom: 10px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .lyrics-panel {
+    bottom: 230px;
+  }
+}
+

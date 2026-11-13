@@ -1440,6 +1440,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <div className='now-playing-artist-background-overlay' />
             </div>
           )}
+          {useCompactAndroidLayout && (
+            <div className='np-android-artwork-background' aria-hidden='true'>
+              <TrackImageCrossfade src={trackArtworkUrl ?? null} alt='' />
+              <div className='np-android-artwork-background-overlay' />
+            </div>
+          )}
           <div className='now-playing-header'>
             <button
               type='button'
@@ -2135,7 +2141,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </div>
             )}
 
-            {/* Android: Apple Music-style bottom lyrics and queue actions */}
+            {/* Android: Apple Music-style bottom icon actions */}
             {useCompactAndroidLayout && (
               <div className='np-android-bottom-actions'>
                 <button
@@ -2147,7 +2153,39 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   onClick={handleLyricsToggle}
                 >
                   <span className='material-symbols-outlined' aria-hidden='true'>lyrics</span>
-                  <span>Lyrics</span>
+                </button>
+                <button
+                  type='button'
+                  className={`np-android-action${isLoved ? ' active' : ''}${
+                    celebratingFavoriteTrackId === track?.id ? ' celebrating' : ''
+                  }`}
+                  aria-pressed={isLoved}
+                  aria-label={isLoved ? 'Remove from favorites' : 'Add to favorites'}
+                  disabled={!track}
+                  onClick={() => {
+                    if (!track) return;
+                    if (isLoved) {
+                      setCelebratingFavoriteTrackId(null);
+                      if (favoriteCelebrationTimeoutRef.current !== null) {
+                        window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+                        favoriteCelebrationTimeoutRef.current = null;
+                      }
+                    } else if (onToggleLove) {
+                      setCelebratingFavoriteTrackId(track.id);
+                      if (favoriteCelebrationTimeoutRef.current !== null) {
+                        window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+                      }
+                      favoriteCelebrationTimeoutRef.current = window.setTimeout(() => {
+                        setCelebratingFavoriteTrackId(null);
+                        favoriteCelebrationTimeoutRef.current = null;
+                      }, 3_000);
+                    }
+                    onToggleLove?.(track);
+                  }}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    {isLoved ? 'favorite' : 'favorite_border'}
+                  </span>
                 </button>
                 <button
                   type='button'
@@ -2157,7 +2195,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   onClick={() => setShowPlayQueue((visible) => !visible)}
                 >
                   <span className='material-symbols-outlined' aria-hidden='true'>queue_music</span>
-                  <span>Queue</span>
                 </button>
               </div>
             )}

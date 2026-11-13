@@ -4690,3 +4690,192 @@ html[data-android-app='true'] .track-menu-timing-label {
   }
 }
 
+/* =====================================================================
+   Android: Apple Music-style Now Playing redesign
+   (artwork-derived background, blended artwork, plain white transport,
+   icon-only bottom actions)
+   ===================================================================== */
+
+/* Full-bleed blurred artwork background, tinted by the player accent */
+html[data-android-app='true'] .np-android-artwork-background {
+  position: absolute;
+  z-index: 0;
+  inset: -12%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html[data-android-app='true'] .np-android-artwork-background .track-image-crossfade img {
+  filter: blur(46px) saturate(1.55) brightness(0.94);
+  transform: scale(1.28);
+}
+
+html[data-android-app='true'] .np-android-artwork-background-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--player-accent) 22%, rgba(0, 0, 0, 0.2)) 0%,
+      color-mix(in srgb, var(--player-accent) 12%, rgba(0, 0, 0, 0.4)) 55%,
+      rgba(0, 0, 0, 0.6) 100%
+    );
+  transition: background 520ms ease;
+}
+
+/* Let the artwork background show through (compact phone layout only) */
+@media (max-width: 820px) {
+  html[data-android-app='true'] .now-playing {
+    background: transparent;
+  }
+
+  html[data-android-app='true'] .now-playing-header {
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  html[data-android-app='true'] .now-playing-header .now-playing-close {
+    color: rgba(255, 255, 255, 0.85);
+    background: transparent;
+    border: 0;
+  }
+
+  html[data-android-app='true'] .now-playing-header > span {
+    color: transparent;
+  }
+
+  html[data-android-app='true'] .now-playing-container {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* Artwork: frameless, blending into the background with a soft shadow */
+html[data-android-app='true'] .now-playing-container > .album-art {
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+}
+
+html[data-android-app='true'] .now-playing-container > .album-art img,
+html[data-android-app='true'] .now-playing-container > .album-art .default-art,
+html[data-android-app='true'] .now-playing-container > .album-art .track-image-crossfade {
+  border-radius: 12px;
+}
+
+/* Track info: white over the artwork background */
+html[data-android-app='true'] .now-playing-container > .track-info .track-name {
+  color: #fff;
+}
+
+html[data-android-app='true'] .now-playing-container > .track-info .artist-name {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+html[data-android-app='true'] .now-playing-container > .track-info .track-title-menu {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+html[data-android-app='true'] .now-playing-container > .synced-lyric-caption {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Seek bar: thin white line with translucent track */
+html[data-android-app='true'] .now-playing .progress-bar {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+html[data-android-app='true'] .now-playing .progress-fill {
+  background: #fff;
+}
+
+html[data-android-app='true'] .now-playing .time-display {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Transport: plain white icons, no filled circle, no shuffle/repeat */
+html[data-android-app='true'] .now-playing .expanded-controls {
+  gap: 46px;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .shuffle-btn,
+html[data-android-app='true'] .now-playing .expanded-controls .repeat-btn {
+  display: none;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .control-btn {
+  color: #fff;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .control-btn.play-pause {
+  width: 76px;
+  height: 76px;
+  background: transparent;
+  color: #fff;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .control-btn.play-pause .play-pause-icon path {
+  stroke: #fff;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .control-btn.play-pause .play-icon-glyph {
+  fill: #fff;
+}
+
+html[data-android-app='true'] .now-playing .expanded-controls .control-btn:disabled {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Volume row: white translucent */
+html[data-android-app='true'] .np-android-volume .np-android-volume-icon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+html[data-android-app='true'] .np-android-volume-slider {
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.95) var(--volume-level),
+    rgba(255, 255, 255, 0.26) var(--volume-level)
+  );
+}
+
+html[data-android-app='true'] .np-android-volume-slider::-webkit-slider-thumb {
+  background: #fff;
+}
+
+html[data-android-app='true'] .np-android-volume-slider::-moz-range-thumb {
+  background: #fff;
+}
+
+/* Bottom actions: three icon-only buttons, evenly spread */
+html[data-android-app='true'] .np-android-bottom-actions {
+  justify-content: space-around;
+  margin-top: 10px;
+  padding-top: 2px;
+}
+
+html[data-android-app='true'] .np-android-action {
+  gap: 0;
+  padding: 10px 20px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+html[data-android-app='true'] .np-android-action .material-symbols-outlined {
+  font-size: 1.75rem;
+}
+
+html[data-android-app='true'] .np-android-action.active {
+  color: #fff;
+}
+
+html[data-android-app='true'] .np-android-action.celebrating .material-symbols-outlined {
+  animation: np-play-pause-pop 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html[data-android-app='true'] .np-android-action:disabled {
+  color: rgba(255, 255, 255, 0.4);
+}
+

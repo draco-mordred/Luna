@@ -1747,7 +1747,10 @@ const App = () => {
   );
 
   const handleShareTrack = useCallback(
-    async (track: Track) => {
+    async (
+      track: { id: string; name: string; artist: string; album: string; path?: string } | null
+    ) => {
+      if (!track) return;
       const shareData = {
         title: track.name,
         text: `${track.name} — ${track.artist}`,
@@ -2337,8 +2340,13 @@ const App = () => {
   );
 
   const handleCreateArtistPlaylist = useCallback(
-    (track: Track) => {
-      const artistName = track.albumArtist || track.artist;
+    (
+      track: { id: string; name: string; artist: string; album: string; path?: string } | null
+    ) => {
+      if (!track) return;
+      const fullTrack = libraryTracks.find((libraryTrack) => libraryTrack.id === track.id);
+      if (!fullTrack) return;
+      const artistName = fullTrack.albumArtist || fullTrack.artist;
       if (!artistName) return;
       const artistTracks = libraryTracks.filter(
         (libraryTrack) => (libraryTrack.albumArtist || libraryTrack.artist) === artistName
@@ -3606,4 +3614,5 @@ const App = () => {
 };
 
 export default App;
+
 

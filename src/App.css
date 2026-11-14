@@ -1357,6 +1357,27 @@ html[data-android-app='true'] .app.android-dock-menu-open .page-content {
   pointer-events: none;
 }
 
+@media (max-width: 1200px) {
+  html[data-android-app='true'] .page-content {
+    padding-bottom: calc(204px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  html[data-android-app='true'] .page-content.settings-route-content {
+    padding-bottom: calc(204px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  html[data-android-app='true'] .app.android-dock-compact .page-content,
+  html[data-android-app='true']
+    .app.android-dock-compact
+    .page-content.settings-route-content,
+  html[data-android-app='true'] .app:has(.play-bar.android-no-track) .page-content,
+  html[data-android-app='true']
+    .app:has(.play-bar.android-no-track)
+    .page-content.settings-route-content {
+    padding-bottom: calc(106px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+}
+
 @media (min-width: 821px) and (max-width: 1200px) {
   html[data-android-app='true'] .android-top-navbar.android-navigation-visible .navbar-left {
     padding-right: 72px;

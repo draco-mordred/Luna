@@ -31,20 +31,21 @@ interface TrackRowProps {
   track: Track;
   index: number;
   isPlaying: boolean;
+  animateIn: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   queueTracks: Track[];
   style?: CSSProperties;
 }
 
 const TrackRow = memo(
-  ({ track, index, isPlaying, onPlayTrack, queueTracks, style }: TrackRowProps) => {
+  ({ track, index, isPlaying, animateIn, onPlayTrack, queueTracks, style }: TrackRowProps) => {
     const navigate = useNavigate();
     const { elementRef, imageUrl } = useAndroidAlbumArtwork(track);
     return (
       <div
         data-track-id={track.id}
         id={`track-row-${track.id}`}
-        className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}`}
+        className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}${animateIn ? ' android-track-item-enter' : ''}`}
         style={style}
       >
         <span className='track-number' aria-hidden='true'>
@@ -136,6 +137,7 @@ interface VirtualizedTrackRowsProps {
   tracks: Track[];
   selectedTrackId: string | null;
   isPlaying: boolean;
+  enteringTrackIds: ReadonlySet<string>;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onVisibleIndexChange: (index: number) => void;
 }
@@ -145,6 +147,7 @@ const VirtualizedTrackRows = memo(
     tracks,
     selectedTrackId,
     isPlaying,
+    enteringTrackIds,
     onPlayTrack,
     onVisibleIndexChange,
   }: VirtualizedTrackRowsProps) => {
@@ -210,6 +213,7 @@ const VirtualizedTrackRows = memo(
               track={track}
               index={index}
               isPlaying={selectedTrackId === track.id && isPlaying}
+              animateIn={enteringTrackIds.has(track.id)}
               onPlayTrack={onPlayTrack}
               queueTracks={tracks}
               style={{
@@ -275,6 +279,13 @@ const TracksPage = ({
       return compareAlphaNumericFirst(aValue, bValue, sortDirection);
     });
   }, [sortBy, sortDirection, tracks]);
+  const enteringTrackIds = useMemo(
+    () =>
+      isAndroidApp && scanProgress?.phase === 'reading'
+        ? new Set(scanProgress.tracks.map((track) => track.id))
+        : new Set<string>(),
+    [isAndroidApp, scanProgress]
+  );
 
   const trackIndexEntries = useMemo(() => {
     return buildAlphaNumericIndex(
@@ -449,6 +460,7 @@ const TracksPage = ({
                 tracks={sortedTracks}
                 selectedTrackId={selectedTrackId}
                 isPlaying={isPlaying}
+                enteringTrackIds={enteringTrackIds}
                 onPlayTrack={onPlayTrack}
                 onVisibleIndexChange={updateActiveIndex}
               />

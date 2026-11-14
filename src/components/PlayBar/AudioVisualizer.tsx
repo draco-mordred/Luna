@@ -7,6 +7,7 @@ interface AudioVisualizerProps {
   isVisible: boolean;
   volume: number;
   style: VisualizerStyle;
+  progress?: number;
   className?: string;
 }
 
@@ -22,14 +23,15 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   isVisible,
   volume,
   style,
+  progress,
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const audioStateRef = useRef({ isPlaying, volume });
+  const audioStateRef = useRef({ isPlaying, volume, progress });
 
   useEffect(() => {
-    audioStateRef.current = { isPlaying, volume };
-  }, [isPlaying, volume]);
+    audioStateRef.current = { isPlaying, volume, progress };
+  }, [isPlaying, progress, volume]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -125,11 +127,6 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       if (!bounds.width || !bounds.height) return 0;
       context.setTransform(bounds.pixelRatio, 0, 0, bounds.pixelRatio, 0, 0);
       context.clearRect(0, 0, bounds.width, bounds.height);
-      context.strokeStyle = accentColor;
-      context.fillStyle = context.strokeStyle;
-      context.lineWidth = style === 'wave-organic' ? 1.6 : 2.4;
-      context.lineCap = style === 'bars-thin' || style === 'bars-dense' ? 'butt' : 'round';
-      context.lineJoin = 'round';
 
       const { isPlaying: playing, volume: appVolume } = audioStateRef.current;
       if (frequencyData && playing && appVolume > 0) analyser?.getByteFrequencyData(frequencyData);
@@ -159,58 +156,85 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       const amplitude = Math.max(2, bounds.height * 0.48);
       const step = bounds.width / Math.max(1, barCount - 1);
 
-      if (style.startsWith('wave-')) {
-        context.beginPath();
-        levels.forEach((level, index) => {
-          const x = index * step;
-          const y = centerY - Math.max(1, level * amplitude);
-          if (index === 0 || style === 'wave-sharp') {
-            if (index === 0) context.moveTo(x, y);
-            else context.lineTo(x, y);
-          } else {
-            const previousX = (index - 1) * step;
-            const previousY = centerY - Math.max(1, levels[index - 1] * amplitude);
-            context.quadraticCurveTo(
-              previousX,
-              previousY,
-              (previousX + x) / 2,
-              (previousY + y) / 2
-            );
-          }
-        });
-        context.stroke();
+      const drawLevels = (elapsedProgress: number, opacity: number) => {
+        context.save();
+        context.globalAlpha = opacity;
+        if (elapsedProgress < 1) {
+          context.beginPath();
+          context.rect(0, 0, bounds.width * elapsedProgress, bounds.height);
+          context.clip();
+        }
+        context.strokeStyle = accentColor;
+        context.fillStyle = accentColor;
+        context.lineWidth = style === 'wave-organic' ? 1.6 : 2.4;
+        context.lineCap = style === 'bars-thin' || style === 'bars-dense' ? 'butt' : 'round';
+        context.lineJoin = 'round';
+
+        if (style.startsWith('wave-')) {
+          context.beginPath();
+          levels.forEach((level, index) => {
+            const x = index * step;
+            const y = centerY - Math.max(1, level * amplitude);
+            if (index === 0 || style === 'wave-sharp') {
+              if (index === 0) context.moveTo(x, y);
+              else context.lineTo(x, y);
+            } else {
+              const previousX = (index - 1) * step;
+              const previousY = centerY - Math.max(1, levels[index - 1] * amplitude);
+              context.quadraticCurveTo(
+                previousX,
+                previousY,
+                (previousX + x) / 2,
+                (previousY + y) / 2
+              );
+            }
+          });
+          context.stroke();
+        } else {
+          const gap = style === 'bars-dense' ? 1 : style === 'bars-thin' ? 2 : 3;
+          const barWidth = Math.max(1, bounds.width / barCount - gap);
+          levels.forEach((level, index) => {
+            const height = Math.max(1, level * amplitude * (style === 'bars-alternating' ? 1 : 2));
+            const x = index * (bounds.width / barCount) + gap / 2;
+            const y =
+              style === 'bars-alternating'
+                ? index % 2 === 0
+                  ? centerY - height
+                  : centerY
+                : centerY - height / 2;
+            if (style === 'bars-outline') {
+              context.strokeRect(x, y, barWidth, height);
+            } else if (
+              style === 'bars-thin' ||
+              style === 'bars-dense' ||
+              style === 'bars-alternating'
+            ) {
+              context.fillRect(x, y, barWidth, height);
+            } else {
+              const radius =
+                style === 'bars-pill'
+                  ? barWidth / 2
+                  : style === 'bars-rounded'
+                    ? Math.min(4, barWidth / 2, height / 2)
+                    : 1;
+              context.beginPath();
+              context.roundRect(x, y, barWidth, height, radius);
+              context.fill();
+            }
+          });
+        }
+        context.restore();
+      };
+
+      const progressValue = audioStateRef.current.progress;
+      if (progressValue === undefined) {
+        drawLevels(1, 1);
       } else {
-        const gap = style === 'bars-dense' ? 1 : style === 'bars-thin' ? 2 : 3;
-        const barWidth = Math.max(1, bounds.width / barCount - gap);
-        levels.forEach((level, index) => {
-          const height = Math.max(1, level * amplitude * (style === 'bars-alternating' ? 1 : 2));
-          const x = index * (bounds.width / barCount) + gap / 2;
-          const y =
-            style === 'bars-alternating'
-              ? index % 2 === 0
-                ? centerY - height
-                : centerY
-              : centerY - height / 2;
-          if (style === 'bars-outline') {
-            context.strokeRect(x, y, barWidth, height);
-          } else if (
-            style === 'bars-thin' ||
-            style === 'bars-dense' ||
-            style === 'bars-alternating'
-          ) {
-            context.fillRect(x, y, barWidth, height);
-          } else {
-            const radius =
-              style === 'bars-pill'
-                ? barWidth / 2
-                : style === 'bars-rounded'
-                  ? Math.min(4, barWidth / 2, height / 2)
-                  : 1;
-            context.beginPath();
-            context.roundRect(x, y, barWidth, height, radius);
-            context.fill();
-          }
-        });
+        drawLevels(1, 0.24);
+        const elapsedProgress = Number.isFinite(progressValue)
+          ? Math.max(0, Math.min(100, progressValue)) / 100
+          : 0;
+        drawLevels(elapsedProgress, 1);
       }
       return maxLevel;
     };

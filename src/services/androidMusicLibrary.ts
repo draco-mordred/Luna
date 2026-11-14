@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { Track } from './MusicLibrary';
+import type { MusicLibraryScanProgress } from '../types/electron';
 
 interface AndroidMusicLibraryResult {
   tracks: Track[];
@@ -8,7 +9,7 @@ interface AndroidMusicLibraryResult {
 }
 
 interface AndroidMusicLibraryPlugin {
-  scan: () => Promise<AndroidMusicLibraryResult>;
+  scan: (options: { scanId: string }) => Promise<AndroidMusicLibraryResult>;
   getAppearance: () => Promise<AndroidAppearance>;
   getDeviceInfo: () => Promise<AndroidDeviceInfo>;
   setStatusBarStyle: (options: { darkIcons: boolean }) => Promise<void>;
@@ -27,10 +28,14 @@ interface AndroidMusicLibraryPlugin {
     repeatMode: 'off' | 'one' | 'all';
   }) => Promise<void>;
   clearNowPlaying: () => Promise<void>;
-  addListener: (
+  addListener(
     eventName: 'mediaControl',
     listenerFunc: (event: AndroidMediaControlEvent) => void
-  ) => Promise<{ remove: () => Promise<void> }>;
+  ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    eventName: 'libraryScanProgress',
+    listenerFunc: (event: MusicLibraryScanProgress) => void
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 export interface AndroidMediaControlEvent {
@@ -95,15 +100,34 @@ const androidMusicLibrary = registerPlugin<AndroidMusicLibraryPlugin>('AndroidMu
 export const isAndroidApp = (): boolean =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
-export const scanAndroidMusicLibrary = async (): Promise<AndroidMusicLibraryResult> => {
-  const result = await androidMusicLibrary.scan();
-  return {
-    ...result,
-    tracks: result.tracks.map((track) => ({
-      ...track,
-      src: Capacitor.convertFileSrc(track.path),
-    })),
-  };
+export const scanAndroidMusicLibrary = async (
+  onProgress?: (progress: MusicLibraryScanProgress) => void
+): Promise<AndroidMusicLibraryResult> => {
+  const scanId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const progressListener = onProgress
+    ? await androidMusicLibrary.addListener('libraryScanProgress', (progress) => {
+        if (progress.scanId !== scanId) return;
+        onProgress({
+          ...progress,
+          tracks: progress.tracks.map((track) => ({
+            ...track,
+            src: Capacitor.convertFileSrc(track.path),
+          })),
+        });
+      })
+    : null;
+  try {
+    const result = await androidMusicLibrary.scan({ scanId });
+    return {
+      ...result,
+      tracks: result.tracks.map((track) => ({
+        ...track,
+        src: Capacitor.convertFileSrc(track.path),
+      })),
+    };
+  } finally {
+    if (progressListener) await progressListener.remove();
+  }
 };
 
 const getLibraryDatabase = (): Promise<IDBDatabase> => {

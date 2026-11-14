@@ -61,13 +61,19 @@ const AndroidDock = ({
                   key={item.path}
                   type='button'
                   className={`android-dock-item${isItemActive(item.path, currentPath) ? ' active' : ''}`}
+                  aria-label={item.label}
                   aria-current={isItemActive(item.path, currentPath) ? 'page' : undefined}
                   onClick={() => goTo(item.path)}
                 >
                   <span className='material-symbols-outlined' aria-hidden='true'>
                     {item.icon}
                   </span>
-                  {showLabels && <span className='android-dock-label'>{item.label}</span>}
+                  <span
+                    className={`android-dock-label${showLabels ? ' is-visible' : ''}`}
+                    aria-hidden={!showLabels}
+                  >
+                    {item.label}
+                  </span>
                 </button>
               ))}
               <button
@@ -128,13 +134,19 @@ const AndroidDock = ({
                 key={item.path}
                 type='button'
                 className={`android-dock-item${isItemActive(item.path, currentPath) ? ' active' : ''}`}
+                aria-label={item.label}
                 aria-current={isItemActive(item.path, currentPath) ? 'page' : undefined}
                 onClick={() => goTo(item.path)}
               >
                 <span className='material-symbols-outlined' aria-hidden='true'>
                   {item.icon}
                 </span>
-                {showLabels && <span className='android-dock-label'>{item.label}</span>}
+                <span
+                  className={`android-dock-label${showLabels ? ' is-visible' : ''}`}
+                  aria-hidden={!showLabels}
+                >
+                  {item.label}
+                </span>
               </button>
             ))}
           </div>
@@ -148,7 +160,12 @@ const AndroidDock = ({
             <span className='material-symbols-outlined' aria-hidden='true'>
               search
             </span>
-            {showLabels && <span className='android-dock-label'>Search</span>}
+            <span
+              className={`android-dock-label${showLabels ? ' is-visible' : ''}`}
+              aria-hidden={!showLabels}
+            >
+              Search
+            </span>
           </button>
         </>
       )}

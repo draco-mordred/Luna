@@ -1227,9 +1227,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
     !showInlineVolumeControl ||
     (isDesktopApp && (!showInlineMiniPlayerControl || !showInlineFullscreenPlayerControl));
 
-  const handleTrackMenuAction = (
-    action: 'delete' | 'playlist' | 'album' | 'artist' | 'love' | 'less' | 'queue' | 'next'
-  ) => {
+  type TrackMenuAction =
+    | 'delete'
+    | 'playlist'
+    | 'album'
+    | 'artist'
+    | 'love'
+    | 'less'
+    | 'queue'
+    | 'next'
+    | 'share'
+    | 'artistPlaylist';
+
+  const handleTrackMenuAction = (action: TrackMenuAction) => {
     if (!track) return;
     switch (action) {
       case 'delete':
@@ -1295,17 +1305,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }
   };
 
-  type TrackMenuAction =
-    | 'delete'
-    | 'playlist'
-    | 'album'
-    | 'artist'
-    | 'love'
-    | 'less'
-    | 'queue'
-    | 'next'
-    | 'share'
-    | 'artistPlaylist';
   const allTrackMenuItems: Array<{ label: string; icon: string; action: TrackMenuAction }> = [
     {
       label: androidApp && trackIsDesktopSynced ? 'Remove download' : 'Delete from library',
@@ -2888,6 +2887,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 };
 
 export default PlayBar;
+
 
 
 

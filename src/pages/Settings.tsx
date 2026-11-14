@@ -873,6 +873,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
           </SettingsCategory>
+          <SettingsCategory title='Now Playing layout'>
+          {isAndroidApp && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>Mobile Now Playing layout</h3>
+                <p>Choose between the standard layout and the full-artwork layout on your phone</p>
+              </div>
+              <div className='setting-control'>
+                <select
+                  className='appearance-select'
+                  aria-label='Mobile Now Playing layout'
+                  defaultValue={
+                    window.localStorage.getItem('luna-android-np-layout') ?? 'standard'
+                  }
+                  onChange={(event) =>
+                    window.localStorage.setItem('luna-android-np-layout', event.currentTarget.value)
+                  }
+                >
+                  <option value='standard'>Standard</option>
+                  <option value='full-art'>Full artwork</option>
+                </select>
+              </div>
+            </div>
+          )}
+          </SettingsCategory>
           <SettingsCategory title='Artist imagery'>
           <div className='setting-item'>
             <div className='setting-info'>

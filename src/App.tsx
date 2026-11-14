@@ -1713,6 +1713,58 @@ const App = () => {
     [playQueue, playQueueIndex]
   );
 
+  const handleQueueReorder = useCallback(
+    (from: number, to: number) => {
+      if (from === to || from < 0 || to < 0) return;
+      setPlayQueue((currentQueue) => {
+        if (from >= currentQueue.length || to >= currentQueue.length) return currentQueue;
+        const nextQueue = [...currentQueue];
+        const [moved] = nextQueue.splice(from, 1);
+        nextQueue.splice(to, 0, moved);
+        // Keep playQueueIndex pointing at the same track after the reorder.
+        const currentId = currentQueue[playQueueIndex]?.id;
+        if (currentId) {
+          const newIndex = nextQueue.findIndex((t) => t.id === currentId);
+          if (newIndex >= 0 && newIndex !== playQueueIndex) {
+            setPlayQueueIndex(newIndex);
+          }
+        }
+        const baseCurrent = playQueueBaseRef.current[playQueueIndex];
+        if (baseCurrent) {
+          const nextBase = [...playQueueBaseRef.current];
+          const baseFrom = nextBase.indexOf(currentQueue[from]);
+          const baseTo = nextBase.indexOf(currentQueue[to]);
+          if (baseFrom >= 0 && baseTo >= 0) {
+            const [movedBase] = nextBase.splice(baseFrom, 1);
+            nextBase.splice(baseTo, 0, movedBase);
+            playQueueBaseRef.current = nextBase;
+          }
+        }
+        return nextQueue;
+      });
+    },
+    [playQueueIndex]
+  );
+
+  const handleShareTrack = useCallback(
+    async (track: Track) => {
+      const shareData = {
+        title: track.name,
+        text: `${track.name} — ${track.artist}`,
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(shareData.text);
+        }
+      } catch {
+        // User cancelled the share sheet; nothing to do.
+      }
+    },
+    []
+  );
+
   const handlePlayPause = useCallback(() => {
     const audio = activeAudioRef.current ?? audioARef.current;
     if (!audio || !currentTrack) return;
@@ -2282,6 +2334,25 @@ const App = () => {
       return id;
     },
     [persistPlaylists, playlists]
+  );
+
+  const handleCreateArtistPlaylist = useCallback(
+    (track: Track) => {
+      const artistName = track.albumArtist || track.artist;
+      if (!artistName) return;
+      const artistTracks = libraryTracks.filter(
+        (libraryTrack) => (libraryTrack.albumArtist || libraryTrack.artist) === artistName
+      );
+      const playlistId = handleCreatePlaylist(`${artistName} Mix`);
+      if (!playlistId) return;
+      const updatedPlaylists = playlists.map((playlist) =>
+        playlist.id === playlistId
+          ? { ...playlist, trackIds: artistTracks.map((artistTrack) => artistTrack.id) }
+          : playlist
+      );
+      persistPlaylists(updatedPlaylists);
+    },
+    [handleCreatePlaylist, libraryTracks, persistPlaylists, playlists]
   );
 
   const handleDeletePlaylist = useCallback(
@@ -3049,6 +3120,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -3073,6 +3146,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -3094,6 +3169,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -3488,6 +3565,12 @@ const App = () => {
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
           onQueueTracks={handleQueueTracks}
+          onQueueReorder={handleQueueReorder}
+          onShareTrack={handleShareTrack}
+          onCreateArtistPlaylist={handleCreateArtistPlaylist}
+          trackIsDesktopSynced={Boolean(
+            isAndroidApp && currentTrack && !currentTrack.androidAlbumId && !currentTrack.streamingProvider
+          )}
           isDesktopApp={Boolean(window.electronAPI)}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}

@@ -8,6 +8,7 @@ import { artistCreditIncludes, splitArtistCredits } from '../utils/artistCredits
 import { getLibraryItemPath } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
+import { isAndroidApp } from '../services/androidMusicLibrary';
 import './CollectionDetails.css';
 
 type CollectionType = 'album' | 'artist' | 'genre';
@@ -17,6 +18,8 @@ interface CollectionDetailsProps {
   tracks: Track[];
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  lovedTrackIds?: string[];
+  onToggleLove?: (track: Track | null) => void;
 }
 
 interface CollectionAlbumCardProps {
@@ -75,9 +78,13 @@ const CollectionDetails = ({
   tracks,
   onPlayTrack,
   onQueueTracks,
+  lovedTrackIds,
+  onToggleLove,
 }: CollectionDetailsProps) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [showMoreInfo, setShowMoreInfo] = useState(false);
+  const isAndroid = isAndroidApp();
   const name = searchParams.get('name')?.trim() ?? '';
   const artistName = searchParams.get('artist')?.trim() ?? '';
   const normalizedName = name.toLocaleLowerCase();
@@ -165,6 +172,29 @@ const CollectionDetails = ({
       ? (artistWebInfo?.info.imageUrl ?? androidAlbumArt)
       : androidAlbumArt;
 
+  const albumGenres = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          collectionTracks
+            .map((track) => track.genre?.trim())
+            .filter((genre): genre is string => Boolean(genre))
+        )
+      ),
+    [collectionTracks]
+  );
+  const albumYears = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          collectionTracks
+            .map((track) => track.year)
+            .filter((year): year is number => Boolean(year))
+        )
+      ).sort((a, b) => a - b),
+    [collectionTracks]
+  );
+
   if (!firstTrack || !title) {
     return (
       <section className='collection-details-page'>
@@ -192,8 +222,119 @@ const CollectionDetails = ({
           } albums · ${collectionTracks.length} tracks`
         : `${collectionTracks.length} tracks`;
 
+  const isLoved = Boolean(firstTrack && lovedTrackIds?.includes(firstTrack.id));
+
   return (
-    <div className='collection-details-page'>
+    <div className={`collection-details-page${isAndroid ? ' android-collection-page' : ''}`}>
+      {isAndroid && image && (
+        <div className='android-collection-bg' aria-hidden='true'>
+          <img src={image} alt='' />
+        </div>
+      )}
+      {isAndroid && (
+        <header className='android-collection-hero'>
+          <div className='android-collection-floating'>
+            <button
+              type='button'
+              className='android-collection-float-btn'
+              aria-label='Back'
+              onClick={() => navigate(-1)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+            </button>
+            <div className='android-collection-floating-right'>
+              <button
+                type='button'
+                className='android-collection-float-btn'
+                aria-label={isLoved ? 'Remove from favourites' : 'Add to favourites'}
+                onClick={() => onToggleLove?.(firstTrack)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {isLoved ? 'favorite' : 'favorite_border'}
+                </span>
+              </button>
+              <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
+                <button
+                  type='button'
+                  className='android-collection-float-btn'
+                  aria-label='More options'
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>more_horiz</span>
+                </button>
+              </QueueContextMenu>
+            </div>
+          </div>
+          {image ? (
+            <img className='android-collection-art' src={image} alt={`${title} artwork`} />
+          ) : (
+            <div className='android-collection-art android-collection-art-placeholder' aria-hidden='true'>
+              <span className='material-symbols-outlined'>album</span>
+            </div>
+          )}
+          <div className='android-collection-actions'>
+            <button
+              type='button'
+              className='android-collection-btn'
+              aria-label='Shuffle play'
+              onClick={() => {
+                const shuffled = [...collectionTracks];
+                for (let i = shuffled.length - 1; i > 0; i -= 1) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                onPlayTrack(shuffled[0], shuffled);
+              }}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+            </button>
+            <button
+              type='button'
+              className='android-collection-btn android-collection-btn-play'
+              aria-label='Play album'
+              onClick={() => onPlayTrack(firstTrack, collectionTracks)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
+            </button>
+            <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
+              <button
+                type='button'
+                className='android-collection-btn'
+                aria-label='Add to playlist'
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>playlist_add</span>
+              </button>
+            </QueueContextMenu>
+          </div>
+          <div className='android-collection-info'>
+            <h1>{title}</h1>
+            {subtitle && <p className='android-collection-subtitle'>{subtitle}</p>}
+            <p className='android-collection-meta'>{detail}</p>
+            <button
+              type='button'
+              className='android-collection-show-more'
+              aria-expanded={showMoreInfo}
+              onClick={() => setShowMoreInfo((visible) => !visible)}
+            >
+              {showMoreInfo ? 'Show less' : 'Show more'}
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                {showMoreInfo ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+            <div
+              className={`android-collection-more-info${showMoreInfo ? ' is-open' : ''}`}
+              aria-hidden={!showMoreInfo}
+            >
+              <p>Album artist: {subtitle ?? 'Unknown'}</p>
+              <p>
+                Released: {albumYears.length ? albumYears.join(', ') : 'Year unknown'}
+              </p>
+              <p>Genres: {albumGenres.length ? albumGenres.join(', ') : 'Unknown'}</p>
+              <p>{collectionTracks.length} tracks</p>
+            </div>
+          </div>
+        </header>
+      )}
+
       <nav className='collection-details-breadcrumb' aria-label='Breadcrumb'>
         <Link to={`/${type}s`}>{pageTitle}</Link>
         <span className='material-symbols-outlined' aria-hidden='true'>

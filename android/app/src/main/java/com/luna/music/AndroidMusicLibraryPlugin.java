@@ -15,6 +15,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.TypedValue;
@@ -39,6 +41,9 @@ import java.nio.charset.Charset;
 import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 @CapacitorPlugin(
     name = "AndroidMusicLibrary",
@@ -63,6 +68,8 @@ public class AndroidMusicLibraryPlugin extends Plugin {
     private BroadcastReceiver mediaControlReceiver;
     private boolean mediaServiceStarted;
     private boolean notificationPermissionRequestPending;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService libraryScanExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     public void load() {
@@ -91,10 +98,12 @@ public class AndroidMusicLibraryPlugin extends Plugin {
         } else {
             getContext().registerReceiver(mediaControlReceiver, filter);
         }
+
     }
 
     @Override
     protected void handleOnDestroy() {
+        libraryScanExecutor.shutdownNow();
         if (mediaControlReceiver != null) {
             getContext().unregisterReceiver(mediaControlReceiver);
             mediaControlReceiver = null;
@@ -336,12 +345,17 @@ public class AndroidMusicLibraryPlugin extends Plugin {
 
     @PluginMethod
     public void scan(PluginCall call) {
+        String scanId = call.getString("scanId", "");
+        if (scanId.isEmpty()) {
+            call.reject("A scan ID is required.");
+            return;
+        }
         String permissionAlias = getAudioPermissionAlias();
         if (getPermissionState(permissionAlias) != PermissionState.GRANTED) {
             requestPermissionForAlias(permissionAlias, call, "scanAfterPermission");
             return;
         }
-        scanGrantedLibrary(call);
+        scanGrantedLibrary(call, scanId);
     }
 
     @PermissionCallback
@@ -350,7 +364,12 @@ public class AndroidMusicLibraryPlugin extends Plugin {
             call.reject("Luna needs permission to read audio files on this device.", "PERMISSION_DENIED");
             return;
         }
-        scanGrantedLibrary(call);
+        String scanId = call.getString("scanId", "");
+        if (scanId.isEmpty()) {
+            call.reject("A scan ID is required.");
+            return;
+        }
+        scanGrantedLibrary(call, scanId);
     }
 
     private String getAudioPermissionAlias() {
@@ -368,7 +387,15 @@ public class AndroidMusicLibraryPlugin extends Plugin {
         return value.data;
     }
 
-    private void scanGrantedLibrary(PluginCall call) {
+    private void scanGrantedLibrary(PluginCall call, String scanId) {
+        try {
+            libraryScanExecutor.execute(() -> readGrantedLibrary(call, scanId));
+        } catch (RejectedExecutionException error) {
+            call.reject("The Android library scanner is unavailable.", error);
+        }
+    }
+
+    private void readGrantedLibrary(PluginCall call, String scanId) {
         Uri collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
         String[] projection = {
             MediaStore.Audio.Media._ID,
@@ -394,11 +421,14 @@ public class AndroidMusicLibraryPlugin extends Plugin {
             sortOrder
         )) {
             if (cursor == null) {
-                call.reject("Android could not read the device audio library.");
+                mainHandler.post(() ->
+                    call.reject("Android could not read the device audio library.")
+                );
                 return;
             }
 
             JSArray tracks = new JSArray();
+            JSArray batch = new JSArray();
             int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID);
             int displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME);
             int titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE);
@@ -412,7 +442,15 @@ public class AndroidMusicLibraryPlugin extends Plugin {
             int mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE);
             int albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID);
 
+            int total = cursor.getCount();
+            int scanned = 0;
+            int batchSize = 0;
+            JSArray folders = new JSArray();
+            folders.put("Device audio library");
+            publishScanProgress(scanId, "discovering", folders, new JSArray(), 0, total);
+
             while (cursor.moveToNext()) {
+                scanned++;
                 long durationMillis = cursor.getLong(durationColumn);
                 long size = cursor.getLong(sizeColumn);
                 if (durationMillis <= 0 || size <= 0) continue;
@@ -447,19 +485,55 @@ public class AndroidMusicLibraryPlugin extends Plugin {
                 track.put("size", size);
                 track.put("lastModified", cursor.getLong(modifiedColumn) * 1000L);
                 tracks.put(track);
+                batch.put(track);
+                batchSize++;
+                if (batchSize >= 50) {
+                    publishScanProgress(scanId, "reading", folders, batch, scanned, total);
+                    batch = new JSArray();
+                    batchSize = 0;
+                }
             }
 
-            JSArray folders = new JSArray();
-            folders.put("Device audio library");
+            if (batchSize > 0) {
+                publishScanProgress(scanId, "reading", folders, batch, scanned, total);
+            }
             JSArray errors = new JSArray();
             JSObject result = new JSObject();
             result.put("tracks", tracks);
             result.put("folders", folders);
             result.put("errors", errors);
-            call.resolve(result);
+            JSObject completion = new JSObject();
+            completion.put("scanId", scanId);
+            completion.put("phase", "complete");
+            completion.put("folders", folders);
+            completion.put("tracks", new JSArray());
+            completion.put("scanned", scanned);
+            completion.put("total", total);
+            mainHandler.post(() -> {
+                notifyListeners("libraryScanProgress", completion);
+                call.resolve(result);
+            });
         } catch (Exception error) {
-            call.reject("Could not scan the Android audio library.", error);
+            mainHandler.post(() -> call.reject("Could not scan the Android audio library.", error));
         }
+    }
+
+    private void publishScanProgress(
+        String scanId,
+        String phase,
+        JSArray folders,
+        JSArray tracks,
+        int scanned,
+        int total
+    ) {
+        JSObject progress = new JSObject();
+        progress.put("scanId", scanId);
+        progress.put("phase", phase);
+        progress.put("folders", folders);
+        progress.put("tracks", tracks);
+        progress.put("scanned", scanned);
+        progress.put("total", total);
+        mainHandler.post(() -> notifyListeners("libraryScanProgress", progress));
     }
 
     private EmbeddedLyrics extractEmbeddedLyrics(Uri trackUri) {

@@ -426,10 +426,14 @@ const App = () => {
   const [initialLibraryLoaded, setInitialLibraryLoaded] = useState(
     !window.electronAPI && !isAndroidApp
   );
-  const [libraryReconciled, setLibraryReconciled] = useState(!window.electronAPI);
+  const [libraryReconciled, setLibraryReconciled] = useState(!window.electronAPI && !isAndroidApp);
   const [libraryScanProgress, setLibraryScanProgress] = useState<MusicLibraryScanProgress | null>(
     null
   );
+  const [androidLibraryScanAddedCount, setAndroidLibraryScanAddedCount] = useState(0);
+  const androidScanExistingPathsRef = useRef<Set<string>>(new Set());
+  const androidScanAddedPathsRef = useRef<Set<string>>(new Set());
+  const androidScanToastTimeoutRef = useRef<number | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   const [playbackNoticeExiting, setPlaybackNoticeExiting] = useState(false);
@@ -682,12 +686,7 @@ const App = () => {
   }, [isAndroidApp]);
 
   useEffect(() => {
-    if (
-      !isAndroidApp ||
-      !androidStartupSplashVisible ||
-      !initialLibraryLoaded ||
-      !androidAppearanceLoaded
-    ) {
+    if (!isAndroidApp || !androidStartupSplashVisible || !androidAppearanceLoaded) {
       return;
     }
 
@@ -695,7 +694,7 @@ const App = () => {
       setAndroidStartupSplashVisible(false);
     }, 350);
     return () => window.clearTimeout(timeout);
-  }, [androidAppearanceLoaded, androidStartupSplashVisible, initialLibraryLoaded, isAndroidApp]);
+  }, [androidAppearanceLoaded, androidStartupSplashVisible, isAndroidApp]);
 
   const closePlaylistDialog = useCallback(() => setPlaylistDialog(null), []);
   const closeTrackMetadataDialog = useCallback(() => setTrackMetadataDialog(null), []);
@@ -814,6 +813,60 @@ const App = () => {
         : null
     );
   }, []);
+
+  const handleAndroidLibraryScanProgress = useCallback((progress: MusicLibraryScanProgress) => {
+    if (progress.phase === 'discovering') {
+      androidScanExistingPathsRef.current = new Set(
+        libraryTracksRef.current.map((track) => track.path)
+      );
+      androidScanAddedPathsRef.current.clear();
+      setAndroidLibraryScanAddedCount(0);
+      setIsLibraryLoading(libraryTracksRef.current.length === 0);
+      setLibraryScanProgress(progress);
+      if (androidScanToastTimeoutRef.current !== null) {
+        window.clearTimeout(androidScanToastTimeoutRef.current);
+        androidScanToastTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (progress.tracks.length > 0) {
+      progress.tracks.forEach((track) => {
+        if (!androidScanExistingPathsRef.current.has(track.path)) {
+          androidScanAddedPathsRef.current.add(track.path);
+        }
+      });
+      setAndroidLibraryScanAddedCount(androidScanAddedPathsRef.current.size);
+      setLibraryTracks((currentTracks) => mergeAndroidTracks(currentTracks, progress.tracks));
+      setCurrentTrack((currentTrack) =>
+        currentTrack
+          ? (progress.tracks.find((track) => track.path === currentTrack.path) ?? currentTrack)
+          : null
+      );
+    }
+
+    setLibraryScanProgress(progress);
+    if (progress.phase === 'complete') {
+      setIsLibraryLoading(false);
+      setLibraryReconciled(true);
+      if (androidScanToastTimeoutRef.current !== null) {
+        window.clearTimeout(androidScanToastTimeoutRef.current);
+      }
+      androidScanToastTimeoutRef.current = window.setTimeout(() => {
+        setLibraryScanProgress(null);
+        androidScanToastTimeoutRef.current = null;
+      }, 2200);
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (androidScanToastTimeoutRef.current !== null) {
+        window.clearTimeout(androidScanToastTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const handleSaveTrackMetadata = useCallback(
     async (track: Track, metadata: TrackMetadataUpdate) => {
@@ -997,7 +1050,7 @@ const App = () => {
   useEffect(() => {
     if (initialLoadStarted.current || (!window.electronAPI && !isAndroidApp)) return;
     initialLoadStarted.current = true;
-    setIsLibraryLoading(true);
+    setIsLibraryLoading(!isAndroidApp);
     if (isAndroidApp) {
       let active = true;
       let backgroundScanTimeout: number | null = null;
@@ -1014,19 +1067,18 @@ const App = () => {
           }
           if (!active) return;
           if (cachedLibrary?.tracks.length) {
-            const cachedTracks = cachedLibrary.tracks;
             applyLibraryResponse(cachedLibrary);
             setInitialLibraryLoaded(true);
             setLibraryReconciled(true);
             setIsLibraryLoading(false);
             backgroundScanTimeout = window.setTimeout(() => {
               if (!active) return;
-              void scanAndroidMusicLibrary()
+              void scanAndroidMusicLibrary(handleAndroidLibraryScanProgress)
                 .then(async (freshLibrary) => {
                   if (!active) return;
                   const mergedLibrary = {
                     ...freshLibrary,
-                    tracks: mergeAndroidTracks(cachedTracks, freshLibrary.tracks),
+                    tracks: mergeAndroidTracks(libraryTracksRef.current, freshLibrary.tracks),
                   };
                   applyLibraryResponse(mergedLibrary);
                   setLibraryReconciled(true);
@@ -1039,12 +1091,18 @@ const App = () => {
                       'Luna could not check for newly added music in the background. Rescan from Settings to retry.'
                     );
                   }
+                  setLibraryScanProgress(null);
                 });
-            }, 60000);
+            }, 350);
             return;
           }
 
-          const response = await scanAndroidMusicLibrary();
+          await new Promise<void>((resolve) => {
+            backgroundScanTimeout = window.setTimeout(resolve, 350);
+          });
+          backgroundScanTimeout = null;
+          if (!active) return;
+          const response = await scanAndroidMusicLibrary(handleAndroidLibraryScanProgress);
           if (!active) return;
           applyLibraryResponse(response);
           if (cacheWarning) setLibraryError(cacheWarning);
@@ -1060,6 +1118,7 @@ const App = () => {
           }
         } catch (error: unknown) {
           if (!active) return;
+          setLibraryScanProgress(null);
           console.error('Could not load or scan the Android music library:', error);
           setLibraryError(
             error instanceof Error
@@ -1111,7 +1170,7 @@ const App = () => {
         setLibraryReconciled(true);
       })
       .finally(() => setIsLibraryLoading(false));
-  }, [applyLibraryResponse, isAndroidApp]);
+  }, [applyLibraryResponse, handleAndroidLibraryScanProgress, isAndroidApp]);
 
   useEffect(() => {
     if (!settingsLoaded || !initialLibraryLoaded || !lastPlayedTrackPath) return;
@@ -1314,7 +1373,7 @@ const App = () => {
         try {
           if (!background) setIsLibraryLoading(true);
           setLibraryError(null);
-          const response = await scanAndroidMusicLibrary();
+          const response = await scanAndroidMusicLibrary(handleAndroidLibraryScanProgress);
           const mergedResponse = {
             ...response,
             tracks: mergeAndroidTracks(libraryTracksRef.current, response.tracks),
@@ -1332,6 +1391,7 @@ const App = () => {
           return mergedResponse;
         } catch (error) {
           console.error('Could not scan the Android music library:', error);
+          setLibraryScanProgress(null);
           const message =
             error instanceof Error
               ? error.message
@@ -1363,7 +1423,7 @@ const App = () => {
         setIsLibraryLoading(false);
       }
     },
-    [applyLibraryResponse, isAndroidApp]
+    [applyLibraryResponse, handleAndroidLibraryScanProgress, isAndroidApp]
   );
 
   useEffect(() => {
@@ -3079,8 +3139,53 @@ const App = () => {
       {isAndroidApp && androidStartupSplashVisible && (
         <AndroidStartupSplash
           apiLevel={androidAppearance?.apiLevel ?? null}
-          exiting={initialLibraryLoaded && androidAppearanceLoaded}
+          exiting={androidAppearanceLoaded}
         />
+      )}
+      {isAndroidApp && libraryScanProgress && (
+        <div
+          className={`android-library-scan-toast${libraryScanProgress.phase === 'complete' ? ' is-complete' : ''}`}
+          role='status'
+          aria-live='polite'
+        >
+          <div className='android-library-scan-status'>
+            {libraryScanProgress.phase === 'complete' ? (
+              <svg className='android-library-scan-check' viewBox='0 0 24 24' aria-hidden='true'>
+                <path d='m5 12 4 4L19 6' />
+              </svg>
+            ) : (
+              <span className='android-library-scan-indicator' aria-hidden='true' />
+            )}
+            <div className='android-library-scan-copy'>
+              <strong>
+                {libraryScanProgress.phase === 'complete' ? 'Library ready' : 'Scanning your music'}
+              </strong>
+              <span>
+                {androidLibraryScanAddedCount} song
+                {androidLibraryScanAddedCount === 1 ? '' : 's'} added
+              </span>
+            </div>
+          </div>
+          <div
+            className='android-library-scan-progress'
+            role='progressbar'
+            aria-label='Library scan progress'
+            aria-valuemin={0}
+            aria-valuemax={libraryScanProgress.total > 0 ? libraryScanProgress.total : undefined}
+            aria-valuenow={libraryScanProgress.total > 0 ? libraryScanProgress.scanned : undefined}
+          >
+            <span
+              style={{
+                width:
+                  libraryScanProgress.phase === 'complete'
+                    ? '100%'
+                    : libraryScanProgress.total > 0
+                      ? `${Math.min(100, (libraryScanProgress.scanned / libraryScanProgress.total) * 100)}%`
+                      : '20%',
+              }}
+            />
+          </div>
+        </div>
       )}
       {window.electronAPI?.platform === 'win32' &&
         (windowMaterialAppliedAtLaunch === 'default' || playerWindowMode !== 'normal') && (
@@ -3743,5 +3848,3 @@ const App = () => {
 };
 
 export default App;
-
-

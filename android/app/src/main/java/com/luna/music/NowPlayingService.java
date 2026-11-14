@@ -393,6 +393,12 @@ public class NowPlayingService extends Service {
         super.onDestroy();
     }
 
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        stopPlaybackService();
+        super.onTaskRemoved(rootIntent);
+    }
+
     private void releaseArtwork() {
         if (albumArtwork != null && !albumArtwork.isRecycled()) albumArtwork.recycle();
         if (replacedArtwork != null && !replacedArtwork.isRecycled()) replacedArtwork.recycle();

@@ -342,7 +342,7 @@ const TracksPage = ({
       <div className='indexed-page-content'>
         <header className='page-header'>
           <div>
-            <h1>Tracks</h1>
+            <h1>{isAndroidApp ? 'Songs' : 'Tracks'}</h1>
             <p className='track-count'>{tracks.length} tracks</p>
           </div>
           <button

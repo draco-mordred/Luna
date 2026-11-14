@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('audiomack-play-track', musicId, session),
   savePlaylists: (playlists) => ipcRenderer.invoke('save-playlists', playlists),
   getUsbSyncStatus: () => ipcRenderer.invoke('get-usb-sync-status'),
+  installPlatformTools: () => ipcRenderer.invoke('install-platform-tools'),
+  openPlatformToolsTerms: () => ipcRenderer.invoke('open-platform-tools-terms'),
+  onPlatformToolsInstallProgress: (callback) =>
+    subscribe('platform-tools-install-progress', callback),
   selectUsbSyncAdb: () => ipcRenderer.invoke('select-usb-sync-adb'),
   syncTracksToAndroid: (options) => ipcRenderer.invoke('sync-tracks-to-android', options),
   onUsbSyncProgress: (callback) => subscribe('usb-sync-progress', callback),

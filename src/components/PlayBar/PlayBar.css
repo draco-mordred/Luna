@@ -48,10 +48,10 @@ html {
 }
 
 .now-playing-mode-actions {
-      display: flex;
-    gap: 25px;
-    margin-left: auto;
-    margin-right: 60px;
+  display: flex;
+  gap: 25px;
+  margin-left: auto;
+  margin-right: 60px;
 }
 
 .now-playing-mode-button,
@@ -65,7 +65,8 @@ html {
   background: var(--surface-subtle);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 160ms ease,
+  transition:
+    background 160ms ease,
     transform 160ms ease;
 }
 
@@ -1046,13 +1047,17 @@ html[data-android-app='true'] .album-art {
   border-radius: 12px;
 }
 
-.now-playing-container[data-playback-state='paused'] > .album-art .track-image-crossfade,
-.now-playing-container[data-playback-state='paused'] > .album-art > .default-art {
-  transform: scale(0.965);
+.now-playing-container > .album-art {
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow-color) 72%, transparent);
+  transition:
+    opacity 260ms ease,
+    transform 440ms cubic-bezier(0.18, 0.82, 0.22, 1),
+    box-shadow 360ms ease;
 }
 
-.album-art > .default-art {
-  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+.now-playing-container[data-playback-state='paused'] > .album-art {
+  transform: translate3d(0, calc((1 - var(--expand-progress)) * 42vh), 0)
+    scale(calc(0.193 + var(--expand-progress) * 0.579));
 }
 
 .lyrics-hint {
@@ -1275,7 +1280,9 @@ html[data-android-app='true'] .album-art {
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .track-menu-item:hover,
@@ -1425,7 +1432,11 @@ html[data-android-app='true'] .album-art {
   border: 1px solid var(--border);
   border-radius: 18px;
   background:
-    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--system-accent) 15%, transparent), transparent 58%),
+    radial-gradient(
+      ellipse at 0 0,
+      color-mix(in srgb, var(--system-accent) 15%, transparent),
+      transparent 58%
+    ),
     var(--bg-secondary);
   color: var(--text-primary);
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.48);
@@ -2255,10 +2266,15 @@ html[data-android-app='true'] .album-art {
   left: -10px;
   top: -10px;
   border: 1px solid var(--system-accent);
+  box-shadow: 0 7px 22px color-mix(in srgb, var(--shadow-color) 72%, transparent);
   opacity: calc(1 - var(--expand-progress));
   transform: translateY(calc(var(--expand-progress) * 10px))
     scale(calc(1 - var(--expand-progress) * 0.3));
   transform-origin: left bottom;
+  transition:
+    opacity 180ms ease,
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms ease;
 }
 
 .album-art-mini img,
@@ -2276,13 +2292,9 @@ html[data-android-app='true'] .album-art {
   border-radius: 5px;
 }
 
-.mini-player[data-playback-state='paused'] .album-art-mini .track-image-crossfade {
-  transform: scale(0.95);
-}
-
-.mini-player[data-playback-state='paused'] .album-art-mini .default-art-mini {
-  transform: scale(0.95);
-  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+.mini-player[data-playback-state='paused'] .album-art-mini {
+  transform: translateY(calc(var(--expand-progress) * 10px))
+    scale(calc(0.95 - var(--expand-progress) * 0.285));
 }
 
 .album-art-mini .default-art-mini {
@@ -3864,7 +3876,7 @@ html[data-icon-style='apple'] .control-btn .material-symbols-outlined {
     'wght' 400,
     'GRAD' 0,
     'opsz' 24 !important;
-    font-size: 18px;
+  font-size: 18px;
 }
 
 html[data-icon-style='apple'] .control-btn.play-pause .material-symbols-outlined {
@@ -4273,6 +4285,7 @@ html[data-android-app='true'] .now-playing-container > .album-art {
   image-rendering: auto;
   backface-visibility: hidden;
   transition:
+    width 340ms cubic-bezier(0.2, 0.75, 0.25, 1),
     opacity 220ms ease,
     transform 340ms cubic-bezier(0.2, 0.75, 0.25, 1);
 }
@@ -4300,6 +4313,444 @@ html[data-android-app='true'] .now-playing-container > .lyrics-panel {
 
   html[data-android-app='true'] .mini-player-actions {
     right: 6px;
+  }
+}
+
+@media (max-width: 800px) {
+  html[data-android-app='true'] .play-bar.collapsed {
+    border-radius: 16px;
+  }
+
+  html[data-android-app='true'] .mini-player {
+    --mini-track-info-left: 14px;
+    --mini-control-half-width: 80px;
+    --mini-track-info-gap: 8px;
+    --mini-lyrics-side-reserve: 104px;
+    --android-mini-control-width: clamp(142px, 42vw, 220px);
+  }
+
+  html[data-android-app='true'] .track-info-mini {
+    top: 50%;
+    bottom: auto;
+    left: 14px;
+    width: calc(100% - var(--android-mini-control-width) - 24px);
+    height: 52px;
+    gap: 8px;
+    transform: translateY(-50%);
+    cursor: default;
+  }
+
+  html[data-android-app='true'] .mini-player.showing-mini-lyrics .track-info-mini {
+    top: 10px;
+    bottom: auto;
+    left: 14px;
+    width: calc(100% - var(--android-mini-control-width) - 24px);
+    height: 38px;
+    transform: none;
+  }
+
+  html[data-android-app='true'] .mini-player.showing-mini-lyrics .album-art-mini {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  html[data-android-app='true'] .album-art-mini {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+    border-radius: 7px;
+    transform-origin: center;
+  }
+
+  html[data-android-app='true'] .album-art-mini img,
+  html[data-android-app='true'] .album-art-mini .default-art-mini,
+  html[data-android-app='true'] .album-art-mini .track-image-crossfade,
+  html[data-android-app='true'] .album-art-mini .track-image-crossfade img {
+    border-radius: 7px;
+  }
+
+  html[data-android-app='true'] .mini-track-info-copy {
+    top: auto;
+    left: auto;
+  }
+
+  html[data-android-app='true'] .track-name-mini {
+    font-size: clamp(0.82rem, 3.8cqi, 1rem);
+    line-height: 1.25;
+  }
+
+  html[data-android-app='true'] .artist-name-mini {
+    font-size: clamp(0.72rem, 3.1cqi, 0.84rem);
+    line-height: 1.25;
+  }
+
+  html[data-android-app='true'] .mini-player-control-cluster {
+    top: 50%;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    transform: translateY(-50%);
+  }
+
+  html[data-android-app='true'] .mini-player-control-cluster > .controls {
+    gap: clamp(8px, 2.2vw, 14px);
+  }
+
+  html[data-android-app='true']
+    .mini-player-control-cluster
+    > .controls
+    > .control-btn:not(.play-pause) {
+    width: 32px;
+    height: 40px;
+  }
+
+  html[data-android-app='true'] .mini-player-control-cluster > .controls .control-btn.play-pause {
+    width: 44px;
+    height: 44px;
+  }
+
+  html[data-android-app='true'] .mini-progress-container,
+  html[data-android-app='true'] .mini-player-actions {
+    display: none !important;
+  }
+
+  html[data-android-app='true'] .mini-player-control-cluster {
+    z-index: 3;
+  }
+
+  html[data-android-app='true'] .android-mini-synced-lyrics {
+    position: absolute;
+    z-index: 1;
+    right: calc(var(--android-mini-control-width) + 10px);
+    bottom: 6px;
+    left: 14px;
+    display: flex;
+    height: 46px;
+    min-width: 0;
+    align-items: center;
+    overflow: hidden;
+    color: var(--text-primary);
+    text-align: left;
+    animation: mini-lyrics-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  html[data-android-app='true'] .android-mini-synced-lyrics .mini-synced-lyrics {
+    width: 100%;
+    height: 100%;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .android-mini-synced-lyrics .mini-synced-lyrics-lines {
+    font-size: clamp(0.78rem, 3.5vw, 0.96rem);
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .mini-player.showing-mini-lyrics .mini-player-control-cluster {
+    top: 50%;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-width: none;
+    transform: translateY(-50%);
+  }
+
+  html[data-android-app='true'] .mini-progress-container {
+    top: auto;
+    right: 14px;
+    bottom: 7px;
+    left: 14px;
+    gap: 0;
+    height: 3px;
+  }
+
+  html[data-android-app='true'] .mini-progress-container .mini-time {
+    display: none;
+  }
+
+  html[data-android-app='true'] .mini-progress-container .mini-progress-input-wrap {
+    width: 100%;
+  }
+
+  html[data-android-app='true'] .mini-progress-container .mini-progress-track {
+    height: 2px;
+    border-radius: 2px;
+  }
+
+  html[data-android-app='true'] .mini-progress-container .mini-progress-bar {
+    height: 12px;
+  }
+
+  html[data-android-app='true'] .play-bar.expanded {
+    height: 100dvh !important;
+  }
+
+  html[data-android-app='true'] .play-bar.expanded .now-playing {
+    overflow-y: auto;
+    padding: env(safe-area-inset-top, 0px) 16px max(16px, env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html[data-android-app='true'] .now-playing-header {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    right: 12px;
+    left: 12px;
+    justify-content: center;
+  }
+
+  html[data-android-app='true'] .now-playing-header > .now-playing-close,
+  html[data-android-app='true'] .now-playing-header > .now-playing-queue-toggle,
+  html[data-android-app='true'] .now-playing-header > .now-playing-mode-actions {
+    display: none;
+  }
+
+  html[data-android-app='true'] .now-playing-container {
+    height: auto;
+    min-height: 100%;
+    justify-content: flex-start;
+    padding: 40px 0 12px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .album-art {
+    width: 90vw;
+    max-width: none;
+    aspect-ratio: 1;
+    flex: 0 0 auto;
+    margin: 0 auto 18px;
+    border-radius: 12px;
+    box-shadow: 0 18px 44px color-mix(in srgb, var(--shadow-color) 74%, transparent);
+  }
+
+  html[data-android-app='true'] .now-playing-container[data-playback-state='paused'] > .album-art {
+    width: 65vw;
+    transform: none;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .audio-visualizer {
+    display: none;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info {
+    order: 2;
+    width: 100%;
+    margin: 0 0 12px;
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-title-row {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0 0 4px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-love-toggle,
+  html[data-android-app='true'] .now-playing-container > .track-info .album-name,
+  html[data-android-app='true'] .now-playing-container > .track-info .lyrics-actions {
+    display: none;
+  }
+
+  html[data-android-app='true'] .android-now-playing-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-primary);
+    font-size: clamp(1.05rem, 5vw, 1.4rem);
+    font-weight: 650;
+    line-height: 1.25;
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .android-now-playing-artist {
+    width: 100%;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-title-menu-wrap {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-title-menu {
+    width: 38px;
+    height: 38px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .track-name {
+    max-width: 100%;
+    margin: 0;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .track-info .artist-name {
+    margin: 0;
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .progress-bar-container {
+    order: 3;
+    width: 100%;
+    margin: 10px 0 12px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .expanded-controls {
+    order: 4;
+    justify-content: center;
+    gap: clamp(16px, 5vw, 32px);
+    width: 100%;
+    margin: 8px 0 14px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .expanded-controls .control-btn {
+    width: 46px;
+    height: 46px;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container
+    > .expanded-controls
+    .control-btn.play-pause {
+    width: 60px;
+    height: 60px;
+  }
+
+  html[data-android-app='true'] .android-now-playing-volume {
+    order: 5;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 10px;
+  }
+
+  html[data-android-app='true'] .android-now-playing-volume > button,
+  html[data-android-app='true'] .android-volume-level {
+    display: grid;
+    width: 34px;
+    height: 36px;
+    flex: 0 0 34px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+  }
+
+  html[data-android-app='true'] .android-now-playing-volume > button {
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  html[data-android-app='true'] .android-volume-slider {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+    margin: 0;
+    accent-color: var(--player-accent);
+  }
+
+  html[data-android-app='true'] .android-now-playing-actions {
+    order: 7;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-around;
+    gap: 12px;
+    padding: 4px 0 max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  html[data-android-app='true'] .android-now-playing-actions > button {
+    display: grid;
+    width: 48px;
+    height: 44px;
+    flex: 1 1 0;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  html[data-android-app='true'] .android-now-playing-actions > button.active,
+  html[data-android-app='true'] .android-now-playing-actions > button[aria-pressed='true'] {
+    color: var(--system-accent);
+  }
+
+  html[data-android-app='true'] .android-now-playing-actions > button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  html[data-android-app='true'] .android-now-playing-actions .material-symbols-outlined {
+    font-size: 1.45rem;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .synced-lyric-caption {
+    position: relative;
+    order: 6;
+    inset: auto;
+    width: 100%;
+    height: 0;
+    min-height: 0;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 8px;
+    font-size: clamp(0.9rem, 4vw, 1.1rem);
+    transition:
+      height 300ms cubic-bezier(0.2, 0.75, 0.25, 1),
+      min-height 300ms cubic-bezier(0.2, 0.75, 0.25, 1),
+      opacity 220ms ease,
+      transform 260ms ease;
+  }
+
+  html[data-android-app='true'] .now-playing-container.has-synced-lyric > .synced-lyric-caption {
+    height: clamp(60px, 9dvh, 80px);
+    min-height: clamp(60px, 9dvh, 80px);
+    margin: 0 0 4px;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .synced-lyric-caption.is-hidden {
+    height: 0;
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .lyrics-panel {
+    inset: auto;
+    top: 40px;
+    left: 50%;
+    width: 90vw;
+    height: auto;
+    max-height: none;
+    aspect-ratio: 1;
+    transform: translateX(-50%) scale(1);
+    overflow: auto;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-secondary) 76%, transparent);
+  }
+
+  html[data-android-app='true'] .now-playing-container > .lyrics-panel.is-hidden {
+    transform: translateX(-50%) translateY(10px) scale(0.985);
+  }
+
+  html[data-android-app='true']
+    .now-playing-container[data-playback-state='paused']
+    > .lyrics-panel {
+    width: 65vw;
+  }
+
+  html[data-android-app='true'] .now-playing-container > .play-queue-panel.is-visible {
+    z-index: 8;
   }
 }
 

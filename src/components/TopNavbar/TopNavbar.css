@@ -93,7 +93,10 @@ html[data-android-app='true'] .navbar-back-button {
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 8px 8px 0 0;
-  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 500;
@@ -115,12 +118,20 @@ html[data-android-app='true'] .navbar-back-button {
 
 .tab-button.active .tab-icon {
   color: var(--system-accent);
-  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+  font-variation-settings:
+    'FILL' 1,
+    'wght' 500,
+    'GRAD' 0,
+    'opsz' 20;
 }
 
 .tab-icon {
   font-size: 1.2rem;
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 20;
 }
 
 .tab-label {
@@ -416,7 +427,11 @@ html[data-android-app='true'] .android-sidebar-toggle {
 
 .menu-button .material-symbols-outlined {
   font-size: 1.1rem;
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 20;
 }
 
 /* Link styles for menu */
@@ -430,7 +445,7 @@ html[data-android-app='true'] .android-sidebar-toggle {
   .tab-button {
     padding: 10px 20px;
   }
-  
+
   .tabs-container {
     gap: 16px;
   }
@@ -468,17 +483,17 @@ html[data-android-app='true'] .android-sidebar-toggle {
     gap: 2px;
     max-width: calc(100% - 16px);
   }
-  
+
   .tab-button {
     gap: 5px;
     padding: 8px 9px;
     font-size: 0.78rem;
   }
-  
+
   .tab-icon {
     font-size: 1.1rem;
   }
-  
+
   .navbar-button {
     width: 36px;
     height: 36px;
@@ -486,5 +501,100 @@ html[data-android-app='true'] .android-sidebar-toggle {
 
   .navbar-right {
     right: 12px;
+  }
+}
+
+html[data-android-app='true'] .android-usb-sync-notice {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 50%;
+  display: flex;
+  width: min(390px, calc(100% - 132px));
+  min-width: 0;
+  height: 72px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 12px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-color) 38%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+html[data-android-app='true'] .android-usb-sync-notice > .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--system-accent);
+  font-size: 1.45rem;
+}
+
+html[data-android-app='true']
+  .android-usb-sync-notice:not(.is-complete):not(.is-failed)
+  > .material-symbols-outlined {
+  animation: android-usb-sync-rotate 1.25s linear infinite;
+}
+
+html[data-android-app='true'] .android-usb-sync-notice.is-complete > .material-symbols-outlined {
+  color: #42c77a;
+}
+
+html[data-android-app='true'] .android-usb-sync-notice.is-failed > .material-symbols-outlined {
+  color: var(--error-color, #ef6b6b);
+}
+
+html[data-android-app='true'] .android-usb-sync-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+html[data-android-app='true'] .android-usb-sync-copy > strong,
+html[data-android-app='true'] .android-usb-sync-copy > small {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-android-app='true'] .android-usb-sync-copy > strong {
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+html[data-android-app='true'] .android-usb-sync-copy > small {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+html[data-android-app='true'] .android-usb-sync-progress-track {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  left: 12px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 24%, transparent);
+}
+
+html[data-android-app='true'] .android-usb-sync-progress-track > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--system-accent);
+  transition: width 260ms ease;
+}
+
+@keyframes android-usb-sync-rotate {
+  to {
+    transform: rotate(360deg);
   }
 }

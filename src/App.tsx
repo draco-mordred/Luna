@@ -49,6 +49,7 @@ import './App.css';
 import ReleaseNotesDialog from './components/ReleaseNotesDialog';
 import AndroidStartupSplash from './components/AndroidStartupSplash';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
+import PlatformToolsSetupPrompt from './components/PlatformToolsSetupPrompt';
 import {
   loadRecentMediaHistory,
   clearRecentQueue,
@@ -344,6 +345,7 @@ const App = () => {
     () =>
       isAndroidApp && window.localStorage.getItem('luna-android-lock-screen-controls') !== 'false'
   );
+  const [androidSettingsSection, setAndroidSettingsSection] = useState('appearance');
   const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(isAndroidApp);
   const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
   const [supportsWindowMaterial, setSupportsWindowMaterial] = useState(false);
@@ -2828,6 +2830,8 @@ const App = () => {
           <TopNavbar
             tracks={libraryTracks}
             isAndroidApp={isAndroidApp}
+            androidSettingsSection={androidSettingsSection}
+            onAndroidSettingsSectionChange={setAndroidSettingsSection}
             sidebarOpen={!sidebarCollapsed}
             onToggleSidebar={toggleSidebar}
             onSelectMusicFolders={handleSelectMusicFolders}
@@ -3055,6 +3059,8 @@ const App = () => {
                       path='/settings'
                       element={
                         <Settings
+                          androidSettingsSection={androidSettingsSection}
+                          onAndroidSettingsSectionChange={setAndroidSettingsSection}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3135,6 +3141,8 @@ const App = () => {
                       path='/settings/*'
                       element={
                         <Settings
+                          androidSettingsSection={androidSettingsSection}
+                          onAndroidSettingsSectionChange={setAndroidSettingsSection}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3333,6 +3341,7 @@ const App = () => {
         />
       ) : (
         <PlayBar
+          isAndroidApp={isAndroidApp}
           track={currentTrack}
           activeAudio={activeAudioRef.current}
           isPlaying={isPlaying}
@@ -3395,6 +3404,10 @@ const App = () => {
       {!hasSeenReleaseNotes && settingsLoaded && (
         <ReleaseNotesDialog version={packageJson.version} onClose={handleCloseReleaseNotes} />
       )}
+      {window.electronAPI &&
+        window.electronAPI.platform !== 'win32' &&
+        hasSeenReleaseNotes &&
+        settingsLoaded && <PlatformToolsSetupPrompt enabled />}
     </div>
   );
 };

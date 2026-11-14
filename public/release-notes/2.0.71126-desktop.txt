@@ -1,0 +1,6 @@
+Luna Music Desktop v2.0.71126
+
+Highlights
+- **Optional Android USB setup:** Windows setup can download the official Android SDK Platform Tools, and macOS/Linux offer an opt-in download on first launch. Review and accept Google's terms before downloading; an internet connection is required, and setup can be skipped.
+- **Remembered settings and sync panels:** Settings sections start collapsed and remember their state. The USB Sync setup card also remembers whether it was collapsed.
+- **Smoother artwork transitions:** Album art now has a refined shadow and scales smoothly when playback pauses or resumes.

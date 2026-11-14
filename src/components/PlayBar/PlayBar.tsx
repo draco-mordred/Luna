@@ -66,6 +66,7 @@ interface PlayBarProps {
   playQueueIndex: number;
   onQueueSelect: (index: number) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  isAndroidApp: boolean;
   isDesktopApp: boolean;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
@@ -486,6 +487,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   playQueueIndex,
   onQueueSelect,
   onQueueTracks,
+  isAndroidApp,
   isDesktopApp,
   playerWindowMode,
   lyricOffsetSteps,
@@ -525,6 +527,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [isMiniDockVisible, setIsMiniDockVisible] = useState(true);
   const [celebratingFavoriteTrackId, setCelebratingFavoriteTrackId] = useState<string | null>(null);
   const [playBarWidth, setPlayBarWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
   const [lyricsHintTrackId, setLyricsHintTrackId] = useState<string | null>(null);
   const [syncedLyricsMode, setSyncedLyricsMode] = useState<{
@@ -540,10 +543,23 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const trackMenuPopoverRef = useRef<HTMLDivElement>(null);
   const trackMenuCloseTimeoutRef = useRef<number | null>(null);
   const favoriteCelebrationTimeoutRef = useRef<number | null>(null);
+  const lastNonZeroVolumeRef = useRef(volume > 0 ? volume : 0.5);
   const trackDeletionBackdropRef = useRef<HTMLDivElement>(null);
   const deleteConfirmationCancelRef = useRef<HTMLButtonElement>(null);
   const currentTime = playbackPosition.currentTime;
   const duration = playbackPosition.duration || track?.duration || 0;
+  const handleAndroidVolumeChange = (nextVolume: number) => {
+    if (nextVolume > 0) lastNonZeroVolumeRef.current = nextVolume;
+    onVolumeChange(nextVolume);
+  };
+  const handleAndroidMuteToggle = () => {
+    if (volume > 0) {
+      lastNonZeroVolumeRef.current = volume;
+      onVolumeChange(0);
+    } else {
+      onVolumeChange(lastNonZeroVolumeRef.current);
+    }
+  };
   const lyricsPlaybackTime = Math.max(0, currentTime - lyricOffsetSteps * 0.1);
   const playBarRef = useRef<HTMLDivElement>(null);
   const dragStartYRef = useRef<number | null>(null);
@@ -565,10 +581,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
 
   const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
+  const canToggleLyrics = Boolean(track?.lyrics?.trim() || (isAndroidApp && hasSyncedLyrics));
   const showLyrics = Boolean(
     lyricsEnabled &&
-    track?.lyrics?.trim() &&
-    lyricsVisibility.trackId === track.id &&
+    canToggleLyrics &&
+    lyricsVisibility.trackId === track?.id &&
     lyricsVisibility.visible
   );
   const showLyricsHint = Boolean(track?.id && lyricsHintTrackId === track.id);
@@ -594,7 +611,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
   const isPlainLyricsVisible = showPlainLyricsPanel && !showPlayQueue;
   const isMiniSyncedLyricsVisible = Boolean(
-    lyricsEnabled && showSyncedLyricsOnPlayBar && hasSyncedLyrics && showMiniSyncedLyrics
+    lyricsEnabled &&
+    hasSyncedLyrics &&
+    showSyncedLyrics &&
+    (isAndroidApp ? showLyrics : showSyncedLyricsOnPlayBar && showMiniSyncedLyrics)
   );
   const plainLyricsFontSize = `${0.95 + plainLyricsFontStep * 0.15}rem`;
   const visualizerLocation =
@@ -742,10 +762,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   useEffect(() => {
+    const activeTrackId = track?.id;
     const openNowPlaying = () => setState('expanded');
     const toggleLyrics = () => {
-      if (!lyricsEnabled || !track?.lyrics?.trim()) return;
-      setLyricsVisibility({ trackId: track.id, visible: !showLyrics });
+      if (!lyricsEnabled || !canToggleLyrics || !activeTrackId) return;
+      setLyricsVisibility({ trackId: activeTrackId, visible: !showLyrics });
       setLyricsHintTrackId(null);
     };
 
@@ -755,7 +776,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       window.removeEventListener('luna-open-now-playing', openNowPlaying);
       window.removeEventListener('luna-toggle-lyrics', toggleLyrics);
     };
-  }, [lyricsEnabled, showLyrics, track?.id, track?.lyrics]);
+  }, [canToggleLyrics, lyricsEnabled, showLyrics, track?.id]);
 
   useEffect(() => {
     if (playerWindowMode !== 'mini' || !isPlaying) return undefined;
@@ -959,6 +980,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   useEffect(() => {
     const handleResize = () => {
+      setViewportWidth(window.innerWidth);
       if (state !== 'expanded' || isDragging) return;
       const nextHeight = getExpandedHeight();
       currentHeightRef.current = nextHeight;
@@ -1042,7 +1064,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
 
   const handleLyricsToggle = () => {
-    if (lyricsEnabled && track?.lyrics?.trim()) {
+    if (lyricsEnabled && canToggleLyrics && track) {
       updateLyricsVisibility(!showLyrics);
       setShowLyricsHint(false);
     }
@@ -1317,11 +1339,30 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
   const lyricOffsetLabel = `${lyricOffsetSteps > 0 ? '+' : ''}${(lyricOffsetSteps * 0.1).toFixed(1)}s`;
 
+  const isCompactAndroidLayout = isAndroidApp && viewportWidth <= 800;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!isAndroidApp) {
+      delete root.dataset.androidMiniLyrics;
+      return undefined;
+    }
+    root.dataset.androidMiniLyrics = String(
+      isCompactAndroidLayout && state !== 'expanded' && isMiniSyncedLyricsVisible
+    );
+    return () => {
+      delete root.dataset.androidMiniLyrics;
+    };
+  }, [isAndroidApp, isCompactAndroidLayout, isMiniSyncedLyricsVisible, state]);
+
   const displayHeight = isDragging
     ? height
     : state === 'expanded'
       ? getExpandedHeight()
-      : COLLAPSED_HEIGHT;
+      : isCompactAndroidLayout
+        ? isMiniSyncedLyricsVisible
+          ? COLLAPSED_HEIGHT
+          : 88
+        : COLLAPSED_HEIGHT;
   const expandProgress = isDragging ? getExpandProgress(height) : state === 'expanded' ? 1 : 0;
   const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
     height: `${displayHeight}px`,
@@ -1344,7 +1385,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
         {/* Expanded View - Now Playing */}
         <div
-          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}`}
+          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${isAndroidApp ? ' android-now-playing' : ''}`}
           onPointerDown={handleDragStart}
         >
           {playerWindowMode !== 'normal' && (
@@ -1533,17 +1574,24 @@ const PlayBar: React.FC<PlayBarProps> = ({
             {/* Track Info */}
             <div className='track-info'>
               <div className='track-title-row'>
-                <h2
-                  className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
-                  key={track?.id ?? 'no-track'}
-                  onDoubleClick={() => {
-                    if (lyricsEnabled && track?.lyrics?.trim()) {
-                      updateLyricsVisibility(!showLyrics);
-                    }
-                  }}
-                >
-                  <span>{track?.name || 'No Track Selected'}</span>
-                </h2>
+                {isAndroidApp ? (
+                  <PlayerModeMarquee
+                    className='android-now-playing-title'
+                    text={track?.name || 'No Track Selected'}
+                  />
+                ) : (
+                  <h2
+                    className={`track-name ${isLongTrackTitle ? 'marquee-title' : ''}`}
+                    key={track?.id ?? 'no-track'}
+                    onDoubleClick={() => {
+                      if (lyricsEnabled && track?.lyrics?.trim()) {
+                        updateLyricsVisibility(!showLyrics);
+                      }
+                    }}
+                  >
+                    <span>{track?.name || 'No Track Selected'}</span>
+                  </h2>
+                )}
                 {track && (
                   <div className='track-title-menu-wrap' ref={trackMenuRef}>
                     <button
@@ -1695,9 +1743,16 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   </div>
                 )}
               </div>
-              <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
-                {track?.artist || 'Unknown Artist'}
-              </p>
+              {isAndroidApp ? (
+                <PlayerModeMarquee
+                  className='android-now-playing-artist'
+                  text={track?.artist || 'Unknown Artist'}
+                />
+              ) : (
+                <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
+                  {track?.artist || 'Unknown Artist'}
+                </p>
+              )}
               <p className='album-name' key={`album-${track?.id ?? 'none'}`}>
                 {track?.album || 'Unknown Album'}
               </p>
@@ -1973,6 +2028,71 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <TransportIcon name={getRepeatIcon()} />
               </button>
             </div>
+            {isAndroidApp && (
+              <>
+                <div className='android-now-playing-volume'>
+                  <button
+                    type='button'
+                    className='android-volume-mute'
+                    aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+                    onClick={handleAndroidMuteToggle}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      {volume === 0 ? 'volume_off' : 'volume_down'}
+                    </span>
+                  </button>
+                  <input
+                    aria-label='Volume'
+                    type='range'
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={volume}
+                    onChange={(event) =>
+                      handleAndroidVolumeChange(event.currentTarget.valueAsNumber)
+                    }
+                    className='android-volume-slider'
+                    style={volumeSliderStyle}
+                  />
+                  <span
+                    className='material-symbols-outlined android-volume-level'
+                    aria-label={`Volume ${Math.round(volume * 100)} percent`}
+                    role='img'
+                  >
+                    {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+                  </span>
+                </div>
+                <div className='android-now-playing-actions'>
+                  <button
+                    type='button'
+                    aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                    aria-pressed={showLyrics}
+                    disabled={!lyricsEnabled || !canToggleLyrics}
+                    onClick={handleLyricsToggle}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      lyrics
+                    </span>
+                  </button>
+                  <button type='button' aria-label='Close Now Playing' onClick={handleCollapse}>
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      keyboard_arrow_down
+                    </span>
+                  </button>
+                  <button
+                    type='button'
+                    className={showPlayQueue ? 'active' : ''}
+                    aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
+                    aria-pressed={showPlayQueue}
+                    onClick={() => setShowPlayQueue((visible) => !visible)}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      queue_music
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           {playerWindowMode !== 'normal' && (
             <div className='player-mode-dock'>
@@ -2161,9 +2281,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
           {/* Controls */}
           <div
-            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible && !isAndroidApp ? 'showing-mini-lyrics' : ''}`}
           >
-            {isMiniSyncedLyricsVisible ? (
+            {isMiniSyncedLyricsVisible && !isAndroidApp ? (
               <MiniSyncedLyrics text={currentSyncedLyricText} />
             ) : (
               <div className='controls'>
@@ -2196,6 +2316,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </div>
             )}
           </div>
+
+          {isAndroidApp && isMiniSyncedLyricsVisible && (
+            <div className='android-mini-synced-lyrics' aria-live='polite'>
+              <MiniSyncedLyrics text={currentSyncedLyricText} />
+            </div>
+          )}
 
           <div className='mini-player-actions'>
             <div className='mini-lyrics-transport' aria-hidden={!isMiniSyncedLyricsVisible}>

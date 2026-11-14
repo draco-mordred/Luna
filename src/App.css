@@ -419,46 +419,62 @@ html[data-android-app='true'] .main-area {
 html[data-android-app='true'] .top-navbar.android-top-navbar {
   position: absolute;
   z-index: 20;
-  flex: 0 0 112px;
-  height: 112px;
+  flex: 0 0 64px;
+  height: 64px;
   padding: 0;
   overflow: visible;
   background: transparent;
   border-bottom: 0;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+  transition:
+    height 320ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    flex-basis 320ms cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 
 html[data-android-app='true'] .android-top-navbar::before {
   position: absolute;
-  top: 8px;
-  right: 10px;
-  left: 10px;
-  height: 48px;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 100%;
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 24px;
+  border-top: 0;
+  border-radius: 0 0 20px 20px;
   background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 45%, transparent);
   content: '';
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   pointer-events: none;
+  transition: height 320ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+html[data-android-app='true'] .android-top-navbar.has-secondary-tabs {
+  flex-basis: 132px;
+  height: 132px;
+}
+
+html[data-android-app='true'] .android-top-navbar.has-sync-notice {
+  flex-basis: 108px;
+  height: 108px;
 }
 
 html[data-android-app='true'] .android-top-navbar .tabs-container {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  top: 62px;
+  right: 14px;
+  bottom: auto;
+  left: 14px;
   display: flex;
-  justify-content: flex-start;
-  gap: 2px;
+  justify-content: center;
+  gap: 0;
   max-width: none;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 0 10px;
+  padding: 0 2px;
   transform: none;
-  scroll-padding-inline: 10px;
+  scroll-padding-inline: 2px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -481,14 +497,19 @@ html[data-android-app='true'] .android-top-navbar .navbar-back-button {
 
 html[data-android-app='true'] .android-top-navbar .tab-button {
   flex: 0 0 auto;
-  min-height: 48px;
-  padding: 8px 12px 6px;
-  font-size: 0.78rem;
+  min-height: 40px;
+  gap: 5px;
+  padding: 6px 9px 5px;
+  font-size: 0.72rem;
+}
+
+html[data-android-app='true'] .android-top-navbar .tab-icon {
+  font-size: 1rem;
 }
 
 html[data-android-app='true'] .android-top-navbar .navbar-right {
-  top: 12px;
-  right: 12px;
+  top: 8px;
+  right: 10px;
   gap: 6px;
   transform: none;
 }
@@ -504,26 +525,46 @@ html[data-android-app='true'] .android-top-navbar .navbar-button {
   color: var(--text-primary);
 }
 
+html[data-android-app='true'] .android-top-navbar .navbar-button .material-symbols-outlined,
+html[data-android-app='true']
+  .android-top-navbar
+  .android-sidebar-toggle
+  .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
 html[data-android-app='true'] .android-top-navbar .navbar-button:hover {
   background: var(--hover);
   color: var(--system-accent);
 }
 
 html[data-android-app='true'] .android-top-navbar .android-sidebar-toggle {
-  top: 12px;
-  left: 16px;
+  top: 8px;
+  left: 12px;
   background: transparent;
   color: var(--text-primary);
 }
 
 html[data-android-app='true'] .page-content {
-  padding-top: 116px;
-  padding-bottom: calc(
-    var(--playbar-collapsed-height) + env(safe-area-inset-bottom, 0px) + 20px
-  );
+  padding-top: 68px;
+  padding-bottom: calc(var(--playbar-collapsed-height) + env(safe-area-inset-bottom, 0px) + 20px);
   scrollbar-gutter: auto;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+}
+
+html[data-android-app='true'] .main-area:has(.android-top-navbar.has-secondary-tabs) .page-content {
+  padding-top: 136px;
+}
+
+html[data-android-app='true'] .main-area:has(.android-top-navbar.has-sync-notice) .page-content {
+  padding-top: 112px;
+}
+
+html[data-android-app='true']
+  .main-area:has(.android-top-navbar:not(.has-secondary-tabs):not(.has-sync-notice))
+  .page-content {
+  padding-top: 68px;
 }
 
 html[data-android-app='true'] .page-transition {
@@ -560,9 +601,31 @@ html[data-android-app='true'] .sidebar-header {
 }
 
 html[data-android-app='true'] .page-content.settings-route-content {
-  padding-bottom: calc(
-    var(--playbar-collapsed-height) + env(safe-area-inset-bottom, 0px) + 20px
-  );
+  padding-bottom: calc(var(--playbar-collapsed-height) + env(safe-area-inset-bottom, 0px) + 20px);
+}
+
+html[data-android-app='true'] .settings-header,
+html[data-android-app='true'] .settings-sidebar {
+  display: none;
+}
+
+html[data-android-app='true'] .settings-container {
+  min-height: 0;
+}
+
+html[data-android-app='true'] .settings-main {
+  width: 100%;
+  padding: 12px;
+}
+
+@media (max-width: 800px) {
+  html[data-android-app='true'] {
+    --playbar-collapsed-height: 88px;
+  }
+
+  html[data-android-app='true'][data-android-mini-lyrics='true'] {
+    --playbar-collapsed-height: 126.4px;
+  }
 }
 
 /* Main Area */
@@ -578,7 +641,7 @@ html[data-android-app='true'] .page-content.settings-route-content {
 
 .main-area {
   /* padding: 34px 0 0 0; */
-} 
+}
 html[data-native-titlebar='true'] .sidebar {
   padding: 50px 0 0 0;
 }
@@ -915,7 +978,8 @@ html[data-android-app='true'] .page-content.settings-route-content {
 }
 
 @keyframes playback-notice-pulse {
-  0%, 100% {
+  0%,
+  100% {
     scale: 1;
   }
   50% {

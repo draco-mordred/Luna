@@ -52,6 +52,36 @@
   gap: 12px;
 }
 
+.sync-setup-toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.sync-setup-toggle:focus-visible {
+  outline: 2px solid var(--system-accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.sync-setup-chevron {
+  margin-left: auto;
+  transition: transform 180ms ease;
+}
+
+.sync-setup-toggle[aria-expanded='true'] .sync-setup-chevron {
+  transform: rotate(180deg);
+}
+
+.sync-setup-content {
+  padding-top: 2px;
+}
+
 .sync-card-heading > .material-symbols-outlined {
   color: var(--system-accent);
   font-size: 1.8rem;

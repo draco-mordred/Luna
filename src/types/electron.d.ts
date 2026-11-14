@@ -118,6 +118,12 @@ export interface UsbSyncProgress {
   fileName: string;
 }
 
+export interface PlatformToolsInstallProgress {
+  phase: 'downloading' | 'extracting' | 'verifying';
+  downloadedBytes: number;
+  totalBytes: number | null;
+}
+
 export interface UsbSyncTrack {
   id: string;
   path: string;
@@ -164,6 +170,11 @@ declare global {
       audiomackPlayTrack: (musicId: string, session: string) => Promise<string>;
       savePlaylists: (playlists: Playlist[]) => Promise<Playlist[]>;
       getUsbSyncStatus: () => Promise<UsbSyncStatus>;
+      installPlatformTools: () => Promise<UsbSyncStatus>;
+      openPlatformToolsTerms: () => Promise<void>;
+      onPlatformToolsInstallProgress: (
+        callback: (progress: PlatformToolsInstallProgress) => void
+      ) => () => void;
       selectUsbSyncAdb: () => Promise<UsbSyncStatus | null>;
       syncTracksToAndroid: (options: {
         serial: string;

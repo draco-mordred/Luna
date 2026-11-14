@@ -13,7 +13,8 @@
   "files": [
     "build/**/*",
     "public/electron.js",
-    "public/preload.js"
+    "public/preload.js",
+    "electron/platformTools.js"
   ],
   "win": {
     "target": ["nsis", "portable"],
@@ -90,6 +91,10 @@
       "from": "public/",
       "to": "public/",
       "filter": ["**/*"]
+    },
+    {
+      "from": "scripts/install-platform-tools.ps1",
+      "to": "install-platform-tools.ps1"
     }
   ]
 }

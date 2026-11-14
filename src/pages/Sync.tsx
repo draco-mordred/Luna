@@ -43,6 +43,9 @@ const SyncPage = ({ tracks, playlists, lovedTrackIds }: SyncPageProps) => {
   const [progress, setProgress] = useState<UsbSyncProgress | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSetupExpanded, setIsSetupExpanded] = useState(
+    () => window.localStorage.getItem('luna-usb-sync-setup-card') !== 'closed'
+  );
   const electronAPI = window.electronAPI;
 
   const localTracks = useMemo(
@@ -138,6 +141,14 @@ const SyncPage = ({ tracks, playlists, lovedTrackIds }: SyncPageProps) => {
     }
   };
 
+  const toggleSetupExpanded = () => {
+    setIsSetupExpanded((expanded) => {
+      const nextExpanded = !expanded;
+      window.localStorage.setItem('luna-usb-sync-setup-card', nextExpanded ? 'open' : 'closed');
+      return nextExpanded;
+    });
+  };
+
   const toggleTrack = (trackId: string) => {
     setSelectedTrackIds((current) => {
       const next = new Set(current);
@@ -231,7 +242,13 @@ const SyncPage = ({ tracks, playlists, lovedTrackIds }: SyncPageProps) => {
       </header>
 
       <section className='sync-setup-card' aria-labelledby='sync-setup-title'>
-        <div className='sync-card-heading'>
+        <button
+          className='sync-card-heading sync-setup-toggle'
+          type='button'
+          aria-expanded={isSetupExpanded}
+          aria-controls='sync-setup-content'
+          onClick={toggleSetupExpanded}
+        >
           <span className='material-symbols-outlined' aria-hidden='true'>
             usb
           </span>
@@ -239,72 +256,77 @@ const SyncPage = ({ tracks, playlists, lovedTrackIds }: SyncPageProps) => {
             <h2 id='sync-setup-title'>Connect your Android device</h2>
             <p>ADB is used only to transfer files over the USB connection.</p>
           </div>
-        </div>
-        <ol className='sync-setup-steps'>
-          <li>Install Android SDK Platform Tools on this computer.</li>
-          <li>On Android, enable Developer options and USB debugging.</li>
-          <li>
-            Connect your phone with a data-capable USB cable and approve its debugging prompt.
-          </li>
-          <li>Choose the ADB executable if Luna cannot find it, then refresh devices.</li>
-        </ol>
-        <div className='sync-device-row'>
-          <button
-            className='sync-secondary-button'
-            type='button'
-            onClick={() => void handleSelectAdb()}
-            disabled={isSyncing}
-          >
-            Choose ADB…
-          </button>
-          <button
-            className='sync-secondary-button'
-            type='button'
-            onClick={() => void refreshStatus()}
-            disabled={isRefreshing || isSyncing}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              refresh
-            </span>
-            {isRefreshing ? 'Checking…' : 'Refresh devices'}
-          </button>
-          {status?.adbPath && (
-            <span className='sync-adb-path' title={status.adbPath}>
-              {status.adbPath}
-            </span>
-          )}
-          <label className='sync-device-select'>
-            <span>Android device</span>
-            <select
-              value={selectedSerial}
-              onChange={(event) => setSelectedSerial(event.currentTarget.value)}
-              disabled={authorizedDevices.length === 0 || isSyncing}
+          <span className='material-symbols-outlined sync-setup-chevron' aria-hidden='true'>
+            expand_more
+          </span>
+        </button>
+        <div id='sync-setup-content' className='sync-setup-content' hidden={!isSetupExpanded}>
+          <ol className='sync-setup-steps'>
+            <li>Install Android SDK Platform Tools on this computer.</li>
+            <li>On Android, enable Developer options and USB debugging.</li>
+            <li>
+              Connect your phone with a data-capable USB cable and approve its debugging prompt.
+            </li>
+            <li>Choose the ADB executable if Luna cannot find it, then refresh devices.</li>
+          </ol>
+          <div className='sync-device-row'>
+            <button
+              className='sync-secondary-button'
+              type='button'
+              onClick={() => void handleSelectAdb()}
+              disabled={isSyncing}
             >
-              <option value=''>No authorized device</option>
-              {authorizedDevices.map((device) => (
-                <option key={device.serial} value={device.serial}>
-                  {device.model ?? device.serial} — {device.serial}
-                </option>
-              ))}
-            </select>
-          </label>
+              Choose ADB…
+            </button>
+            <button
+              className='sync-secondary-button'
+              type='button'
+              onClick={() => void refreshStatus()}
+              disabled={isRefreshing || isSyncing}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                refresh
+              </span>
+              {isRefreshing ? 'Checking…' : 'Refresh devices'}
+            </button>
+            {status?.adbPath && (
+              <span className='sync-adb-path' title={status.adbPath}>
+                {status.adbPath}
+              </span>
+            )}
+            <label className='sync-device-select'>
+              <span>Android device</span>
+              <select
+                value={selectedSerial}
+                onChange={(event) => setSelectedSerial(event.currentTarget.value)}
+                disabled={authorizedDevices.length === 0 || isSyncing}
+              >
+                <option value=''>No authorized device</option>
+                {authorizedDevices.map((device) => (
+                  <option key={device.serial} value={device.serial}>
+                    {device.model ?? device.serial} — {device.serial}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {!status?.adbPath && !isRefreshing && (
+            <p className='sync-inline-notice'>
+              ADB was not found. Choose the executable in your Android SDK Platform Tools folder.
+            </p>
+          )}
+          {status?.devices.some((device) => device.status === 'unauthorized') && (
+            <p className='sync-inline-notice'>
+              Your phone is connected but not authorized. Unlock it and accept the USB debugging
+              prompt.
+            </p>
+          )}
+          {statusError && (
+            <p className='sync-error' role='alert'>
+              {statusError}
+            </p>
+          )}
         </div>
-        {!status?.adbPath && !isRefreshing && (
-          <p className='sync-inline-notice'>
-            ADB was not found. Choose the executable in your Android SDK Platform Tools folder.
-          </p>
-        )}
-        {status?.devices.some((device) => device.status === 'unauthorized') && (
-          <p className='sync-inline-notice'>
-            Your phone is connected but not authorized. Unlock it and accept the USB debugging
-            prompt.
-          </p>
-        )}
-        {statusError && (
-          <p className='sync-error' role='alert'>
-            {statusError}
-          </p>
-        )}
       </section>
 
       <section className='sync-tracks-card' aria-labelledby='sync-tracks-title'>

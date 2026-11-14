@@ -73,6 +73,8 @@ Visit [GitHub Releases](https://github.com/draco-mordred/Luna/releases/latest) a
 2. On first launch, select one or more folders containing your music.
 3. Browse your library and start listening. Customize the app from **Settings**.
 
+For Android USB sync, the Windows installer can optionally download the official Android SDK Platform Tools. On macOS and Linux, Luna offers an optional first-launch download when ADB is not already configured. The tools are not bundled: downloading requires an internet connection and your review and acceptance of Google's Android SDK terms. You can skip the download and select an existing `adb` executable from the USB Sync page.
+
 Luna indexes supported audio files in selected folders. In the desktop app, right-click a track to edit supported metadata and embedded lyrics. Changes are written to the audio file itself. MP3, FLAC, M4A/MP4, and OGG/OGA files support metadata editing; other supported library formats may still be playable.
 
 On supported Windows 11 versions, choose **Default**, **Mica**, or **Frosty** in **Settings → Appearance → App background material**. Mica uses Windows' subtle wallpaper-tinted material, while Frosty uses Acrylic for a stronger frosted-glass blur. Both material modes use Windows' native window frame and rounded corners; Luna must restart to apply a selection.
@@ -145,7 +147,7 @@ git fetch origin --tags
 npm run release:build
 ```
 
-Each version needs a plain-text file at `public/release-notes/<version>.txt`. When preparing a release, add the completed change and bug-fix summary to this file; the app shows it on the first launch of that version, followed by brief summaries from `public/release-notes/previous-releases.json`, and remembers when the dialog is dismissed. Creating a new release notes file also refreshes previous-version summaries from archived notes. The build checks that the current version's notes exist and are not left as the starter placeholder. To start a notes file after updating the version, run `npm run release:notes:create`, then edit the generated file before building.
+Each version needs separate plain-text files at `public/release-notes/<version>-desktop.txt` and `public/release-notes/<version>-android.txt`. Include only changes relevant to that app in its notes. The app shows its platform's notes on the first launch of that version, followed by summaries from `previous-releases-desktop.json` or `previous-releases-android.json`, and remembers when the dialog is dismissed. Run `npm run release:notes:create` after updating the version to create both files, then edit them before building. The build checks that both files exist and are not left as starter placeholders.
 
 The release build updates `package.json` and `package-lock.json`, then builds the Electron installers. If the version was advanced and its notes file is not ready, create and complete that file, then run `npm run electron:build`. It does not create a Git commit, tag, or GitHub Release; commit the version change and notes, create and push a matching `v<version>` tag, and attach the installer from `dist/` to a GitHub Release. For a preview without changing files, use `npm run release:version:check`.
 

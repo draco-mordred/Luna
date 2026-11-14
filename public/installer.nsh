@@ -1,6 +1,9 @@
 !define MUI_BGCOLOR "17131F"
 !define MUI_TEXTCOLOR "FFFFFF"
 
+!include LogicLib.nsh
+!include nsDialogs.nsh
+
 !macro customInit
   ${ifNot} ${isUpdated}
     ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
@@ -13,6 +16,60 @@
     ${endIf}
   ${endIf}
 !macroend
+
+!macro customFinishPage
+  !define MUI_PAGE_HEADER_TEXT "Optional Android Platform Tools"
+  !define MUI_PAGE_HEADER_SUBTEXT "Enable ADB support for USB sync"
+  Page custom LunaPlatformToolsPageCreate LunaPlatformToolsPageLeave
+  !undef MUI_PAGE_HEADER_TEXT
+  !undef MUI_PAGE_HEADER_SUBTEXT
+  !insertmacro MUI_PAGE_FINISH
+!macroend
+
+!ifndef BUILD_UNINSTALLER
+Var LunaPlatformToolsCheckbox
+
+Function LunaPlatformToolsPageCreate
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+
+  ${NSD_CreateLabel} 0 0 100% 34u "Luna can download the official Android SDK Platform Tools now. This is optional and requires an internet connection."
+  Pop $1
+  ${NSD_CreateLabel} 0 42u 100% 30u "Android SDK terms: https://developer.android.com/studio/terms"
+  Pop $1
+
+  ${If} ${FileExists} "$INSTDIR\platform-tools\adb.exe"
+    ${NSD_CreateLabel} 0 82u 100% 30u "ADB is already installed for Luna. You can finish setup without downloading it again."
+    Pop $1
+  ${Else}
+    ${NSD_CreateCheckbox} 0 82u 100% 40u "I accept the Android SDK terms and want to download Platform Tools."
+    Pop $LunaPlatformToolsCheckbox
+    ${NSD_SetState} $LunaPlatformToolsCheckbox ${BST_UNCHECKED}
+  ${EndIf}
+
+  nsDialogs::Show
+FunctionEnd
+
+Function LunaPlatformToolsPageLeave
+  ${IfNot} ${FileExists} "$INSTDIR\platform-tools\adb.exe"
+    ${NSD_GetState} $LunaPlatformToolsCheckbox $0
+    ${If} $0 == ${BST_CHECKED}
+      DetailPrint "Downloading Android SDK Platform Tools..."
+      ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\resources\install-platform-tools.ps1" -Destination "$INSTDIR\platform-tools"' $0
+      ${If} $0 == 0
+        DetailPrint "Android SDK Platform Tools installed."
+        MessageBox MB_ICONINFORMATION|MB_OK "Android Platform Tools were installed. Luna can now discover ADB for USB sync."
+      ${Else}
+        DetailPrint "Android SDK Platform Tools installation failed with exit code $0."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "ADB could not be installed. Luna is still installed; you can select an existing adb executable from the USB Sync page."
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+!endif
 
 !macro registerLunaAudioType extension description
   WriteRegStr SHELL_CONTEXT "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}\SupportedTypes" ".${extension}" ""

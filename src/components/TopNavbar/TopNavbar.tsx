@@ -16,6 +16,8 @@ import './TopNavbar.css';
 interface TopNavbarProps {
   tracks: Track[];
   isAndroidApp: boolean;
+  androidSettingsSection: string;
+  onAndroidSettingsSectionChange: (section: string) => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onSelectMusicFolders: () => Promise<MusicLibraryResponse | null>;
@@ -23,15 +25,14 @@ interface TopNavbarProps {
 }
 
 type Section =
-  | 'home'
-  | 'library'
-  | 'browse'
-  | 'radio'
-  | 'search'
-  | 'settings'
-  | 'playlists'
-  | 'queue';
+  'home' | 'library' | 'browse' | 'radio' | 'search' | 'settings' | 'playlists' | 'queue';
 type TabType = 'tracks' | 'albums' | 'artists' | 'composer' | 'genres';
+type AndroidUsbSyncNotice = {
+  phase: 'started' | 'preparing' | 'copying' | 'manifest' | 'completed' | 'failed';
+  current: number;
+  total: number;
+  trackName: string;
+};
 
 const LIBRARY_TABS: Array<{ id: TabType; label: string; icon: string }> = [
   { id: 'tracks', label: 'Tracks', icon: 'music_note' },
@@ -39,6 +40,14 @@ const LIBRARY_TABS: Array<{ id: TabType; label: string; icon: string }> = [
   { id: 'artists', label: 'Artists', icon: 'person' },
   { id: 'composer', label: 'Composers', icon: 'edit_note' },
   { id: 'genres', label: 'Genres', icon: 'style' },
+];
+
+const SETTINGS_TABS = [
+  { id: 'appearance', label: 'Appearance', icon: 'palette' },
+  { id: 'library', label: 'Library', icon: 'library_music' },
+  { id: 'playback', label: 'Playback', icon: 'graphic_eq' },
+  { id: 'nowplaying', label: 'Now Playing', icon: 'lyrics' },
+  { id: 'about', label: 'About', icon: 'info' },
 ];
 
 const SECTION_TITLES: Record<Section, string> = {
@@ -55,6 +64,8 @@ const SECTION_TITLES: Record<Section, string> = {
 const TopNavbar = ({
   tracks,
   isAndroidApp,
+  androidSettingsSection,
+  onAndroidSettingsSectionChange,
   sidebarOpen,
   onToggleSidebar,
   onSelectMusicFolders,
@@ -74,8 +85,46 @@ const TopNavbar = ({
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [androidUsbSyncNotice, setAndroidUsbSyncNotice] = useState<AndroidUsbSyncNotice | null>(
+    null
+  );
 
   const searchGroups = useMemo(() => buildSearchGroups(tracks, searchQuery), [searchQuery, tracks]);
+
+  useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    let clearNoticeTimeout = 0;
+    const handleUsbSyncProgress = (event: Event) => {
+      const notice = (event as CustomEvent<AndroidUsbSyncNotice>).detail;
+      if (
+        !notice ||
+        !['started', 'preparing', 'copying', 'manifest', 'completed', 'failed'].includes(
+          notice.phase
+        ) ||
+        !Number.isInteger(notice.current) ||
+        !Number.isInteger(notice.total) ||
+        typeof notice.trackName !== 'string' ||
+        notice.current < 0 ||
+        notice.total < 0 ||
+        notice.current > notice.total ||
+        notice.total > 2000 ||
+        notice.trackName.length > 512
+      ) {
+        return;
+      }
+
+      window.clearTimeout(clearNoticeTimeout);
+      setAndroidUsbSyncNotice(notice);
+      if (notice.phase === 'completed' || notice.phase === 'failed') {
+        clearNoticeTimeout = window.setTimeout(() => setAndroidUsbSyncNotice(null), 2800);
+      }
+    };
+    window.addEventListener('luna-usb-sync-progress', handleUsbSyncProgress);
+    return () => {
+      window.clearTimeout(clearNoticeTimeout);
+      window.removeEventListener('luna-usb-sync-progress', handleUsbSyncProgress);
+    };
+  }, [isAndroidApp]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -235,6 +284,25 @@ const TopNavbar = ({
           .join(' ')
       : SECTION_TITLES.home);
   const canNavigateBack = isAndroidApp && path !== '' && path !== 'tracks';
+  const showSyncNotice = isAndroidApp && androidUsbSyncNotice !== null;
+  const settingsTabsVisible = isAndroidApp && section === 'settings' && !showSyncNotice;
+  const libraryTabsVisible = section === 'library' && !showSyncNotice;
+  const secondaryTabsVisible = libraryTabsVisible || settingsTabsVisible;
+  const syncNoticeLabel =
+    androidUsbSyncNotice?.phase === 'completed'
+      ? 'Sync complete'
+      : androidUsbSyncNotice?.phase === 'failed'
+        ? 'Sync interrupted'
+        : androidUsbSyncNotice?.phase === 'manifest'
+          ? 'Updating playlists and favorites'
+          : androidUsbSyncNotice?.trackName || 'Preparing USB sync';
+  const syncNoticeProgress =
+    androidUsbSyncNotice && androidUsbSyncNotice.total > 0
+      ? `${Math.min(
+          androidUsbSyncNotice.current + (androidUsbSyncNotice.phase === 'preparing' ? 1 : 0),
+          androidUsbSyncNotice.total
+        )} of ${androidUsbSyncNotice.total}`
+      : 'Connecting to device';
 
   // Handle tab change
   const handleTabChange = (tabId: TabType) => {
@@ -296,7 +364,9 @@ const TopNavbar = ({
   };
 
   return (
-    <nav className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}`}>
+    <nav
+      className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}`}
+    >
       {isAndroidApp && (
         <button
           type='button'
@@ -305,10 +375,12 @@ const TopNavbar = ({
           aria-expanded={sidebarOpen}
           onClick={onToggleSidebar}
         >
-          <span className='material-symbols-outlined' aria-hidden='true'>menu</span>
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            menu
+          </span>
         </button>
       )}
-      <div className="navbar-left">
+      <div className='navbar-left'>
         {canNavigateBack && (
           <button
             type='button'
@@ -316,67 +388,137 @@ const TopNavbar = ({
             aria-label='Go back'
             onClick={handleNavigateBack}
           >
-            <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              arrow_back
+            </span>
           </button>
         )}
-        <h1 className="navbar-title">{pageTitle}</h1>
-        {section === 'library' && (
-          <div className="tabs-container" role="tablist" aria-label="Library views">
+        <h1 className='navbar-title'>{pageTitle}</h1>
+        {libraryTabsVisible && (
+          <div className='tabs-container' role='tablist' aria-label='Library views'>
             {LIBRARY_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks')}
-              className={`tab-button ${(libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks')) ? 'active' : ''}`}
-              onClick={() => handleTabChange(tab.id)}
-            >
-              <span className="material-symbols-outlined tab-icon">{tab.icon}</span>
-              <span className="tab-label">{tab.label}</span>
-            </button>
+              <button
+                key={tab.id}
+                role='tab'
+                aria-selected={libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks')}
+                className={`tab-button ${libraryTab?.id === tab.id || (!libraryTab && tab.id === 'tracks') ? 'active' : ''}`}
+                onClick={() => handleTabChange(tab.id)}
+              >
+                <span className='material-symbols-outlined tab-icon'>{tab.icon}</span>
+                <span className='tab-label'>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {settingsTabsVisible && (
+          <div
+            className='tabs-container settings-tabs-container'
+            role='tablist'
+            aria-label='Settings sections'
+          >
+            {SETTINGS_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type='button'
+                role='tab'
+                aria-selected={androidSettingsSection === tab.id}
+                className={`tab-button${androidSettingsSection === tab.id ? ' active' : ''}`}
+                onClick={() => onAndroidSettingsSectionChange(tab.id)}
+              >
+                <span className='material-symbols-outlined tab-icon' aria-hidden='true'>
+                  {tab.icon}
+                </span>
+                <span className='tab-label'>{tab.label}</span>
+              </button>
             ))}
           </div>
         )}
       </div>
 
-      <div className="navbar-right" ref={searchRef}>
+      {showSyncNotice && androidUsbSyncNotice && (
+        <div
+          className={`android-usb-sync-notice${androidUsbSyncNotice.phase === 'completed' ? ' is-complete' : ''}${androidUsbSyncNotice.phase === 'failed' ? ' is-failed' : ''}`}
+          role='status'
+          aria-live='polite'
+          aria-atomic='true'
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            {androidUsbSyncNotice.phase === 'completed'
+              ? 'check_circle'
+              : androidUsbSyncNotice.phase === 'failed'
+                ? 'error'
+                : 'sync'}
+          </span>
+          <span className='android-usb-sync-copy'>
+            <strong>{syncNoticeLabel}</strong>
+            <small>
+              {androidUsbSyncNotice.phase === 'completed' || androidUsbSyncNotice.phase === 'failed'
+                ? 'USB music sync'
+                : syncNoticeProgress}
+            </small>
+          </span>
+          <span className='android-usb-sync-progress-track' aria-hidden='true'>
+            <span
+              style={{
+                width: `${
+                  androidUsbSyncNotice.phase === 'completed' ||
+                  androidUsbSyncNotice.phase === 'manifest'
+                    ? 100
+                    : androidUsbSyncNotice.total > 0
+                      ? Math.min(
+                          ((androidUsbSyncNotice.current +
+                            (androidUsbSyncNotice.phase === 'preparing' ? 1 : 0)) /
+                            androidUsbSyncNotice.total) *
+                            100,
+                          100
+                        )
+                      : 0
+                }%`,
+              }}
+            />
+          </span>
+        </div>
+      )}
+
+      <div className='navbar-right' ref={searchRef}>
         {/* Search */}
         <div className={`search-inline ${isSearchExpanded ? 'open' : ''}`}>
           <button
-            type="button"
-            className="navbar-button search-button"
-            aria-label="Search"
+            type='button'
+            className='navbar-button search-button'
+            aria-label='Search'
             onClick={() => setIsSearchExpanded((current) => !current)}
           >
-            <span className="material-symbols-outlined">search</span>
+            <span className='material-symbols-outlined'>search</span>
           </button>
 
           {isSearchExpanded && (
-            <div className="search-dropdown">
-              <div className="search-input-row">
-                <span className="material-symbols-outlined">search</span>
+            <div className='search-dropdown'>
+              <div className='search-input-row'>
+                <span className='material-symbols-outlined'>search</span>
                 <input
-                  type="text"
+                  type='text'
                   value={searchQuery}
-                  placeholder="Search library"
-                  aria-label="Search the library"
+                  placeholder='Search library'
+                  aria-label='Search the library'
                   autoFocus
                   onChange={(event) => setSearchQuery(event.target.value)}
                   onKeyDown={handleSearchInputKeyDown}
                 />
               </div>
 
-              <div className="search-results-panel">
+              <div className='search-results-panel'>
                 {searchQuery.trim() ? (
                   searchGroups.some((group) => group.items.length > 0) ? (
-                    searchGroups.map((group) => (
+                    searchGroups.map((group) =>
                       group.items.length > 0 ? (
-                        <div key={group.title} className="search-result-group">
-                          <div className="search-result-header">{group.title}</div>
+                        <div key={group.title} className='search-result-group'>
+                          <div className='search-result-header'>{group.title}</div>
                           {group.items.slice(0, 4).map((item) => (
                             <button
                               key={`${group.title}-${item.id}`}
-                              type="button"
-                              className="search-result-item"
+                              type='button'
+                              className='search-result-item'
                               onClick={() => {
                                 if (item.type === 'track' && item.track) {
                                   navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
@@ -387,8 +529,16 @@ const TopNavbar = ({
                                 setIsSearchExpanded(false);
                               }}
                             >
-                              <span className="material-symbols-outlined">{item.type === 'track' ? 'music_note' : item.type === 'album' ? 'album' : item.type === 'artist' ? 'person' : 'tag'}</span>
-                              <span className="search-result-copy">
+                              <span className='material-symbols-outlined'>
+                                {item.type === 'track'
+                                  ? 'music_note'
+                                  : item.type === 'album'
+                                    ? 'album'
+                                    : item.type === 'artist'
+                                      ? 'person'
+                                      : 'tag'}
+                              </span>
+                              <span className='search-result-copy'>
                                 <strong>{item.title}</strong>
                                 <small>{item.subtitle}</small>
                               </span>
@@ -396,12 +546,14 @@ const TopNavbar = ({
                           ))}
                         </div>
                       ) : null
-                    ))
+                    )
                   ) : (
-                    <div className="search-empty-state-inline">No matches found.</div>
+                    <div className='search-empty-state-inline'>No matches found.</div>
                   )
                 ) : (
-                  <div className="search-empty-state-inline">Type a song, artist, album, or genre.</div>
+                  <div className='search-empty-state-inline'>
+                    Type a song, artist, album, or genre.
+                  </div>
                 )}
               </div>
             </div>
@@ -462,11 +614,11 @@ const TopNavbar = ({
                       >
                         <span className='material-symbols-outlined'>login</span>
                         <span>
-                              {authBusy === 'google'
-                                ? 'Connecting…'
-                                : authBusy === 'finishing'
-                                  ? 'Finishing sign-in…'
-                                  : 'Continue with Google'}
+                          {authBusy === 'google'
+                            ? 'Connecting…'
+                            : authBusy === 'finishing'
+                              ? 'Finishing sign-in…'
+                              : 'Continue with Google'}
                         </span>
                       </button>
                     </li>
@@ -505,64 +657,68 @@ const TopNavbar = ({
         </div>
 
         {/* Options/Settings */}
-        <div className="options-section" ref={settingsMenuRef}>
-          <button className="navbar-button options-button" onClick={toggleSettingsMenu}>
-            <span className="material-symbols-outlined">more_vert</span>
+        <div className='options-section' ref={settingsMenuRef}>
+          <button className='navbar-button options-button' onClick={toggleSettingsMenu}>
+            <span className='material-symbols-outlined'>more_vert</span>
           </button>
 
           {showSettingsMenu && (
-            <div className="settings-menu">
-              <div className="menu-header">
+            <div className='settings-menu'>
+              <div className='menu-header'>
                 <h3>Options</h3>
               </div>
-              <ul className="menu-list">
-                <li className="menu-item">
-                  <Link className="menu-button" to="/settings" onClick={() => setShowSettingsMenu(false)}>
-                    <span className="material-symbols-outlined">settings</span>
+              <ul className='menu-list'>
+                <li className='menu-item'>
+                  <Link
+                    className='menu-button'
+                    to='/settings'
+                    onClick={() => setShowSettingsMenu(false)}
+                  >
+                    <span className='material-symbols-outlined'>settings</span>
                     <span>Settings</span>
                   </Link>
                 </li>
-                <li className="menu-item">
+                <li className='menu-item'>
                   <button
-                    className="menu-button"
+                    className='menu-button'
                     onClick={() => {
                       setShowSettingsMenu(false);
                       void onSelectMusicFolders();
                     }}
                   >
-                    <span className="material-symbols-outlined">
+                    <span className='material-symbols-outlined'>
                       {isAndroidApp ? 'library_music' : 'folder_open'}
                     </span>
                     <span>{isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}</span>
                   </button>
                 </li>
-                <li className="menu-item">
+                <li className='menu-item'>
                   <button
-                    className="menu-button"
+                    className='menu-button'
                     onClick={() => {
                       setShowSettingsMenu(false);
                       void onRescanMusicLibrary();
                     }}
                   >
-                    <span className="material-symbols-outlined">refresh</span>
+                    <span className='material-symbols-outlined'>refresh</span>
                     <span>{isAndroidApp ? 'Scan Device Library' : 'Rescan Library'}</span>
                   </button>
                 </li>
-                <li className="menu-item divider">
-                  <button className="menu-button">
-                    <span className="material-symbols-outlined">help</span>
+                <li className='menu-item divider'>
+                  <button className='menu-button'>
+                    <span className='material-symbols-outlined'>help</span>
                     <span>Help</span>
                   </button>
                 </li>
-                <li className="menu-item">
+                <li className='menu-item'>
                   <button
-                    className="menu-button"
+                    className='menu-button'
                     onClick={() => {
                       setShowSettingsMenu(false);
                       navigate('/settings/about');
                     }}
                   >
-                    <span className="material-symbols-outlined">info</span>
+                    <span className='material-symbols-outlined'>info</span>
                     <span>About</span>
                   </button>
                 </li>

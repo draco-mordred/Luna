@@ -62,9 +62,11 @@ const ReleaseNotesDialog = ({ version, onClose }: ReleaseNotesDialogProps) => {
           result = await window.electronAPI.loadReleaseNotes(version);
         } else {
           const publicBase = process.env.PUBLIC_URL === '.' ? '' : process.env.PUBLIC_URL;
+          const platform =
+            document.documentElement.dataset.androidApp === 'true' ? 'android' : 'desktop';
           const [currentResponse, previousResponse] = await Promise.all([
-            fetch(`${publicBase}/release-notes/${encodeURIComponent(version)}.txt`),
-            fetch(`${publicBase}/release-notes/previous-releases.json`),
+            fetch(`${publicBase}/release-notes/${encodeURIComponent(version)}-${platform}.txt`),
+            fetch(`${publicBase}/release-notes/previous-releases-${platform}.json`),
           ]);
           if (!currentResponse.ok || !previousResponse.ok) {
             throw new Error(`Release notes for Luna ${version} could not be found.`);

@@ -33,6 +33,8 @@ const compareVersions = (left: string, right: string) => {
 };
 
 interface SettingsPageProps {
+  androidSettingsSection: string;
+  onAndroidSettingsSectionChange: (section: string) => void;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   accentColor: string;
@@ -111,7 +113,19 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
   title,
   children,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(
+    () => window.localStorage.getItem(`luna-settings-category:${title}`) === 'open'
+  );
+  const toggleExpanded = () => {
+    setIsExpanded((expanded) => {
+      const nextExpanded = !expanded;
+      window.localStorage.setItem(
+        `luna-settings-category:${title}`,
+        nextExpanded ? 'open' : 'closed'
+      );
+      return nextExpanded;
+    });
+  };
 
   return (
     <section className={`settings-category${isExpanded ? ' is-expanded' : ''}`}>
@@ -119,7 +133,7 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
         className='settings-category-toggle'
         type='button'
         aria-expanded={isExpanded}
-        onClick={() => setIsExpanded((expanded) => !expanded)}
+        onClick={toggleExpanded}
       >
         <span>{title}</span>
         <span className='material-symbols-outlined' aria-hidden='true'>
@@ -134,6 +148,8 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
+  androidSettingsSection,
+  onAndroidSettingsSectionChange,
   themeMode,
   onThemeChange,
   accentColor,
@@ -217,6 +233,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     location.pathname.replace(/\/+$/, '').endsWith('/about') ? 'about' : 'appearance'
   );
   const [sectionHistory, setSectionHistory] = useState<string[]>([]);
+  const selectedSection = isAndroidApp ? androidSettingsSection : activeSection;
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -306,6 +323,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const previousSection = sectionHistory[sectionHistory.length - 1];
     if (previousSection) {
       setActiveSection(previousSection);
+      if (isAndroidApp) onAndroidSettingsSectionChange(previousSection);
       setSectionHistory((history) => history.slice(0, -1));
       return;
     }
@@ -313,9 +331,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   const selectSection = (sectionId: string) => {
-    if (sectionId === activeSection) return;
-    setSectionHistory((history) => [...history, activeSection]);
+    if (sectionId === selectedSection) return;
+    setSectionHistory((history) => [...history, selectedSection]);
     setActiveSection(sectionId);
+    if (isAndroidApp) onAndroidSettingsSectionChange(sectionId);
   };
 
   // Settings sections
@@ -1228,7 +1247,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             {sections.map((section) => (
               <li key={section.id} className='settings-nav-item'>
                 <button
-                  className={`settings-nav-button ${activeSection === section.id ? 'active' : ''}`}
+                  className={`settings-nav-button ${selectedSection === section.id ? 'active' : ''}`}
                   onClick={() => selectSection(section.id)}
                 >
                   <span className='material-symbols-outlined'>{section.icon}</span>
@@ -1241,7 +1260,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
         {/* Main Content */}
         <main className='settings-main'>
-          <div key={activeSection}>{sections.find((s) => s.id === activeSection)?.component}</div>
+          <div key={selectedSection}>
+            {sections.find((section) => section.id === selectedSection)?.component}
+          </div>
         </main>
       </div>
     </div>

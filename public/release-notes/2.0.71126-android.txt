@@ -1,0 +1,6 @@
+Luna Music Android v2.0.71126
+
+Highlights
+- **A refreshed Songs screen:** The Android Tracks page now uses a mobile-first song-list layout, with library navigation centered in the taller floating top bar and a responsive scroll index.
+- **A mobile-focused player:** The bottom PlayBar and Now Playing screen use dedicated compact layouts on phone-sized screens, with responsive artwork, playback controls, and seeking while retaining the glass effect.
+- **Smoother artwork transitions:** Album art has a refined shadow and scales smoothly when playback pauses or resumes.

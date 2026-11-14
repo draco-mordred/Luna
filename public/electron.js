@@ -19,6 +19,7 @@ const { execFile, execFileSync } = require('child_process');
 const { parseFile, selectCover } = require('music-metadata');
 const { ByteVector, File: TagLibFile, Picture, PictureType } = require('node-taglib-sharp');
 const { extractEmbeddedLyrics } = require('./lyrics');
+const { installPlatformTools } = require('../electron/platformTools');
 
 if (process.platform === 'win32') app.setAppUserModelId('com.avalon.luna');
 
@@ -213,7 +214,10 @@ const getConfiguredAdbPath = async () => {
 
   const platformTools = process.platform === 'win32' ? 'adb.exe' : 'adb';
   const candidates = [
-    process.env.ANDROID_HOME && path.join(process.env.ANDROID_HOME, 'platform-tools', platformTools),
+    path.join(path.dirname(process.execPath), 'platform-tools', platformTools),
+    path.join(app.getPath('userData'), 'platform-tools', platformTools),
+    process.env.ANDROID_HOME &&
+      path.join(process.env.ANDROID_HOME, 'platform-tools', platformTools),
     process.env.ANDROID_SDK_ROOT &&
       path.join(process.env.ANDROID_SDK_ROOT, 'platform-tools', platformTools),
     process.env.LOCALAPPDATA &&
@@ -1332,8 +1336,8 @@ ipcMain.handle('load-release-notes', async (_event, version) => {
     ? path.join(app.getAppPath(), 'build', 'release-notes')
     : path.join(__dirname, 'release-notes');
   const [current, previous] = await Promise.all([
-    fs.promises.readFile(path.join(notesDirectory, `${version}.txt`), 'utf8'),
-    fs.promises.readFile(path.join(notesDirectory, 'previous-releases.json'), 'utf8'),
+    fs.promises.readFile(path.join(notesDirectory, `${version}-desktop.txt`), 'utf8'),
+    fs.promises.readFile(path.join(notesDirectory, 'previous-releases-desktop.json'), 'utf8'),
   ]);
   const parsedPrevious = JSON.parse(previous);
   if (
@@ -1352,6 +1356,22 @@ ipcMain.handle('get-usb-sync-status', async () => {
   if (!adbPath) return { adbPath: null, devices: [] };
   return { adbPath, devices: await getUsbSyncDevices(adbPath) };
 });
+ipcMain.handle('install-platform-tools', async (event) => {
+  const adbPath = await installPlatformTools({
+    platform: process.platform,
+    destinationDirectory: path.join(app.getPath('userData'), 'platform-tools'),
+    onProgress: (progress) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('platform-tools-install-progress', progress);
+      }
+    },
+  });
+  await writeJsonFile(getUsbSyncSettingsPath(), { adbPath });
+  return { adbPath, devices: await getUsbSyncDevices(adbPath) };
+});
+ipcMain.handle('open-platform-tools-terms', () =>
+  shell.openExternal('https://developer.android.com/studio/terms')
+);
 ipcMain.handle('select-usb-sync-adb', async () => {
   const dialogOptions = {
     title: 'Select Android Platform Tools',
@@ -1390,9 +1410,7 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
     options.playlists.length > 1000 ||
     !Array.isArray(options.lovedTrackIds) ||
     options.lovedTrackIds.length > 50000 ||
-    !options.lovedTrackIds.every(
-      (trackId) => typeof trackId === 'string' && trackId.length <= 256
-    )
+    !options.lovedTrackIds.every((trackId) => typeof trackId === 'string' && trackId.length <= 256)
   ) {
     throw new TypeError('Playlist or favorite metadata is invalid for Android sync.');
   }
@@ -1427,7 +1445,9 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
   const devices = await getUsbSyncDevices(adbPath);
   const device = devices.find((candidate) => candidate.serial === options.serial);
   if (!device || device.status !== 'device') {
-    throw new Error('The selected Android device is no longer authorized. Reconnect it and approve the USB debugging prompt.');
+    throw new Error(
+      'The selected Android device is no longer authorized. Reconnect it and approve the USB debugging prompt.'
+    );
   }
 
   const library = await readLibraryConfig();
@@ -1444,7 +1464,9 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
     }
     const track = libraryTracks.get(normalizeTrackPath(selection.path));
     if (!track || track.id !== selection.id || !indexedAudioPaths.has(track.path)) {
-      throw new Error('A selected track is no longer part of the indexed music library. Rescan and try again.');
+      throw new Error(
+        'A selected track is no longer part of the indexed music library. Rescan and try again.'
+      );
     }
     if (!AUDIO_EXTENSIONS.has(path.extname(track.path).toLowerCase())) {
       throw new Error(`"${path.basename(track.path)}" is not a supported audio format.`);
@@ -1458,12 +1480,7 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
     throw new TypeError('The selected tracks contain duplicates.');
   }
 
-  await runExecutable(adbPath, [
-    '-s',
-    device.serial,
-    'shell',
-    `mkdir -p '${USB_SYNC_DIRECTORY}'`,
-  ]);
+  await runExecutable(adbPath, ['-s', device.serial, 'shell', `mkdir -p '${USB_SYNC_DIRECTORY}'`]);
   const { stdout: remoteListing } = await runExecutable(adbPath, [
     '-s',
     device.serial,
@@ -1474,15 +1491,39 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
   const manifestTracks = [];
   let copied = 0;
   let skipped = 0;
-  const sendSyncProgress = (phase, current, fileName, trackName) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send('usb-sync-progress', {
+  const sendSyncProgress = async (phase, current, fileName, trackName) => {
+    const notice = {
       phase,
       current,
       total: selectedTracks.length,
-      trackName,
-      fileName,
-    });
+      trackName: typeof trackName === 'string' ? trackName.slice(0, 512) : '',
+      fileName: typeof fileName === 'string' ? fileName.slice(0, 512) : '',
+    };
+    if (
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      ['preparing', 'copying', 'manifest'].includes(phase)
+    ) {
+      mainWindow.webContents.send('usb-sync-progress', notice);
+    }
+
+    if (phase === 'copying') return;
+
+    const payload = Buffer.from(JSON.stringify(notice)).toString('base64');
+    try {
+      await runExecutable(
+        adbPath,
+        [
+          '-s',
+          device.serial,
+          'shell',
+          `am broadcast -a com.luna.music.USB_SYNC_PROGRESS -p com.luna.music --es luna_payload ${payload}`,
+        ],
+        { timeout: 10000 }
+      );
+    } catch (error) {
+      console.warn('Unable to notify Luna Android about USB sync progress.', error);
+    }
   };
 
   const hashTrack = (trackPath) =>
@@ -1494,77 +1535,87 @@ ipcMain.handle('sync-tracks-to-android', async (_event, options) => {
       stream.on('end', () => resolve(hash.digest('hex')));
     });
 
-  for (let index = 0; index < selectedTracks.length; index += 1) {
-    const track = selectedTracks[index];
-    const fileName = path.basename(track.path);
-    sendSyncProgress('preparing', index, fileName, track.name || fileName);
-    const stat = await fs.promises.stat(track.path);
-    if (!stat.isFile()) throw new Error(`"${fileName}" is no longer a file.`);
-    const sha256 = await hashTrack(track.path);
-    const extension = path.extname(fileName).toLowerCase();
-    const originalName = path.basename(fileName, path.extname(fileName));
-    const safeName =
-      originalName
-        .replace(/[<>:"/\\|?*\u0000-\u001f']/g, '_')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 100) || 'Track';
-    const destinationName = `${safeName} [${sha256.slice(0, 12)}]${extension}`;
-
-    manifestTracks.push({
-      id: track.id,
-      sha256,
-      fileName: destinationName,
-      name: track.name,
-      artist: track.artist,
-      album: track.album,
-      duration: track.duration,
-      size: stat.size,
-    });
-    if (existingFiles.has(destinationName)) {
-      skipped += 1;
-      sendSyncProgress('copying', index + 1, fileName, track.name || fileName);
-      continue;
-    }
-    await runExecutable(
-      adbPath,
-      ['-s', device.serial, 'push', track.path, `${USB_SYNC_DIRECTORY}/${destinationName}`],
-      { timeout: 15 * 60 * 1000 }
-    );
-    existingFiles.add(destinationName);
-    copied += 1;
-    sendSyncProgress('copying', index + 1, fileName, track.name || fileName);
-  }
-
-  const manifest = {
-    formatVersion: 1,
-    createdAt: new Date().toISOString(),
-    source: 'Luna Desktop',
-    tracks: manifestTracks,
-    playlists: manifestPlaylists,
-    lovedTrackIds: options.lovedTrackIds,
-  };
-  const manifestPath = path.join(os.tmpdir(), `luna-sync-${crypto.randomUUID()}.json`);
+  let currentTrackName = 'Starting USB sync';
+  await sendSyncProgress('started', 0, '', currentTrackName);
   try {
-    await fs.promises.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
-    sendSyncProgress(
-      'manifest',
-      selectedTracks.length,
-      'luna-sync-manifest.json',
-      'Playlist and favorite details'
-    );
-    await runExecutable(adbPath, [
-      '-s',
-      device.serial,
-      'push',
-      manifestPath,
-      `${USB_SYNC_DIRECTORY}/luna-sync-manifest.json`,
-    ]);
-  } finally {
-    await fs.promises.rm(manifestPath, { force: true });
-  }
+    for (let index = 0; index < selectedTracks.length; index += 1) {
+      const track = selectedTracks[index];
+      const fileName = path.basename(track.path);
+      currentTrackName = track.name || fileName;
+      await sendSyncProgress('preparing', index, fileName, currentTrackName);
+      const stat = await fs.promises.stat(track.path);
+      if (!stat.isFile()) throw new Error(`"${fileName}" is no longer a file.`);
+      const sha256 = await hashTrack(track.path);
+      const extension = path.extname(fileName).toLowerCase();
+      const originalName = path.basename(fileName, path.extname(fileName));
+      const safeName =
+        originalName
+          .replace(/[<>:"/\\|?*\u0000-\u001f']/g, '_')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 100) || 'Track';
+      const destinationName = `${safeName} [${sha256.slice(0, 12)}]${extension}`;
 
-  return { copied, skipped, manifestWritten: true };
+      manifestTracks.push({
+        id: track.id,
+        sha256,
+        fileName: destinationName,
+        name: track.name,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        size: stat.size,
+      });
+      if (existingFiles.has(destinationName)) {
+        skipped += 1;
+        await sendSyncProgress('copying', index + 1, fileName, currentTrackName);
+        continue;
+      }
+      await runExecutable(
+        adbPath,
+        ['-s', device.serial, 'push', track.path, `${USB_SYNC_DIRECTORY}/${destinationName}`],
+        { timeout: 15 * 60 * 1000 }
+      );
+      existingFiles.add(destinationName);
+      copied += 1;
+      await sendSyncProgress('copying', index + 1, fileName, currentTrackName);
+    }
+
+    const manifest = {
+      formatVersion: 1,
+      createdAt: new Date().toISOString(),
+      source: 'Luna Desktop',
+      tracks: manifestTracks,
+      playlists: manifestPlaylists,
+      lovedTrackIds: options.lovedTrackIds,
+    };
+    const manifestPath = path.join(os.tmpdir(), `luna-sync-${crypto.randomUUID()}.json`);
+    try {
+      await fs.promises.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+      currentTrackName = 'Playlist and favorite details';
+      await sendSyncProgress(
+        'manifest',
+        selectedTracks.length,
+        'luna-sync-manifest.json',
+        currentTrackName
+      );
+      await runExecutable(adbPath, [
+        '-s',
+        device.serial,
+        'push',
+        manifestPath,
+        `${USB_SYNC_DIRECTORY}/luna-sync-manifest.json`,
+      ]);
+    } finally {
+      await fs.promises.rm(manifestPath, { force: true });
+    }
+
+    await sendSyncProgress('completed', selectedTracks.length, '', 'Sync complete');
+    return { copied, skipped, manifestWritten: true };
+  } catch (error) {
+    await sendSyncProgress('failed', 0, '', currentTrackName);
+    throw error;
+  }
 });
 ipcMain.handle('save-playlists', async (_event, playlists) => {
   if (!Array.isArray(playlists)) throw new TypeError('Playlists must be an array.');
@@ -1883,8 +1934,12 @@ const taskbarIcons = {
   previous: createTaskbarIcon(
     '<path d="M11.2 5.5v13a1 1 0 0 1-1.6.8L2.2 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Zm10.6 0v13a1 1 0 0 1-1.6.8L12.8 13a1.2 1.2 0 0 1 0-2l7.4-6.3a1 1 0 0 1 1.6.8Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
   ),
-  play: createTaskbarIcon('<path d="M7.5 4.8a1 1 0 0 1 1.5-.86l11 7.1a1.1 1.1 0 0 1 0 1.86l-11 7.1a1 1 0 0 1-1.5-.86Z" fill="#fff"/>'),
-  pause: createTaskbarIcon('<path d="M8 6.5v11M16 6.5v11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>'),
+  play: createTaskbarIcon(
+    '<path d="M7.5 4.8a1 1 0 0 1 1.5-.86l11 7.1a1.1 1.1 0 0 1 0 1.86l-11 7.1a1 1 0 0 1-1.5-.86Z" fill="#fff"/>'
+  ),
+  pause: createTaskbarIcon(
+    '<path d="M8 6.5v11M16 6.5v11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>'
+  ),
   next: createTaskbarIcon(
     '<path d="M2.8 5.5a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Zm10.6 0a1 1 0 0 1 1.6-.8l7.4 6.3a1.2 1.2 0 0 1 0 2l-7.4 6.3a1 1 0 0 1-1.6-.8v-13Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
   ),

@@ -1,5 +1,4 @@
 import { memo, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import type {
   DesktopDeviceInfo,
   IconStyle,
@@ -7,6 +6,7 @@ import type {
   VisualizerStyle,
   WindowMaterial,
 } from '../types/electron';
+import type { AndroidPlayBarStyle, NowPlayingLayout } from '../types/android';
 import packageMetadata from '../../package.json';
 import type { AndroidDeviceInfo } from '../services/androidMusicLibrary';
 import ReleaseNotesDialog from '../components/ReleaseNotesDialog';
@@ -33,8 +33,13 @@ const compareVersions = (left: string, right: string) => {
 };
 
 interface SettingsPageProps {
-  androidSettingsSection: string;
-  onAndroidSettingsSectionChange: (section: string) => void;
+  settingsSection: string;
+  androidDockShowLabels: boolean;
+  onAndroidDockShowLabelsChange: (show: boolean) => void;
+  androidPlayBarStyle: AndroidPlayBarStyle;
+  onAndroidPlayBarStyleChange: (style: AndroidPlayBarStyle) => void;
+  nowPlayingLayout: NowPlayingLayout;
+  onNowPlayingLayoutChange: (layout: NowPlayingLayout) => void;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   accentColor: string;
@@ -148,8 +153,13 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
-  androidSettingsSection,
-  onAndroidSettingsSectionChange,
+  settingsSection,
+  androidDockShowLabels,
+  onAndroidDockShowLabelsChange,
+  androidPlayBarStyle,
+  onAndroidPlayBarStyleChange,
+  nowPlayingLayout,
+  onNowPlayingLayoutChange,
   themeMode,
   onThemeChange,
   accentColor,
@@ -216,8 +226,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onRestartApp,
   onOpenWindowsDefaultApps,
 }) => {
-  const location = useLocation();
-  const navigate = useNavigate();
   const [showAboutReleaseNotes, setShowAboutReleaseNotes] = useState(false);
   const [desktopDeviceInfo, setDesktopDeviceInfo] = useState<DesktopDeviceInfo | null>(null);
   const [desktopDeviceInfoLoadFailed, setDesktopDeviceInfoLoadFailed] = useState(false);
@@ -229,12 +237,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     downloadUrl: string;
   } | null>(null);
   const [showDeveloperInfo, setShowDeveloperInfo] = useState(false);
-  const [activeSection, setActiveSection] = useState(() =>
-    location.pathname.replace(/\/+$/, '').endsWith('/about') ? 'about' : 'appearance'
-  );
-  const [sectionHistory, setSectionHistory] = useState<string[]>([]);
-  const selectedSection = isAndroidApp ? androidSettingsSection : activeSection;
-
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return undefined;
@@ -317,25 +319,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     : desktopDeviceInfoLoadFailed
       ? 'Unavailable'
       : 'Loading…';
-
-  // Navigation
-  const goBack = () => {
-    const previousSection = sectionHistory[sectionHistory.length - 1];
-    if (previousSection) {
-      setActiveSection(previousSection);
-      if (isAndroidApp) onAndroidSettingsSectionChange(previousSection);
-      setSectionHistory((history) => history.slice(0, -1));
-      return;
-    }
-    navigate(-1);
-  };
-
-  const selectSection = (sectionId: string) => {
-    if (sectionId === selectedSection) return;
-    setSectionHistory((history) => [...history, selectedSection]);
-    setActiveSection(sectionId);
-    if (isAndroidApp) onAndroidSettingsSectionChange(sectionId);
-  };
 
   // Settings sections
   const sections: SettingsSection[] = [
@@ -453,6 +436,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           )}
           </SettingsCategory>
+          {isAndroidApp && (
+            <SettingsCategory title='Android navigation'>
+              <div className='setting-item'>
+                <div className='setting-info'>
+                  <h3>Show dock labels</h3>
+                  <p>Show text labels below the Android dock icons</p>
+                </div>
+                <div className='setting-control'>
+                  <label className='toggle-switch'>
+                    <input
+                      type='checkbox'
+                      checked={androidDockShowLabels}
+                      onChange={(event) =>
+                        onAndroidDockShowLabelsChange(event.currentTarget.checked)
+                      }
+                      aria-label='Show labels in the Android dock'
+                    />
+                    <span className='toggle-slider'></span>
+                  </label>
+                </div>
+              </div>
+            </SettingsCategory>
+          )}
           <SettingsCategory title='Colors and player appearance'>
           <div className='setting-item'>
             <div className='setting-info'>
@@ -896,26 +902,49 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           {isAndroidApp && (
             <div className='setting-item'>
               <div className='setting-info'>
-                <h3>Mobile Now Playing layout</h3>
-                <p>Choose between the standard layout and the full-artwork layout on your phone</p>
+                <h3>Android playbar style</h3>
+                <p>Choose how the floating player and dock are presented</p>
               </div>
               <div className='setting-control'>
                 <select
                   className='appearance-select'
-                  aria-label='Mobile Now Playing layout'
-                  defaultValue={
-                    window.localStorage.getItem('luna-android-np-layout') ?? 'standard'
-                  }
+                  aria-label='Android playbar style'
+                  value={androidPlayBarStyle}
                   onChange={(event) =>
-                    window.localStorage.setItem('luna-android-np-layout', event.currentTarget.value)
+                    onAndroidPlayBarStyleChange(event.currentTarget.value as AndroidPlayBarStyle)
                   }
                 >
-                  <option value='standard'>Standard</option>
-                  <option value='full-art'>Full artwork</option>
+                  <option value='floating'>Floating</option>
+                  <option value='dock'>Dock</option>
+                  <option value='pill'>Pill</option>
+                  <option value='control'>Control</option>
+                  <option value='reverse'>Reverse</option>
+                  <option value='flock'>Flock</option>
+                  <option value='trace'>Trace</option>
+                  <option value='spin'>Spin</option>
                 </select>
               </div>
             </div>
           )}
+          <div className='setting-item'>
+            <div className='setting-info'>
+              <h3>Now Playing layout</h3>
+              <p>Choose the standard layout or a full-artwork backdrop for the player</p>
+            </div>
+            <div className='setting-control'>
+              <select
+                className='appearance-select'
+                aria-label='Now Playing layout'
+                value={nowPlayingLayout}
+                onChange={(event) =>
+                  onNowPlayingLayoutChange(event.currentTarget.value as NowPlayingLayout)
+                }
+              >
+                <option value='standard'>Standard</option>
+                <option value='full-art'>Full artwork</option>
+              </select>
+            </div>
+          </div>
           </SettingsCategory>
           <SettingsCategory title='Artist imagery'>
           <div className='setting-item'>
@@ -1258,35 +1287,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   return (
     <div className='settings-page'>
-      <header className='settings-header'>
-        <button className='back-button' onClick={goBack}>
-          <span className='material-symbols-outlined'>arrow_back</span>
-        </button>
-        <h1>Settings</h1>
-      </header>
-
       <div className='settings-container'>
-        {/* Sidebar Navigation */}
-        <aside className='settings-sidebar'>
-          <ul className='settings-nav'>
-            {sections.map((section) => (
-              <li key={section.id} className='settings-nav-item'>
-                <button
-                  className={`settings-nav-button ${selectedSection === section.id ? 'active' : ''}`}
-                  onClick={() => selectSection(section.id)}
-                >
-                  <span className='material-symbols-outlined'>{section.icon}</span>
-                  <span className='settings-nav-label'>{section.title}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
-        {/* Main Content */}
         <main className='settings-main'>
-          <div key={selectedSection}>
-            {sections.find((section) => section.id === selectedSection)?.component}
+          <div key={settingsSection}>
+            {sections.find((section) => section.id === settingsSection)?.component ??
+              sections[0].component}
           </div>
         </main>
       </div>

@@ -13,101 +13,11 @@
   overflow: hidden;
 }
 
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 0 0 auto;
-  padding: 19px 24px;
-  border-bottom: 1px solid var(--border);
-}
-
-.back-button {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--surface-muted);
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.back-button:hover {
-  background: var(--surface-strong);
-  color: var(--text-primary);
-}
-
-.back-button .material-symbols-outlined {
-  font-size: 1.2rem;
-}
-
-.settings-header h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
 .settings-container {
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-/* Sidebar */
-.settings-sidebar {
-  width: 240px;
-  flex: 0 0 240px;
-  min-height: 0;
-  padding: 24px 0;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-
-.settings-nav {
-  list-style: none;
-}
-
-.settings-nav-item {
-  margin: 4px 12px;
-}
-
-.settings-nav-button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  text-align: left;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.settings-nav-button:hover {
-  background: color-mix(in srgb, var(--system-accent) 12%, transparent);
-  color: var(--system-accent);
-}
-
-.settings-nav-button.active {
-  background: var(--surface-strong);
-  color: var(--text-primary);
-}
-
-.settings-nav-button .material-symbols-outlined {
-  font-size: 1.2rem;
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
-}
-
-.settings-nav-label {
-  font-size: 0.95rem;
-  font-weight: 500;
 }
 
 /* Main Content */
@@ -953,13 +863,6 @@
 
 /* Responsive */
 @media (max-width: 900px) {
-  .settings-sidebar {
-    display: flex;
-    width: 60px;
-    flex: 0 0 60px;
-    overflow: hidden;
-  }
-
   .settings-main {
     padding: 16px;
   }
@@ -968,28 +871,5 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
-  }
-
-  .settings-nav-label {
-    display: none;
-  }
-
-  .settings-nav-item {
-    margin: 4px 4px;
-  }
-}
-
-@media (max-width: 600px) {
-  .settings-header {
-    padding: 11px 16px;
-  }
-
-  .back-button {
-    width: 36px;
-    height: 36px;
-  }
-
-  .settings-header h1 {
-    font-size: 1.25rem;
   }
 }

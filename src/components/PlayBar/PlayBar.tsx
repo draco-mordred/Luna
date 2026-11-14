@@ -5,11 +5,12 @@ import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex'
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
-import { isAndroidApp } from '../../services/androidMusicLibrary';
 import './PlayBar.css';
 import '../../styles/android-app.css';
 import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
+import type { AndroidPlayBarStyle, NowPlayingLayout } from '../../types/android';
 import type { Playlist, Track } from '../../services/MusicLibrary';
+import { useLocation } from 'react-router-dom';
 
 const COLLAPSED_HEIGHT = 126.4;
 const getExpandedHeight = () => Math.max(COLLAPSED_HEIGHT, window.innerHeight);
@@ -23,6 +24,7 @@ const getExpandProgress = (currentHeight: number) =>
   );
 
 interface PlayBarProps {
+  isAndroidApp: boolean;
   track?: Track | null;
   activeAudio: HTMLAudioElement | null;
   isPlaying: boolean;
@@ -77,6 +79,8 @@ interface PlayBarProps {
   ) => void;
   trackIsDesktopSynced?: boolean;
   isDesktopApp: boolean;
+  androidPlayBarStyle: AndroidPlayBarStyle;
+  nowPlayingLayout: NowPlayingLayout;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
   onLyricOffsetStepsChange: (steps: number) => void;
@@ -464,6 +468,7 @@ const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text
 };
 
 const PlayBar: React.FC<PlayBarProps> = ({
+  isAndroidApp: androidApp,
   track,
   activeAudio,
   isPlaying,
@@ -501,6 +506,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onCreateArtistPlaylist,
   trackIsDesktopSynced = false,
   isDesktopApp,
+  androidPlayBarStyle,
+  nowPlayingLayout,
   playerWindowMode,
   lyricOffsetSteps,
   onLyricOffsetStepsChange,
@@ -508,9 +515,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onEnterFullscreenPlayer,
   onExitPlayerMode,
 }) => {
+  const location = useLocation();
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: trackArtworkUrl } = useAndroidAlbumArtwork(track, true);
-  const androidApp = isAndroidApp();
   const compactAndroidLayoutQuery = '(max-width: 820px)';
   const androidLayoutQuery = '(max-width: 1200px)';
   const [useCompactAndroidLayout, setUseCompactAndroidLayout] = useState(
@@ -534,20 +541,6 @@ const PlayBar: React.FC<PlayBarProps> = ({
     update();
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
-  }, [androidApp]);
-  const [androidNpLayout, setAndroidNpLayout] = useState<'standard' | 'full-art'>(() =>
-    window.localStorage.getItem('luna-android-np-layout') === 'full-art' ? 'full-art' : 'standard'
-  );
-  useEffect(() => {
-    if (!androidApp) return undefined;
-    const update = () =>
-      setAndroidNpLayout(
-        window.localStorage.getItem('luna-android-np-layout') === 'full-art'
-          ? 'full-art'
-          : 'standard'
-      );
-    window.addEventListener('storage', update);
-    return () => window.removeEventListener('storage', update);
   }, [androidApp]);
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
@@ -589,6 +582,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [celebratingFavoriteTrackId, setCelebratingFavoriteTrackId] = useState<string | null>(null);
   const [playBarWidth, setPlayBarWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [isScrollingUp, setIsScrollingUp] = useState(false);
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
   const [lyricsHintTrackId, setLyricsHintTrackId] = useState<string | null>(null);
   const [syncedLyricsMode, setSyncedLyricsMode] = useState<{
@@ -649,7 +643,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
 
   const hasSyncedLyrics = Boolean(track?.syncedLyrics?.length);
-  const canToggleLyrics = Boolean(track?.lyrics?.trim() || (isAndroidApp && hasSyncedLyrics));
+  const canToggleLyrics = Boolean(track?.lyrics?.trim() || (androidApp && hasSyncedLyrics));
   const showLyrics = Boolean(
     lyricsEnabled &&
     canToggleLyrics &&
@@ -682,7 +676,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
     lyricsEnabled &&
     hasSyncedLyrics &&
     showSyncedLyrics &&
-    (isAndroidApp ? showLyrics : showSyncedLyricsOnPlayBar && showMiniSyncedLyrics)
+    (androidApp ? showLyrics : showSyncedLyricsOnPlayBar && showMiniSyncedLyrics)
   );
   const plainLyricsFontSize = `${0.95 + plainLyricsFontStep * 0.15}rem`;
   const visualizerLocation =
@@ -1605,10 +1599,41 @@ const PlayBar: React.FC<PlayBarProps> = ({
   );
   const lyricOffsetLabel = `${lyricOffsetSteps > 0 ? '+' : ''}${(lyricOffsetSteps * 0.1).toFixed(1)}s`;
 
-  const isCompactAndroidLayout = isAndroidApp && viewportWidth <= 800;
+  const isCompactAndroidLayout = androidApp && viewportWidth <= 800;
+  useEffect(() => {
+    const libraryPath = ['/tracks', '/albums', '/artists', '/composer', '/genres'].includes(
+      location.pathname
+    );
+    if (!androidApp || !libraryPath) {
+      setIsScrollingUp(false);
+      return undefined;
+    }
+
+    const scrollContainer = document.querySelector<HTMLElement>('.page-content');
+    if (!scrollContainer) return undefined;
+
+    let previousScrollTop = scrollContainer.scrollTop;
+    let scrollStopTimeout = 0;
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      if (currentScrollTop < previousScrollTop) setIsScrollingUp(true);
+      else if (currentScrollTop > previousScrollTop) setIsScrollingUp(false);
+      previousScrollTop = currentScrollTop;
+      window.clearTimeout(scrollStopTimeout);
+      scrollStopTimeout = window.setTimeout(() => setIsScrollingUp(false), 180);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.clearTimeout(scrollStopTimeout);
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      setIsScrollingUp(false);
+    };
+  }, [androidApp, location.pathname]);
+
   useEffect(() => {
     const root = document.documentElement;
-    if (!isAndroidApp) {
+    if (!androidApp) {
       delete root.dataset.androidMiniLyrics;
       return undefined;
     }
@@ -1618,21 +1643,33 @@ const PlayBar: React.FC<PlayBarProps> = ({
     return () => {
       delete root.dataset.androidMiniLyrics;
     };
-  }, [isAndroidApp, isCompactAndroidLayout, isMiniSyncedLyricsVisible, state]);
+  }, [androidApp, isCompactAndroidLayout, isMiniSyncedLyricsVisible, state]);
 
   const displayHeight = isDragging
     ? height
-    : state === 'expanded'
-      ? getExpandedHeight()
-      : isCompactAndroidLayout
-        ? isMiniSyncedLyricsVisible
-          ? COLLAPSED_HEIGHT
-          : 88
-        : COLLAPSED_HEIGHT;
+    : androidApp && state === 'collapsed'
+      ? androidPlayBarStyle === 'trace'
+        ? 16
+        : androidPlayBarStyle === 'control'
+          ? 62
+          : 58
+      : state === 'expanded'
+        ? getExpandedHeight()
+        : isCompactAndroidLayout
+          ? isMiniSyncedLyricsVisible
+            ? COLLAPSED_HEIGHT
+            : 88
+          : COLLAPSED_HEIGHT;
   const expandProgress = isDragging ? getExpandProgress(height) : state === 'expanded' ? 1 : 0;
-  const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
+  const playBarStyle: React.CSSProperties & {
+    '--expand-progress': number;
+    '--android-progress': string;
+    '--android-progress-angle': string;
+  } = {
     height: `${displayHeight}px`,
     '--expand-progress': expandProgress,
+    '--android-progress': `${progressPercent}%`,
+    '--android-progress-angle': `${progressPercent * 3.6}deg`,
     ...(commitDuration !== null ? { transitionDuration: `${commitDuration}ms` } : {}),
   };
 
@@ -1640,7 +1677,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
     <>
       <div
         ref={playBarRef}
-        className={`play-bar ${state} ${isDragging ? 'dragging' : ''} ${
+        className={`play-bar ${state}${androidApp ? ` android-playbar android-playbar-${androidPlayBarStyle}` : ''}${androidApp && !track ? ' android-no-track' : ''}${androidApp && androidPlayBarStyle === 'trace' && showVisualizer ? ' android-trace-visualizer-active' : ''}${androidApp && isScrollingUp ? ' android-scrolling-up' : ''} ${isDragging ? 'dragging' : ''} ${
           playerWindowMode === 'mini' && isPlaying && !isMiniDockVisible ? 'mini-dock-hidden' : ''
         }`}
         style={playBarStyle}
@@ -1652,7 +1689,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
         {/* Expanded View - Now Playing */}
         <div
-          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${isAndroidApp ? ' android-now-playing' : ''}`}
+          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${androidApp ? ' android-now-playing' : ''}`}
           onPointerDown={handleDragStart}
         >
           {playerWindowMode !== 'normal' && (
@@ -1673,7 +1710,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <div className='now-playing-artist-background-overlay' />
             </div>
           )}
-          {useCompactAndroidLayout && (
+          {(useCompactAndroidLayout || nowPlayingLayout === 'full-art') && (
             <div className='np-android-artwork-background' aria-hidden='true'>
               <TrackImageCrossfade src={trackArtworkUrl ?? null} alt='' />
               <div className='np-android-artwork-background-overlay' />
@@ -1739,7 +1776,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
               showPlayQueue ? 'queue-open' : '',
               (showPlainLyricsPanel || showSyncedLyricCaption) ? 'lyrics-open' : '',
-              (useCompactAndroidLayout && androidNpLayout === 'full-art') ? 'np-full-art' : '',
+              nowPlayingLayout === 'full-art' ? 'np-full-art' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -1850,7 +1887,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             {/* Track Info */}
             <div className='track-info'>
               <div className='track-title-row'>
-                {isAndroidApp ? (
+                {androidApp ? (
                   <PlayerModeMarquee
                     className='android-now-playing-title'
                     text={track?.name || 'No Track Selected'}
@@ -2372,6 +2409,17 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </div>
             </div>
 
+            {androidApp && androidPlayBarStyle === 'trace' && showVisualizer && (
+              <AudioVisualizer
+                analyser={visualizerAnalyser}
+                isPlaying={isPlaying}
+                isVisible={state === 'collapsed'}
+                volume={volume}
+                style={visualizerStyle}
+                className='android-trace-visualizer'
+              />
+            )}
+
             {/* Controls */}
             <div className='controls expanded-controls'>
               <button
@@ -2627,8 +2675,14 @@ const PlayBar: React.FC<PlayBarProps> = ({
             </div>
             <div className='mini-track-info-copy'>
               <div className='text-info'>
-                <span className='track-name-mini'>{track?.name || 'No Track'}</span>
-                <span className='artist-name-mini'>{track?.artist || 'Unknown'}</span>
+                <PlayerModeMarquee
+                  className='track-name-mini android-mini-marquee'
+                  text={track?.name || 'No Track'}
+                />
+                <PlayerModeMarquee
+                  className='artist-name-mini android-mini-marquee'
+                  text={track?.artist || 'Unknown'}
+                />
               </div>
             </div>
           </div>
@@ -2666,14 +2720,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
           {/* Controls */}
           <div
-            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible && !isAndroidApp ? 'showing-mini-lyrics' : ''}`}
+            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible && !androidApp ? 'showing-mini-lyrics' : ''}`}
           >
-            {isMiniSyncedLyricsVisible && !isAndroidApp ? (
+            {isMiniSyncedLyricsVisible && !androidApp ? (
               <MiniSyncedLyrics text={currentSyncedLyricText} />
             ) : (
               <div className='controls'>
                 {!isCompactPlayBar && shuffleControl}
-                <button className='control-btn' onClick={onPrevious} disabled={!track}>
+                <button
+                  className='control-btn mini-previous-button'
+                  onClick={onPrevious}
+                  disabled={!track}
+                >
                   <TransportIcon name='previous' />
                 </button>
                 <button className='control-btn play-pause' onClick={onPlayPause} disabled={!track}>
@@ -2694,7 +2752,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     )}
                   </svg>
                 </button>
-                <button className='control-btn' onClick={onNext} disabled={!track}>
+                <button
+                  className='control-btn mini-next-button'
+                  onClick={onNext}
+                  disabled={!track}
+                >
                   <TransportIcon name='next' />
                 </button>
                 {!isCompactPlayBar && repeatControl}
@@ -2702,7 +2764,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
             )}
           </div>
 
-          {isAndroidApp && isMiniSyncedLyricsVisible && (
+          {androidApp && isMiniSyncedLyricsVisible && (
             <div className='android-mini-synced-lyrics' aria-live='polite'>
               <MiniSyncedLyrics text={currentSyncedLyricText} />
             </div>

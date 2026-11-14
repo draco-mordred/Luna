@@ -6,6 +6,7 @@ import './PlaylistDialog.css';
 export type PlaylistDialogState =
   | { type: 'rename'; playlist: Playlist }
   | { type: 'add-track'; track: Track }
+  | { type: 'add-tracks'; tracks: Track[]; label: string }
   | { type: 'delete'; playlist: Playlist };
 
 interface PlaylistDialogProps {
@@ -14,6 +15,12 @@ interface PlaylistDialogProps {
   onClose: () => void;
   onRename: (playlist: Playlist, name: string) => string | null;
   onAddTrack: (track: Track, playlistId: string | null, newPlaylistName: string) => string | null;
+  onAddTracks: (
+    tracks: Track[],
+    label: string,
+    playlistId: string | null,
+    newPlaylistName: string
+  ) => string | null;
   onDelete: (playlist: Playlist) => void;
 }
 
@@ -23,6 +30,7 @@ const PlaylistDialog = ({
   onClose,
   onRename,
   onAddTrack,
+  onAddTracks,
   onDelete,
 }: PlaylistDialogProps) => {
   const initialPlaylistId = playlists[0]?.id ?? '__new__';
@@ -59,7 +67,21 @@ const PlaylistDialog = ({
       const result = onAddTrack(
         dialog.track,
         selectedPlaylistId === '__new__' ? null : selectedPlaylistId,
-        name,
+        name
+      );
+      if (result) {
+        setError(result);
+        return;
+      }
+      onClose();
+    }
+
+    if (dialog.type === 'add-tracks') {
+      const result = onAddTracks(
+        dialog.tracks,
+        dialog.label,
+        selectedPlaylistId === '__new__' ? null : selectedPlaylistId,
+        name
       );
       if (result) {
         setError(result);
@@ -71,35 +93,43 @@ const PlaylistDialog = ({
 
   const isDelete = dialog.type === 'delete';
   const isRename = dialog.type === 'rename';
+  const isAddingTracks = dialog.type === 'add-track' || dialog.type === 'add-tracks';
   const createNewPlaylist = selectedPlaylistId === '__new__';
   const title = isRename
     ? 'Rename playlist'
     : isDelete
       ? 'Delete playlist?'
-      : 'Add track to playlist';
+      : isAddingTracks
+        ? dialog.type === 'add-tracks'
+          ? 'Add tracks to playlist'
+          : 'Add track to playlist'
+        : 'Playlist';
 
   return (
-    <div
-      className="playlist-dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
+    <div className='playlist-dialog-backdrop'>
+      <button
+        type='button'
+        className='playlist-dialog-dismiss'
+        aria-label='Close playlist dialog'
+        onClick={onClose}
+      />
       <section
-        className="playlist-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="playlist-dialog-title"
+        className='playlist-dialog'
+        role='dialog'
+        aria-modal='true'
+        aria-labelledby='playlist-dialog-title'
       >
-        <h2 id="playlist-dialog-title">{title}</h2>
+        <h2 id='playlist-dialog-title'>{title}</h2>
         {isDelete ? (
           <>
             <p>“{dialog.playlist.name}” and its saved track list will be deleted.</p>
-            <div className="playlist-dialog-actions">
-              <button type="button" className="playlist-dialog-secondary" onClick={onClose}>Cancel</button>
+            <div className='playlist-dialog-actions'>
+              <button type='button' className='playlist-dialog-secondary' onClick={onClose}>
+                Cancel
+              </button>
               <button
-                type="button"
-                className="playlist-dialog-danger"
+                type='button'
+                className='playlist-dialog-danger'
                 onClick={() => {
                   onDelete(dialog.playlist);
                   onClose();
@@ -111,12 +141,18 @@ const PlaylistDialog = ({
           </>
         ) : (
           <form onSubmit={handleSubmit}>
-            {dialog.type === 'add-track' && (
+            {isAddingTracks && (
               <>
-                <p>Add “{dialog.track.name}” to:</p>
-                <label className="visually-hidden" htmlFor="playlist-dialog-select">Playlist</label>
+                <p>
+                  {dialog.type === 'add-track'
+                    ? `Add “${dialog.track.name}” to:`
+                    : `Add ${dialog.tracks.length} tracks from “${dialog.label}” to:`}
+                </p>
+                <label className='visually-hidden' htmlFor='playlist-dialog-select'>
+                  Playlist
+                </label>
                 <select
-                  id="playlist-dialog-select"
+                  id='playlist-dialog-select'
                   value={selectedPlaylistId}
                   onChange={(event) => {
                     setSelectedPlaylistId(event.target.value);
@@ -124,36 +160,44 @@ const PlaylistDialog = ({
                   }}
                 >
                   {playlists.map((playlist) => (
-                    <option key={playlist.id} value={playlist.id}>{playlist.name}</option>
+                    <option key={playlist.id} value={playlist.id}>
+                      {playlist.name}
+                    </option>
                   ))}
-                  <option value="__new__">Create a new playlist…</option>
+                  <option value='__new__'>Create a new playlist…</option>
                 </select>
               </>
             )}
             {(isRename || createNewPlaylist) && (
               <>
-                <label className="visually-hidden" htmlFor="playlist-dialog-name">
+                <label className='visually-hidden' htmlFor='playlist-dialog-name'>
                   {isRename ? 'New playlist name' : 'New playlist name'}
                 </label>
                 <input
                   ref={nameInputRef}
-                  id="playlist-dialog-name"
+                  id='playlist-dialog-name'
                   value={name}
                   onChange={(event) => {
                     setName(event.target.value);
                     setError(null);
                   }}
-                  placeholder="Playlist name"
+                  placeholder='Playlist name'
                   maxLength={80}
                   required
                 />
               </>
             )}
-            {error && <p className="playlist-dialog-error" role="alert">{error}</p>}
-            <div className="playlist-dialog-actions">
-              <button type="button" className="playlist-dialog-secondary" onClick={onClose}>Cancel</button>
-              <button type="submit" className="playlist-dialog-primary">
-                {isRename ? 'Save changes' : 'Add track'}
+            {error && (
+              <p className='playlist-dialog-error' role='alert'>
+                {error}
+              </p>
+            )}
+            <div className='playlist-dialog-actions'>
+              <button type='button' className='playlist-dialog-secondary' onClick={onClose}>
+                Cancel
+              </button>
+              <button type='submit' className='playlist-dialog-primary'>
+                {isRename ? 'Save changes' : isAddingTracks ? 'Add tracks' : 'Save'}
               </button>
             </div>
           </form>

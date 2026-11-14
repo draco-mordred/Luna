@@ -16,8 +16,10 @@ import './TopNavbar.css';
 interface TopNavbarProps {
   tracks: Track[];
   isAndroidApp: boolean;
-  androidSettingsSection: string;
-  onAndroidSettingsSectionChange: (section: string) => void;
+  settingsSection: string;
+  onSettingsSectionChange: (section: string) => void;
+  androidLibrarySearchQuery: string;
+  onAndroidLibrarySearchQueryChange: (query: string) => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onSelectMusicFolders: () => Promise<MusicLibraryResponse | null>;
@@ -64,8 +66,10 @@ const SECTION_TITLES: Record<Section, string> = {
 const TopNavbar = ({
   tracks,
   isAndroidApp,
-  androidSettingsSection,
-  onAndroidSettingsSectionChange,
+  settingsSection,
+  onSettingsSectionChange,
+  androidLibrarySearchQuery,
+  onAndroidLibrarySearchQueryChange,
   sidebarOpen,
   onToggleSidebar,
   onSelectMusicFolders,
@@ -285,9 +289,14 @@ const TopNavbar = ({
       : SECTION_TITLES.home);
   const canNavigateBack = isAndroidApp && path !== '' && path !== 'tracks';
   const showSyncNotice = isAndroidApp && androidUsbSyncNotice !== null;
-  const settingsTabsVisible = isAndroidApp && section === 'settings' && !showSyncNotice;
-  const libraryTabsVisible = section === 'library' && !showSyncNotice;
+  const settingsTabsVisible = section === 'settings' && !showSyncNotice;
+  const isLibrarySectionRoute =
+    ['/tracks', '/albums', '/artists', '/composer', '/genres'].includes(location.pathname) &&
+    !location.pathname.endsWith('/detail');
+  const libraryTabsVisible = section === 'library' && !showSyncNotice && (!isAndroidApp || isLibrarySectionRoute);
   const secondaryTabsVisible = libraryTabsVisible || settingsTabsVisible;
+  const androidNavigationVisible =
+    !isAndroidApp || libraryTabsVisible || settingsTabsVisible || showSyncNotice;
   const syncNoticeLabel =
     androidUsbSyncNotice?.phase === 'completed'
       ? 'Sync complete'
@@ -365,7 +374,7 @@ const TopNavbar = ({
 
   return (
     <nav
-      className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}`}
+      className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${androidNavigationVisible ? ' android-navigation-visible' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}${libraryTabsVisible && isAndroidApp ? ' has-library-search' : ''}`}
     >
       {isAndroidApp && (
         <button
@@ -393,7 +402,7 @@ const TopNavbar = ({
             </span>
           </button>
         )}
-        <h1 className='navbar-title'>{pageTitle}</h1>
+        {!settingsTabsVisible && <h1 className='navbar-title'>{pageTitle}</h1>}
         {libraryTabsVisible && (
           <div className='tabs-container' role='tablist' aria-label='Library views'>
             {LIBRARY_TABS.map((tab) => (
@@ -421,9 +430,9 @@ const TopNavbar = ({
                 key={tab.id}
                 type='button'
                 role='tab'
-                aria-selected={androidSettingsSection === tab.id}
-                className={`tab-button${androidSettingsSection === tab.id ? ' active' : ''}`}
-                onClick={() => onAndroidSettingsSectionChange(tab.id)}
+                aria-selected={settingsSection === tab.id}
+                className={`tab-button${settingsSection === tab.id ? ' active' : ''}`}
+                onClick={() => onSettingsSectionChange(tab.id)}
               >
                 <span className='material-symbols-outlined tab-icon' aria-hidden='true'>
                   {tab.icon}
@@ -432,6 +441,20 @@ const TopNavbar = ({
               </button>
             ))}
           </div>
+        )}
+        {libraryTabsVisible && isAndroidApp && (
+          <label className='android-library-search'>
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              search
+            </span>
+            <input
+              type='search'
+              value={androidLibrarySearchQuery}
+              placeholder={`Search ${libraryTab?.label.toLocaleLowerCase() ?? 'tracks'}`}
+              aria-label={`Search ${libraryTab?.label.toLocaleLowerCase() ?? 'tracks'}`}
+              onChange={(event) => onAndroidLibrarySearchQueryChange(event.currentTarget.value)}
+            />
+          </label>
         )}
       </div>
 

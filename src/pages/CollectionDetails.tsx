@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import LibraryTrackList from '../components/LibraryTrackList';
 import QueueContextMenu from '../components/QueueContextMenu';
@@ -9,6 +9,7 @@ import { getLibraryItemPath } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import { isAndroidApp } from '../services/androidMusicLibrary';
+import { getContrastingTextColor, getDominantImageColor } from '../utils/imageColors';
 import './CollectionDetails.css';
 
 type CollectionType = 'album' | 'artist' | 'genre';
@@ -20,6 +21,10 @@ interface CollectionDetailsProps {
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
   lovedTrackIds?: string[];
   onToggleLove?: (track: Track | null) => void;
+  favoriteAlbumKeys?: string[];
+  favoriteArtistNames?: string[];
+  onToggleFavoriteCollection?: (type: 'album' | 'artist', key: string) => void;
+  onAddToPlaylist?: (tracks: Track[], label: string) => void;
 }
 
 interface CollectionAlbumCardProps {
@@ -80,10 +85,16 @@ const CollectionDetails = ({
   onQueueTracks,
   lovedTrackIds,
   onToggleLove,
+  favoriteAlbumKeys,
+  favoriteArtistNames,
+  onToggleFavoriteCollection,
+  onAddToPlaylist,
 }: CollectionDetailsProps) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showMoreInfo, setShowMoreInfo] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsRef = useRef<HTMLDivElement>(null);
   const isAndroid = isAndroidApp();
   const name = searchParams.get('name')?.trim() ?? '';
   const artistName = searchParams.get('artist')?.trim() ?? '';
@@ -171,6 +182,34 @@ const CollectionDetails = ({
     type === 'artist' && artistWebInfo?.artist === title?.toLocaleLowerCase()
       ? (artistWebInfo?.info.imageUrl ?? androidAlbumArt)
       : androidAlbumArt;
+  const [dominantColor, setDominantColor] = useState('19, 23, 31');
+  useEffect(() => {
+    if (!image) return undefined;
+    let active = true;
+    void getDominantImageColor(image, '19, 23, 31').then((color) => {
+      if (active) setDominantColor(color);
+    });
+    return () => {
+      active = false;
+    };
+  }, [image]);
+  useEffect(() => {
+    if (!optionsOpen) return undefined;
+    const closeOnOutsideClick = (event: globalThis.PointerEvent) => {
+      if (event.target instanceof Node && !optionsRef.current?.contains(event.target)) {
+        setOptionsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOptionsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [optionsOpen]);
 
   const albumGenres = useMemo(
     () =>
@@ -223,15 +262,37 @@ const CollectionDetails = ({
         : `${collectionTracks.length} tracks`;
 
   const isLoved = Boolean(firstTrack && lovedTrackIds?.includes(firstTrack.id));
+  const hasArtworkHero = type === 'album' || type === 'artist';
+  const albumFavoriteKey = firstTrack ? `${firstTrack.album}\u0000${firstTrack.artist}` : '';
+  const isCollectionFavorite =
+    type === 'album'
+      ? Boolean(favoriteAlbumKeys?.includes(albumFavoriteKey))
+      : type === 'artist'
+        ? Boolean(favoriteArtistNames?.includes(title.toLocaleLowerCase()))
+        : isLoved;
+  const foregroundColor = getContrastingTextColor(dominantColor);
 
   return (
-    <div className={`collection-details-page${isAndroid ? ' android-collection-page' : ''}`}>
-      {isAndroid && image && (
+    <div
+      className={`collection-details-page${isAndroid ? ' android-collection-page' : ''}${hasArtworkHero ? ' collection-artwork-layout' : ''}`}
+      style={
+        {
+          '--collection-dominant-color': image ? dominantColor : '19, 23, 31',
+          '--collection-foreground-color': foregroundColor,
+        } as CSSProperties
+      }
+    >
+      {hasArtworkHero && image && (
+        <div className='collection-artwork-atmosphere' aria-hidden='true'>
+          <img src={image} alt='' />
+        </div>
+      )}
+      {isAndroid && type === 'genre' && image && (
         <div className='android-collection-bg' aria-hidden='true'>
           <img src={image} alt='' />
         </div>
       )}
-      {isAndroid && (
+      {isAndroid && type === 'genre' && (
         <header className='android-collection-hero'>
           <div className='android-collection-floating'>
             <button
@@ -240,7 +301,9 @@ const CollectionDetails = ({
               aria-label='Back'
               onClick={() => navigate(-1)}
             >
-              <span className='material-symbols-outlined' aria-hidden='true'>arrow_back</span>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                arrow_back
+              </span>
             </button>
             <div className='android-collection-floating-right'>
               <button
@@ -259,7 +322,9 @@ const CollectionDetails = ({
                   className='android-collection-float-btn'
                   aria-label='More options'
                 >
-                  <span className='material-symbols-outlined' aria-hidden='true'>more_horiz</span>
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    more_horiz
+                  </span>
                 </button>
               </QueueContextMenu>
             </div>
@@ -267,7 +332,10 @@ const CollectionDetails = ({
           {image ? (
             <img className='android-collection-art' src={image} alt={`${title} artwork`} />
           ) : (
-            <div className='android-collection-art android-collection-art-placeholder' aria-hidden='true'>
+            <div
+              className='android-collection-art android-collection-art-placeholder'
+              aria-hidden='true'
+            >
               <span className='material-symbols-outlined'>album</span>
             </div>
           )}
@@ -285,7 +353,9 @@ const CollectionDetails = ({
                 onPlayTrack(shuffled[0], shuffled);
               }}
             >
-              <span className='material-symbols-outlined' aria-hidden='true'>shuffle</span>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                shuffle
+              </span>
             </button>
             <button
               type='button'
@@ -293,15 +363,15 @@ const CollectionDetails = ({
               aria-label='Play album'
               onClick={() => onPlayTrack(firstTrack, collectionTracks)}
             >
-              <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                play_arrow
+              </span>
             </button>
             <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
-              <button
-                type='button'
-                className='android-collection-btn'
-                aria-label='Add to playlist'
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>playlist_add</span>
+              <button type='button' className='android-collection-btn' aria-label='Add to playlist'>
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  playlist_add
+                </span>
               </button>
             </QueueContextMenu>
           </div>
@@ -325,9 +395,7 @@ const CollectionDetails = ({
               aria-hidden={!showMoreInfo}
             >
               <p>Album artist: {subtitle ?? 'Unknown'}</p>
-              <p>
-                Released: {albumYears.length ? albumYears.join(', ') : 'Year unknown'}
-              </p>
+              <p>Released: {albumYears.length ? albumYears.join(', ') : 'Year unknown'}</p>
               <p>Genres: {albumGenres.length ? albumGenres.join(', ') : 'Unknown'}</p>
               <p>{collectionTracks.length} tracks</p>
             </div>
@@ -343,38 +411,211 @@ const CollectionDetails = ({
         <span>{title}</span>
       </nav>
 
-      <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
-        <header className={`collection-details-hero ${image ? 'has-image' : ''}`}>
-          {image ? (
-            <img className='collection-details-image' src={image} alt={`${title} artwork`} />
-          ) : (
-            <div
-              className='collection-details-image collection-details-image-placeholder'
-              aria-hidden='true'
-            >
+      {hasArtworkHero ? (
+        <header className='collection-artwork-hero'>
+          <div className='collection-artwork-image' aria-hidden='true'>
+            {image ? (
+              <img src={image} alt='' />
+            ) : (
               <span className='material-symbols-outlined'>
-                {type === 'artist' ? 'person' : type === 'genre' ? 'style' : 'album'}
+                {type === 'artist' ? 'person' : 'album'}
               </span>
-            </div>
-          )}
-          <div className='collection-details-info'>
-            <p className='collection-details-type'>{type}</p>
-            <h1>{title}</h1>
-            {subtitle && <p className='collection-details-subtitle'>{subtitle}</p>}
-            <p className='collection-details-meta'>{detail}</p>
+            )}
+          </div>
+          <div className='collection-artwork-toolbar'>
             <button
               type='button'
-              className='collection-details-play'
-              onClick={() => onPlayTrack(firstTrack, collectionTracks)}
+              className='collection-artwork-icon-button'
+              aria-label='Back'
+              onClick={() => navigate(-1)}
             >
               <span className='material-symbols-outlined' aria-hidden='true'>
-                play_arrow
+                arrow_back
               </span>
-              Play
             </button>
+            <div ref={optionsRef} className='collection-artwork-toolbar-actions'>
+              <button
+                type='button'
+                className='collection-artwork-icon-button'
+                aria-label={isCollectionFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-pressed={isCollectionFavorite}
+                onClick={() => {
+                  if (type === 'album' || type === 'artist') {
+                    onToggleFavoriteCollection?.(
+                      type,
+                      type === 'album' ? albumFavoriteKey : title.toLocaleLowerCase()
+                    );
+                  } else {
+                    onToggleLove?.(firstTrack);
+                  }
+                }}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {isCollectionFavorite ? 'favorite' : 'favorite_border'}
+                </span>
+              </button>
+              <button
+                type='button'
+                className='collection-artwork-icon-button'
+                aria-label='More options'
+                aria-haspopup='menu'
+                aria-expanded={optionsOpen}
+                onClick={() => setOptionsOpen((open) => !open)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  more_horiz
+                </span>
+              </button>
+              {optionsOpen && (
+                <div
+                  className='collection-artwork-options-menu'
+                  role='menu'
+                  aria-label='Collection options'
+                >
+                  <button
+                    type='button'
+                    role='menuitem'
+                    onClick={() => {
+                      onQueueTracks(collectionTracks, true);
+                      setOptionsOpen(false);
+                    }}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      skip_next
+                    </span>
+                    Play next
+                  </button>
+                  <button
+                    type='button'
+                    role='menuitem'
+                    onClick={() => {
+                      onQueueTracks(collectionTracks, false);
+                      setOptionsOpen(false);
+                    }}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      queue_music
+                    </span>
+                    Add to play queue
+                  </button>
+                  <button
+                    type='button'
+                    role='menuitem'
+                    onClick={() => {
+                      onAddToPlaylist?.(collectionTracks, title);
+                      setOptionsOpen(false);
+                    }}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      playlist_add
+                    </span>
+                    Add to playlist
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className='collection-artwork-content'>
+            <div className='collection-artwork-info'>
+              <p className='collection-details-type'>{type}</p>
+              <h1>{title}</h1>
+              {subtitle && <p className='collection-details-subtitle'>{subtitle}</p>}
+              <p className='collection-details-meta'>{detail}</p>
+              <button
+                type='button'
+                className='collection-artwork-show-more'
+                aria-expanded={showMoreInfo}
+                onClick={() => setShowMoreInfo((visible) => !visible)}
+              >
+                {showMoreInfo ? 'Show less' : 'Show more'}
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {showMoreInfo ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+              {showMoreInfo && (
+                <div className='collection-artwork-more-info'>
+                  <p>{type === 'album' ? `Album artist: ${subtitle ?? 'Unknown'}` : detail}</p>
+                  <p>Released: {albumYears.length ? albumYears.join(', ') : 'Year unknown'}</p>
+                  <p>Genres: {albumGenres.length ? albumGenres.join(', ') : 'Unknown'}</p>
+                </div>
+              )}
+            </div>
+            <div className='collection-artwork-actions'>
+              <button
+                type='button'
+                className='collection-artwork-icon-button'
+                aria-label='Shuffle play'
+                onClick={() => {
+                  const shuffled = [...collectionTracks];
+                  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+                    const randomIndex = Math.floor(Math.random() * (index + 1));
+                    [shuffled[index], shuffled[randomIndex]] = [
+                      shuffled[randomIndex],
+                      shuffled[index],
+                    ];
+                  }
+                  onPlayTrack(shuffled[0], shuffled);
+                }}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  shuffle
+                </span>
+              </button>
+              <button
+                type='button'
+                className='collection-artwork-play-button'
+                onClick={() => onPlayTrack(firstTrack, collectionTracks)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  play_arrow
+                </span>
+                Play
+              </button>
+              <button
+                type='button'
+                className='collection-artwork-icon-button'
+                aria-label='Add to playlist'
+                onClick={() => onAddToPlaylist?.(collectionTracks, title)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  playlist_add
+                </span>
+              </button>
+            </div>
           </div>
         </header>
-      </QueueContextMenu>
+      ) : (
+        <QueueContextMenu tracks={collectionTracks} onQueueTracks={onQueueTracks}>
+          <header className={`collection-details-hero ${image ? 'has-image' : ''}`}>
+            {image ? (
+              <img className='collection-details-image' src={image} alt={`${title} artwork`} />
+            ) : (
+              <div
+                className='collection-details-image collection-details-image-placeholder'
+                aria-hidden='true'
+              >
+                <span className='material-symbols-outlined'>style</span>
+              </div>
+            )}
+            <div className='collection-details-info'>
+              <p className='collection-details-type'>{type}</p>
+              <h1>{title}</h1>
+              {subtitle && <p className='collection-details-subtitle'>{subtitle}</p>}
+              <p className='collection-details-meta'>{detail}</p>
+              <button
+                type='button'
+                className='collection-details-play'
+                onClick={() => onPlayTrack(firstTrack, collectionTracks)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  play_arrow
+                </span>
+                Play
+              </button>
+            </div>
+          </header>
+        </QueueContextMenu>
+      )}
 
       <section className='collection-details-tracks' aria-label={`${title} tracks`}>
         <h2>Tracks</h2>

@@ -4,12 +4,14 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PlayBar from './components/PlayBar';
+import AndroidDock from './components/AndroidDock';
 import StreamingPlayBar from './components/StreamingPlayBar';
 import Sidebar from './components/Sidebar';
 import type { PlaylistAction } from './components/PlaylistOptionsMenu';
@@ -45,6 +47,7 @@ import type {
   VisualizerStyle,
   WindowMaterial,
 } from './types/electron';
+import type { AndroidPlayBarStyle, NowPlayingLayout } from './types/android';
 import './App.css';
 import ReleaseNotesDialog from './components/ReleaseNotesDialog';
 import AndroidStartupSplash from './components/AndroidStartupSplash';
@@ -61,6 +64,7 @@ import {
   saveRecentQueue,
 } from './services/recentMedia';
 import { getLibraryItemPath } from './utils/libraryNavigation';
+import { getDominantImageColor } from './utils/imageColors';
 import { splitArtistCredits } from './utils/artistCredits';
 import packageJson from '../package.json';
 
@@ -79,6 +83,23 @@ const PlayQueuePage = lazy(() => import('./pages/PlayQueue'));
 const SyncPage = lazy(() => import('./pages/Sync'));
 
 const ANDROID_LIBRARY_ROUTES = ['/tracks', '/albums', '/artists', '/composer', '/genres'];
+const ANDROID_PLAYBAR_STYLES: AndroidPlayBarStyle[] = [
+  'floating',
+  'dock',
+  'pill',
+  'control',
+  'reverse',
+  'flock',
+  'trace',
+  'spin',
+];
+
+const getInitialAndroidPlayBarStyle = (): AndroidPlayBarStyle => {
+  const savedStyle = window.localStorage.getItem('luna-android-playbar-style');
+  return ANDROID_PLAYBAR_STYLES.includes(savedStyle as AndroidPlayBarStyle)
+    ? (savedStyle as AndroidPlayBarStyle)
+    : 'floating';
+};
 
 const getInitialThemeMode = (): ThemeMode => {
   const savedTheme = window.localStorage.getItem('luna-theme');
@@ -117,6 +138,19 @@ const getInitialLovedTrackIds = (): string[] => {
       : [];
   } catch (error) {
     console.error('Could not read saved favorite tracks:', error);
+    return [];
+  }
+};
+
+const getInitialFavoriteCollectionValues = (storageKey: string): string[] => {
+  try {
+    const saved = window.localStorage.getItem(storageKey);
+    const parsed: unknown = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string')
+      : [];
+  } catch (error) {
+    console.error(`Could not read saved favorites from ${storageKey}:`, error);
     return [];
   }
 };
@@ -267,64 +301,6 @@ const getPlayButtonAccent = (accent: string, theme: 'light' | 'dark'): number[] 
   return source.map((channel) => Math.round(channel + (mixTarget - channel) * 0.6));
 };
 
-const getDominantImageColor = (imageUrl: string, fallback: string): Promise<string> =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const sampleSize = 32;
-      canvas.width = sampleSize;
-      canvas.height = sampleSize;
-      const context = canvas.getContext('2d');
-
-      if (!context) {
-        resolve(fallback);
-        return;
-      }
-
-      context.drawImage(img, 0, 0, sampleSize, sampleSize);
-      const { data } = context.getImageData(0, 0, sampleSize, sampleSize);
-      const buckets = new Map<string, { r: number; g: number; b: number; count: number }>();
-
-      for (let index = 0; index < data.length; index += 4) {
-        const alpha = data[index + 3];
-        if (alpha < 80) continue;
-
-        const red = data[index];
-        const green = data[index + 1];
-        const blue = data[index + 2];
-        const bucketKey = `${Math.round(red / 32) * 32},${Math.round(green / 32) * 32},${Math.round(blue / 32) * 32}`;
-        const existing = buckets.get(bucketKey) ?? { r: 0, g: 0, b: 0, count: 0 };
-        existing.r += red;
-        existing.g += green;
-        existing.b += blue;
-        existing.count += 1;
-        buckets.set(bucketKey, existing);
-      }
-
-      if (buckets.size === 0) {
-        resolve(fallback);
-        return;
-      }
-
-      let dominant = { r: 0, g: 0, b: 0, count: 0 };
-      for (const value of buckets.values()) {
-        if (value.count > dominant.count) {
-          dominant = value;
-        }
-      }
-
-      const averageRed = Math.round(dominant.r / dominant.count);
-      const averageGreen = Math.round(dominant.g / dominant.count);
-      const averageBlue = Math.round(dominant.b / dominant.count);
-      resolve(`${averageRed}, ${averageGreen}, ${averageBlue}`);
-    };
-
-    img.onerror = () => resolve(fallback);
-    img.src = imageUrl;
-  });
-
 const App = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -345,7 +321,35 @@ const App = () => {
     () =>
       isAndroidApp && window.localStorage.getItem('luna-android-lock-screen-controls') !== 'false'
   );
-  const [androidSettingsSection, setAndroidSettingsSection] = useState('appearance');
+  const [settingsSection, setSettingsSection] = useState('appearance');
+  useEffect(() => {
+    if (!location.pathname.startsWith('/settings')) return;
+    const routeSection = location.pathname.split('/')[2];
+    setSettingsSection(
+      ['appearance', 'library', 'playback', 'nowplaying', 'about'].includes(routeSection)
+        ? routeSection
+        : 'appearance'
+    );
+  }, [location.pathname]);
+  const [androidDockCompact, setAndroidDockCompact] = useState(
+    () => isAndroidApp && window.localStorage.getItem('luna-android-dock-compact') === 'true'
+  );
+  const [androidDockMenuOpen, setAndroidDockMenuOpen] = useState(false);
+  const [androidDockShowLabels, setAndroidDockShowLabels] = useState(
+    () => window.localStorage.getItem('luna-android-dock-labels') !== 'false'
+  );
+  const [androidPlayBarStyle, setAndroidPlayBarStyle] =
+    useState<AndroidPlayBarStyle>(getInitialAndroidPlayBarStyle);
+  const [nowPlayingLayout, setNowPlayingLayout] = useState<NowPlayingLayout>(() => {
+    const savedLayout =
+      window.localStorage.getItem('luna-now-playing-layout') ??
+      window.localStorage.getItem('luna-android-np-layout');
+    return savedLayout === 'full-art' ? 'full-art' : 'standard';
+  });
+  useEffect(() => {
+    window.localStorage.setItem('luna-now-playing-layout', nowPlayingLayout);
+  }, [nowPlayingLayout]);
+  const [androidLibrarySearchQuery, setAndroidLibrarySearchQuery] = useState('');
   const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(isAndroidApp);
   const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
   const [supportsWindowMaterial, setSupportsWindowMaterial] = useState(false);
@@ -404,6 +408,14 @@ const App = () => {
     () => window.localStorage.getItem(`luna-release-notes-seen-${packageJson.version}`) === 'true'
   );
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
+  const displayedLibraryTracks = useMemo(() => {
+    const query = isAndroidApp ? androidLibrarySearchQuery.trim().toLocaleLowerCase() : '';
+    if (!query) return libraryTracks;
+    return libraryTracks.filter((track) =>
+      [track.name, track.artist, track.album, track.genre, track.composer]
+        .some((value) => value?.toLocaleLowerCase().includes(query))
+    );
+  }, [androidLibrarySearchQuery, isAndroidApp, libraryTracks]);
   const libraryTracksRef = useRef(libraryTracks);
   useLayoutEffect(() => {
     libraryTracksRef.current = libraryTracks;
@@ -462,6 +474,12 @@ const App = () => {
   const playQueueBaseRef = useRef<Track[]>([]);
   const [visualizerAnalyser, setVisualizerAnalyser] = useState<AnalyserNode | null>(null);
   const [lovedTrackIds, setLovedTrackIds] = useState<string[]>(getInitialLovedTrackIds);
+  const [favoriteAlbumKeys, setFavoriteAlbumKeys] = useState<string[]>(() =>
+    getInitialFavoriteCollectionValues('luna-favorite-album-keys')
+  );
+  const [favoriteArtistNames, setFavoriteArtistNames] = useState<string[]>(() =>
+    getInitialFavoriteCollectionValues('luna-favorite-artist-names')
+  );
   const audioARef = useRef<HTMLAudioElement>(null);
   const audioBRef = useRef<HTMLAudioElement>(null);
   const audiomackAudioRef = useRef<HTMLAudioElement>(null);
@@ -507,6 +525,14 @@ const App = () => {
   useEffect(() => {
     window.localStorage.setItem('luna-loved-track-ids', JSON.stringify(lovedTrackIds));
   }, [lovedTrackIds]);
+
+  useEffect(() => {
+    window.localStorage.setItem('luna-favorite-album-keys', JSON.stringify(favoriteAlbumKeys));
+  }, [favoriteAlbumKeys]);
+
+  useEffect(() => {
+    window.localStorage.setItem('luna-favorite-artist-names', JSON.stringify(favoriteArtistNames));
+  }, [favoriteArtistNames]);
 
   useEffect(() => {
     if (!initialLibraryLoaded || !rememberRecentMedia || recentQueueRestoredRef.current) return;
@@ -1216,6 +1242,22 @@ const App = () => {
     themeMode,
     visualizerStyle,
   ]);
+
+  useEffect(() => {
+    if (!isAndroidApp) return;
+    window.localStorage.setItem('luna-android-dock-compact', String(androidDockCompact));
+    window.localStorage.setItem('luna-android-dock-labels', String(androidDockShowLabels));
+    window.localStorage.setItem('luna-android-playbar-style', androidPlayBarStyle);
+  }, [
+    androidDockCompact,
+    androidDockShowLabels,
+    androidPlayBarStyle,
+    isAndroidApp,
+  ]);
+
+  useEffect(() => {
+    setAndroidLibrarySearchQuery('');
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -2592,6 +2634,40 @@ const App = () => {
     },
     [handleAddTracksToPlaylist, persistPlaylists, playlists]
   );
+  const handleAddTracksFromDialog = useCallback(
+    (tracks: Track[], label: string, playlistId: string | null, newPlaylistName: string) => {
+      if (!tracks.length) return 'There are no tracks to add.';
+      if (playlistId) {
+        handleAddTracksToPlaylist(playlistId, tracks);
+        return null;
+      }
+
+      const normalizedName = newPlaylistName.trim();
+      if (!normalizedName) return 'Enter a playlist name.';
+      if (
+        playlists.some(
+          (playlist) => playlist.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
+        )
+      ) {
+        return `A playlist named “${normalizedName}” already exists.`;
+      }
+
+      const id =
+        typeof window.crypto?.randomUUID === 'function'
+          ? window.crypto.randomUUID()
+          : `playlist-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const uniqueTrackIds = [...new Set(tracks.map((track) => track.id))];
+      persistPlaylists([
+        ...playlists,
+        { id, name: normalizedName, trackIds: uniqueTrackIds, createdAt: Date.now() },
+      ]);
+      setLibraryError(
+        `Created “${normalizedName}” and added ${uniqueTrackIds.length} tracks from “${label}”.`
+      );
+      return null;
+    },
+    [handleAddTracksToPlaylist, persistPlaylists, playlists]
+  );
   const handleShowAlbum = (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => {
@@ -2612,6 +2688,16 @@ const App = () => {
     setLovedTrackIds((current) =>
       current.includes(track.id) ? current.filter((id) => id !== track.id) : [...current, track.id]
     );
+  };
+  const handleToggleFavoriteCollection = (type: 'album' | 'artist', key: string) => {
+    const value = type === 'artist' ? key.trim().toLocaleLowerCase() : key;
+    const updateFavorites = (current: string[]) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+    if (type === 'album') {
+      setFavoriteAlbumKeys(updateFavorites);
+    } else {
+      setFavoriteArtistNames(updateFavorites);
+    }
   };
   const handleSyncTracks = (tracksToSync: Track[] | Track) => {
     if (!window.electronAPI) return;
@@ -2989,7 +3075,9 @@ const App = () => {
   };
 
   return (
-    <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div
+      className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}${isAndroidApp ? ' android-app-shell' : ''}${isAndroidApp && androidDockCompact ? ' android-dock-compact' : ''}${isAndroidApp && androidDockMenuOpen ? ' android-dock-menu-open' : ''}`}
+    >
       {isAndroidApp && !sidebarCollapsed && (
         <button
           type='button'
@@ -3027,8 +3115,10 @@ const App = () => {
           <TopNavbar
             tracks={libraryTracks}
             isAndroidApp={isAndroidApp}
-            androidSettingsSection={androidSettingsSection}
-            onAndroidSettingsSectionChange={setAndroidSettingsSection}
+            settingsSection={settingsSection}
+            onSettingsSectionChange={setSettingsSection}
+            androidLibrarySearchQuery={androidLibrarySearchQuery}
+            onAndroidLibrarySearchQueryChange={setAndroidLibrarySearchQuery}
             sidebarOpen={!sidebarCollapsed}
             onToggleSidebar={toggleSidebar}
             onSelectMusicFolders={handleSelectMusicFolders}
@@ -3065,6 +3155,8 @@ const App = () => {
                         <HomePage
                           tracks={libraryTracks}
                           lovedTrackIds={lovedTrackIds}
+                          favoriteAlbumKeys={favoriteAlbumKeys}
+                          favoriteArtistNames={favoriteArtistNames}
                           autoDownloadArtistImages={autoDownloadArtistImages}
                           onPlayTrack={playTrack}
                           onToggleLove={(track) => handleToggleLove(track)}
@@ -3078,7 +3170,7 @@ const App = () => {
                       path='/tracks'
                       element={
                         <Tracks
-                          tracks={libraryTracks}
+                          tracks={displayedLibraryTracks}
                           selectedTrackId={currentTrack?.id ?? null}
                           isPlaying={isPlaying}
                           isLoading={isLibraryLoading}
@@ -3116,7 +3208,7 @@ const App = () => {
                       path='/albums'
                       element={
                         <Albums
-                          tracks={libraryTracks}
+                          tracks={displayedLibraryTracks}
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onQueueTracks={handleQueueTracks}
@@ -3134,6 +3226,12 @@ const App = () => {
                           onQueueTracks={handleQueueTracks}
                           lovedTrackIds={lovedTrackIds}
                           onToggleLove={handleToggleLove}
+                          favoriteAlbumKeys={favoriteAlbumKeys}
+                          favoriteArtistNames={favoriteArtistNames}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                         />
                       }
                     />
@@ -3141,7 +3239,7 @@ const App = () => {
                       path='/artists'
                       element={
                         <Artists
-                          tracks={libraryTracks}
+                          tracks={displayedLibraryTracks}
                           autoDownloadArtistImages={autoDownloadArtistImages}
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
@@ -3160,6 +3258,12 @@ const App = () => {
                           onQueueTracks={handleQueueTracks}
                           lovedTrackIds={lovedTrackIds}
                           onToggleLove={handleToggleLove}
+                          favoriteAlbumKeys={favoriteAlbumKeys}
+                          favoriteArtistNames={favoriteArtistNames}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                         />
                       }
                     />
@@ -3167,7 +3271,7 @@ const App = () => {
                       path='/genres'
                       element={
                         <Genres
-                          tracks={libraryTracks}
+                          tracks={displayedLibraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
                         />
@@ -3190,7 +3294,7 @@ const App = () => {
                       path='/composer'
                       element={
                         <Composer
-                          tracks={libraryTracks}
+                          tracks={displayedLibraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
                         />
@@ -3267,8 +3371,13 @@ const App = () => {
                       path='/settings'
                       element={
                         <Settings
-                          androidSettingsSection={androidSettingsSection}
-                          onAndroidSettingsSectionChange={setAndroidSettingsSection}
+                          settingsSection={settingsSection}
+                          androidDockShowLabels={androidDockShowLabels}
+                          onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
+                          androidPlayBarStyle={androidPlayBarStyle}
+                          onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
+                          nowPlayingLayout={nowPlayingLayout}
+                          onNowPlayingLayoutChange={setNowPlayingLayout}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3349,8 +3458,13 @@ const App = () => {
                       path='/settings/*'
                       element={
                         <Settings
-                          androidSettingsSection={androidSettingsSection}
-                          onAndroidSettingsSectionChange={setAndroidSettingsSection}
+                          settingsSection={settingsSection}
+                          androidDockShowLabels={androidDockShowLabels}
+                          onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
+                          androidPlayBarStyle={androidPlayBarStyle}
+                          onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
+                          nowPlayingLayout={nowPlayingLayout}
+                          onNowPlayingLayoutChange={setNowPlayingLayout}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3442,6 +3556,19 @@ const App = () => {
           </main>
         </div>
       </div>
+      {isAndroidApp && (
+        <AndroidDock
+          compact={androidDockCompact}
+          showLabels={androidDockShowLabels}
+          menuOpen={androidDockMenuOpen}
+          playBarStyle={androidPlayBarStyle}
+          onCompactChange={(compact) => {
+            setAndroidDockCompact(compact);
+            if (!compact) setAndroidDockMenuOpen(false);
+          }}
+          onMenuOpenChange={setAndroidDockMenuOpen}
+        />
+      )}
 
       {/* PlayBar */}
       <audio
@@ -3589,6 +3716,8 @@ const App = () => {
             isAndroidApp && currentTrack && !currentTrack.androidAlbumId && !currentTrack.streamingProvider
           )}
           isDesktopApp={Boolean(window.electronAPI)}
+          androidPlayBarStyle={androidPlayBarStyle}
+          nowPlayingLayout={nowPlayingLayout}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}
           onLyricOffsetStepsChange={setLyricOffsetSteps}
@@ -3604,6 +3733,7 @@ const App = () => {
           onClose={closePlaylistDialog}
           onRename={handleRenamePlaylist}
           onAddTrack={handleAddTrackFromDialog}
+          onAddTracks={handleAddTracksFromDialog}
           onDelete={(playlist) => handleDeletePlaylist(playlist.id)}
         />
       )}

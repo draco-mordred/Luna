@@ -482,7 +482,19 @@ const App = () => {
   const activeLibraryScanIdRef = useRef<string | null>(null);
   const playbackNotificationUnavailableRef = useRef(false);
   const recentQueueRestoredRef = useRef(false);
-  const androidLibraryTouchRef = useRef<{ x: number; y: number } | null>(null);
+  const androidLibraryTouchRef = useRef<{
+    x: number;
+    y: number;
+    t: number;
+    width: number;
+    axis: 'undecided' | 'horizontal' | 'vertical';
+  } | null>(null);
+  const pageTransitionRef = useRef<HTMLDivElement | null>(null);
+  const androidLibrarySwipeCleanupRef = useRef<number | null>(null);
+  const [librarySwipeEnter, setLibrarySwipeEnter] = useState<{
+    dir: 'next' | 'prev';
+    duration: number;
+  } | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(REMEMBER_RECENT_MEDIA_KEY, String(rememberRecentMedia));
@@ -1703,6 +1715,61 @@ const App = () => {
     [playQueue, playQueueIndex]
   );
 
+  const handleQueueReorder = useCallback(
+    (from: number, to: number) => {
+      if (from === to || from < 0 || to < 0) return;
+      setPlayQueue((currentQueue) => {
+        if (from >= currentQueue.length || to >= currentQueue.length) return currentQueue;
+        const nextQueue = [...currentQueue];
+        const [moved] = nextQueue.splice(from, 1);
+        nextQueue.splice(to, 0, moved);
+        // Keep playQueueIndex pointing at the same track after the reorder.
+        const currentId = currentQueue[playQueueIndex]?.id;
+        if (currentId) {
+          const newIndex = nextQueue.findIndex((t) => t.id === currentId);
+          if (newIndex >= 0 && newIndex !== playQueueIndex) {
+            setPlayQueueIndex(newIndex);
+          }
+        }
+        const baseCurrent = playQueueBaseRef.current[playQueueIndex];
+        if (baseCurrent) {
+          const nextBase = [...playQueueBaseRef.current];
+          const baseFrom = nextBase.indexOf(currentQueue[from]);
+          const baseTo = nextBase.indexOf(currentQueue[to]);
+          if (baseFrom >= 0 && baseTo >= 0) {
+            const [movedBase] = nextBase.splice(baseFrom, 1);
+            nextBase.splice(baseTo, 0, movedBase);
+            playQueueBaseRef.current = nextBase;
+          }
+        }
+        return nextQueue;
+      });
+    },
+    [playQueueIndex]
+  );
+
+  const handleShareTrack = useCallback(
+    async (
+      track: { id: string; name: string; artist: string; album: string; path?: string } | null
+    ) => {
+      if (!track) return;
+      const shareData = {
+        title: track.name,
+        text: `${track.name} — ${track.artist}`,
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(shareData.text);
+        }
+      } catch {
+        // User cancelled the share sheet; nothing to do.
+      }
+    },
+    []
+  );
+
   const handlePlayPause = useCallback(() => {
     const audio = activeAudioRef.current ?? audioARef.current;
     if (!audio || !currentTrack) return;
@@ -2274,6 +2341,30 @@ const App = () => {
     [persistPlaylists, playlists]
   );
 
+  const handleCreateArtistPlaylist = useCallback(
+    (
+      track: { id: string; name: string; artist: string; album: string; path?: string } | null
+    ) => {
+      if (!track) return;
+      const fullTrack = libraryTracks.find((libraryTrack) => libraryTrack.id === track.id);
+      if (!fullTrack) return;
+      const artistName = fullTrack.albumArtist || fullTrack.artist;
+      if (!artistName) return;
+      const artistTracks = libraryTracks.filter(
+        (libraryTrack) => (libraryTrack.albumArtist || libraryTrack.artist) === artistName
+      );
+      const playlistId = handleCreatePlaylist(`${artistName} Mix`);
+      if (!playlistId) return;
+      const updatedPlaylists = playlists.map((playlist) =>
+        playlist.id === playlistId
+          ? { ...playlist, trackIds: artistTracks.map((artistTrack) => artistTrack.id) }
+          : playlist
+      );
+      persistPlaylists(updatedPlaylists);
+    },
+    [handleCreatePlaylist, libraryTracks, persistPlaylists, playlists]
+  );
+
   const handleDeletePlaylist = useCallback(
     (playlistId: string) => {
       persistPlaylists(playlists.filter((playlist) => playlist.id !== playlistId));
@@ -2752,7 +2843,35 @@ const App = () => {
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => setSidebarCollapsed((collapsed) => !collapsed), []);
+  const clearLibrarySwipeStyle = () => {
+    const el = pageTransitionRef.current;
+    if (!el) return;
+    el.style.transition = '';
+    el.style.transform = '';
+    el.style.opacity = '';
+  };
+
+  const springLibrarySwipeBack = (duration = 260) => {
+    const el = pageTransitionRef.current;
+    if (!el) return;
+    el.style.transition = `transform ${duration}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${duration}ms ease`;
+    el.style.transform = 'translateX(0) scale(1)';
+    el.style.opacity = '1';
+    if (androidLibrarySwipeCleanupRef.current !== null) {
+      window.clearTimeout(androidLibrarySwipeCleanupRef.current);
+    }
+    androidLibrarySwipeCleanupRef.current = window.setTimeout(() => {
+      androidLibrarySwipeCleanupRef.current = null;
+      clearLibrarySwipeStyle();
+    }, duration + 40);
+  };
+
   const handleLibraryTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
+    if (androidLibrarySwipeCleanupRef.current !== null) {
+      window.clearTimeout(androidLibrarySwipeCleanupRef.current);
+      androidLibrarySwipeCleanupRef.current = null;
+      clearLibrarySwipeStyle();
+    }
     if (!isAndroidApp || !ANDROID_LIBRARY_ROUTES.includes(location.pathname)) {
       androidLibraryTouchRef.current = null;
       return;
@@ -2770,25 +2889,103 @@ const App = () => {
     }
 
     const touch = event.changedTouches[0];
-    androidLibraryTouchRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    androidLibraryTouchRef.current = touch
+      ? {
+          x: touch.clientX,
+          y: touch.clientY,
+          t: Date.now(),
+          width: window.innerWidth || 1,
+          axis: 'undecided',
+        }
+      : null;
   };
-  const handleLibraryTouchEnd = (event: ReactTouchEvent<HTMLElement>) => {
+  const handleLibraryTouchMove = (event: ReactTouchEvent<HTMLElement>) => {
     const start = androidLibraryTouchRef.current;
-    androidLibraryTouchRef.current = null;
-    if (!start || !isAndroidApp) return;
+    if (!start || start.axis === 'vertical') return;
 
-    const touch = event.changedTouches[0];
+    const touch = event.touches[0];
     if (!touch) return;
 
     const deltaX = touch.clientX - start.x;
     const deltaY = touch.clientY - start.y;
-    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
+    if (start.axis === 'undecided') {
+      if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+      start.axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.2 ? 'horizontal' : 'vertical';
+      if (start.axis === 'vertical') return;
+    }
 
     const currentIndex = ANDROID_LIBRARY_ROUTES.indexOf(location.pathname);
-    const nextIndex = currentIndex + (deltaX < 0 ? 1 : -1);
-    if (nextIndex >= 0 && nextIndex < ANDROID_LIBRARY_ROUTES.length) {
-      navigate(ANDROID_LIBRARY_ROUTES[nextIndex]);
+    const el = pageTransitionRef.current;
+    if (!el || currentIndex < 0) return;
+
+    let dx = deltaX;
+    // Rubber-band resistance at the first and last tabs
+    if ((currentIndex === 0 && dx > 0) || (currentIndex === ANDROID_LIBRARY_ROUTES.length - 1 && dx < 0)) {
+      dx *= 0.32;
     }
+
+    const progress = Math.min(1, Math.abs(dx) / start.width);
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${dx}px) scale(${1 - progress * 0.05})`;
+    el.style.opacity = `${1 - progress * 0.3}`;
+  };
+  const handleLibraryTouchEnd = (event: ReactTouchEvent<HTMLElement>) => {
+    const start = androidLibraryTouchRef.current;
+    androidLibraryTouchRef.current = null;
+    const el = pageTransitionRef.current;
+    if (!start || start.axis !== 'horizontal') {
+      if (start && start.axis === 'horizontal') springLibrarySwipeBack();
+      return;
+    }
+    if (!el) return;
+
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const currentIndex = ANDROID_LIBRARY_ROUTES.indexOf(location.pathname);
+    if (currentIndex < 0) return;
+
+    const deltaX = touch.clientX - start.x;
+    const elapsed = Math.max(1, Date.now() - start.t);
+    const velocity = deltaX / elapsed; // px per ms
+    const width = start.width;
+
+    const direction: 'next' | 'prev' = deltaX < 0 ? 'next' : 'prev';
+    const nextIndex = currentIndex + (direction === 'next' ? 1 : -1);
+    const atEdge = nextIndex < 0 || nextIndex >= ANDROID_LIBRARY_ROUTES.length;
+
+    // Commit on a long drag or a fast flick, in either direction
+    const shouldCommit =
+      !atEdge &&
+      (Math.abs(deltaX) > width * 0.28 || (Math.abs(velocity) > 0.55 && Math.abs(deltaX) > 40));
+
+    if (!shouldCommit) {
+      springLibrarySwipeBack();
+      return;
+    }
+
+    // Faster flicks get a snappier page-in animation
+    const speed = Math.min(1, Math.abs(velocity) / 2);
+    const enterDuration = Math.round(320 - speed * 150);
+    const outDuration = Math.round(enterDuration * 0.7);
+    const outOffset = direction === 'next' ? -width * 0.55 : width * 0.55;
+
+    el.style.transition = `transform ${outDuration}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${outDuration}ms ease`;
+    el.style.transform = `translateX(${outOffset}px) scale(0.96)`;
+    el.style.opacity = '0';
+    setLibrarySwipeEnter({ dir: direction, duration: enterDuration });
+
+    if (androidLibrarySwipeCleanupRef.current !== null) {
+      window.clearTimeout(androidLibrarySwipeCleanupRef.current);
+    }
+    androidLibrarySwipeCleanupRef.current = window.setTimeout(() => {
+      androidLibrarySwipeCleanupRef.current = null;
+      navigate(ANDROID_LIBRARY_ROUTES[nextIndex]);
+      window.setTimeout(() => {
+        setLibrarySwipeEnter(null);
+        clearLibrarySwipeStyle();
+      }, enterDuration + 80);
+    }, outDuration);
   };
 
   return (
@@ -2841,13 +3038,18 @@ const App = () => {
           {/* Page Content */}
           <main
             className={`page-content${location.pathname.startsWith('/settings') ? ' settings-route-content' : ''}`}
+            data-swipe-direction={librarySwipeEnter?.dir ?? undefined}
             onTouchStart={handleLibraryTouchStart}
+            onTouchMove={handleLibraryTouchMove}
             onTouchEnd={handleLibraryTouchEnd}
-            onTouchCancel={() => {
-              androidLibraryTouchRef.current = null;
-            }}
+            onTouchCancel={handleLibraryTouchEnd}
           >
-            <div key={location.pathname} className='page-transition'>
+            <div
+              key={location.pathname}
+              ref={pageTransitionRef}
+              className='page-transition'
+              style={librarySwipeEnter ? { animationDuration: `${librarySwipeEnter.duration}ms` } : undefined}
+            >
               <Suspense
                 fallback={
                   <div className='page-loading' role='status'>
@@ -2930,6 +3132,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -2954,6 +3158,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -2975,6 +3181,8 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          lovedTrackIds={lovedTrackIds}
+                          onToggleLove={handleToggleLove}
                         />
                       }
                     />
@@ -3374,6 +3582,12 @@ const App = () => {
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
           onQueueTracks={handleQueueTracks}
+          onQueueReorder={handleQueueReorder}
+          onShareTrack={handleShareTrack}
+          onCreateArtistPlaylist={handleCreateArtistPlaylist}
+          trackIsDesktopSynced={Boolean(
+            isAndroidApp && currentTrack && !currentTrack.androidAlbumId && !currentTrack.streamingProvider
+          )}
           isDesktopApp={Boolean(window.electronAPI)}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}
@@ -3413,3 +3627,5 @@ const App = () => {
 };
 
 export default App;
+
+

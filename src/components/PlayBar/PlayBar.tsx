@@ -5,7 +5,9 @@ import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex'
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
+import { isAndroidApp } from '../../services/androidMusicLibrary';
 import './PlayBar.css';
+import '../../styles/android-app.css';
 import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
 import type { Playlist, Track } from '../../services/MusicLibrary';
 
@@ -66,7 +68,14 @@ interface PlayBarProps {
   playQueueIndex: number;
   onQueueSelect: (index: number) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
-  isAndroidApp: boolean;
+  onQueueReorder?: (fromIndex: number, toIndex: number) => void;
+  onShareTrack?: (
+    track: { id: string; name: string; artist: string; album: string; path?: string } | null
+  ) => void;
+  onCreateArtistPlaylist?: (
+    track: { id: string; name: string; artist: string; album: string; path?: string } | null
+  ) => void;
+  trackIsDesktopSynced?: boolean;
   isDesktopApp: boolean;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
@@ -487,7 +496,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
   playQueueIndex,
   onQueueSelect,
   onQueueTracks,
-  isAndroidApp,
+  onQueueReorder,
+  onShareTrack,
+  onCreateArtistPlaylist,
+  trackIsDesktopSynced = false,
   isDesktopApp,
   playerWindowMode,
   lyricOffsetSteps,
@@ -498,6 +510,45 @@ const PlayBar: React.FC<PlayBarProps> = ({
 }) => {
   const primaryArtist = splitArtistCredits(track?.artist ?? '')[0] ?? '';
   const { imageUrl: trackArtworkUrl } = useAndroidAlbumArtwork(track, true);
+  const androidApp = isAndroidApp();
+  const compactAndroidLayoutQuery = '(max-width: 820px)';
+  const androidLayoutQuery = '(max-width: 1200px)';
+  const [useCompactAndroidLayout, setUseCompactAndroidLayout] = useState(
+    () => androidApp && window.matchMedia(compactAndroidLayoutQuery).matches
+  );
+  const [useAndroidLayout, setUseAndroidLayout] = useState(
+    () => androidApp && window.matchMedia(androidLayoutQuery).matches
+  );
+  useEffect(() => {
+    if (!androidApp) return undefined;
+    const query = window.matchMedia(compactAndroidLayoutQuery);
+    const update = () => setUseCompactAndroidLayout(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [androidApp]);
+  useEffect(() => {
+    if (!androidApp) return undefined;
+    const query = window.matchMedia(androidLayoutQuery);
+    const update = () => setUseAndroidLayout(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [androidApp]);
+  const [androidNpLayout, setAndroidNpLayout] = useState<'standard' | 'full-art'>(() =>
+    window.localStorage.getItem('luna-android-np-layout') === 'full-art' ? 'full-art' : 'standard'
+  );
+  useEffect(() => {
+    if (!androidApp) return undefined;
+    const update = () =>
+      setAndroidNpLayout(
+        window.localStorage.getItem('luna-android-np-layout') === 'full-art'
+          ? 'full-art'
+          : 'standard'
+      );
+    window.addEventListener('storage', update);
+    return () => window.removeEventListener('storage', update);
+  }, [androidApp]);
   const { imageUrl: artistBackgroundImage } = useArtistImage(primaryArtist, {
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
     allowDownload: showArtistImageBackground,
@@ -524,6 +575,16 @@ const PlayBar: React.FC<PlayBarProps> = ({
     visible: boolean;
   }>({ trackId: null, visible: false });
   const [showPlayQueue, setShowPlayQueue] = useState(false);
+  const [queueDragIndex, setQueueDragIndex] = useState<number | null>(null);
+  const [queueDragOverIndex, setQueueDragOverIndex] = useState<number | null>(null);
+  const queueDragRef = useRef<{
+    pointerId: number;
+    startIndex: number;
+    lastIndex: number;
+    startY: number;
+    itemHeight: number;
+  } | null>(null);
+  const queueLongPressRef = useRef<number | null>(null);
   const [isMiniDockVisible, setIsMiniDockVisible] = useState(true);
   const [celebratingFavoriteTrackId, setCelebratingFavoriteTrackId] = useState<string | null>(null);
   const [playBarWidth, setPlayBarWidth] = useState(0);
@@ -567,14 +628,21 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
   const dragFrameRef = useRef<number | null>(null);
   const didDragRef = useRef(false);
+  const dragVelocityRef = useRef(0);
+  const lastDragSampleRef = useRef<{ y: number; t: number } | null>(null);
+  const commitDurationClearRef = useRef<number | null>(null);
   const visualizerLocationRef = useRef<string | null>(null);
   const visualizerRelocationFrameRef = useRef<number | null>(null);
   const [isVisualizerRelocating, setIsVisualizerRelocating] = useState(false);
+  const [commitDuration, setCommitDuration] = useState<number | null>(null);
 
   useEffect(
     () => () => {
       if (favoriteCelebrationTimeoutRef.current !== null) {
         window.clearTimeout(favoriteCelebrationTimeoutRef.current);
+      }
+      if (commitDurationClearRef.current !== null) {
+        window.clearTimeout(commitDurationClearRef.current);
       }
     },
     []
@@ -997,6 +1065,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
       if (dragStartYRef.current === null) return;
       const deltaY = dragStartYRef.current - event.clientY;
       if (Math.abs(deltaY) > 4) didDragRef.current = true;
+      const sampleTime = event.timeStamp;
+      const previousSample = lastDragSampleRef.current;
+      if (previousSample) {
+        const elapsed = sampleTime - previousSample.t;
+        if (elapsed > 0) {
+          // Positive velocity = dragging upward = expanding (px per ms)
+          const instantVelocity = (previousSample.y - event.clientY) / elapsed;
+          dragVelocityRef.current =
+            dragVelocityRef.current * 0.6 + instantVelocity * 0.4;
+        }
+      }
+      lastDragSampleRef.current = { y: event.clientY, t: sampleTime };
       const nextHeight = Math.max(
         COLLAPSED_HEIGHT,
         Math.min(getExpandedHeight(), dragStartHeightRef.current + deltaY)
@@ -1019,11 +1099,38 @@ const PlayBar: React.FC<PlayBarProps> = ({
     const handlePointerEnd = () => {
       if (dragStartYRef.current === null) return;
       dragStartYRef.current = null;
+      lastDragSampleRef.current = null;
       if (dragFrameRef.current !== null) {
         window.cancelAnimationFrame(dragFrameRef.current);
         dragFrameRef.current = null;
       }
-      const shouldExpand = currentHeightRef.current > (COLLAPSED_HEIGHT + getExpandedHeight()) / 2;
+      // Velocity-aware commit: a fast flick (>= 0.55 px/ms) decides the
+      // direction regardless of how far the bar was dragged.
+      const velocity = dragVelocityRef.current;
+      dragVelocityRef.current = 0;
+      const midpoint = (COLLAPSED_HEIGHT + getExpandedHeight()) / 2;
+      const shouldExpand =
+        Math.abs(velocity) >= 0.55
+          ? velocity > 0
+          : currentHeightRef.current > midpoint;
+      const remainingDistance = shouldExpand
+        ? getExpandedHeight() - currentHeightRef.current
+        : currentHeightRef.current - COLLAPSED_HEIGHT;
+      // Faster flicks (or short remaining distances) produce a snappier
+      // commit animation: 420ms base down to ~180ms.
+      const speedFactor = Math.min(
+        1,
+        Math.max(Math.abs(velocity), remainingDistance / 420) / 1.6
+      );
+      const nextCommitDuration = Math.round(420 - speedFactor * 240);
+      if (commitDurationClearRef.current !== null) {
+        window.clearTimeout(commitDurationClearRef.current);
+      }
+      setCommitDuration(nextCommitDuration);
+      commitDurationClearRef.current = window.setTimeout(() => {
+        commitDurationClearRef.current = null;
+        setCommitDuration(null);
+      }, nextCommitDuration + 60);
       setState(shouldExpand ? 'expanded' : 'collapsed');
       setHeight(currentHeightRef.current);
       setIsDragging(false);
@@ -1048,9 +1155,23 @@ const PlayBar: React.FC<PlayBarProps> = ({
       )
     )
       return;
+    // When the Now Playing screen is already open, only allow the
+    // collapse drag to begin from the top region of the screen so that
+    // interacting with lyrics, sliders or the artwork never drags it shut.
+    if (state === 'expanded') {
+      const barRect = playBarRef.current?.getBoundingClientRect();
+      if (barRect) {
+        const topZoneHeight = Math.max(48, Math.min(barRect.height * 0.16, 120));
+        if (event.clientY - barRect.top > topZoneHeight && !target.closest('.drag-handle')) {
+          return;
+        }
+      }
+    }
     dragStartYRef.current = event.clientY;
     dragStartHeightRef.current = currentHeightRef.current;
     didDragRef.current = false;
+    dragVelocityRef.current = 0;
+    lastDragSampleRef.current = { y: event.clientY, t: event.timeStamp };
     if (state === 'collapsed') setState('expanded');
     setIsDragging(true);
   };
@@ -1126,9 +1247,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
     !showInlineVolumeControl ||
     (isDesktopApp && (!showInlineMiniPlayerControl || !showInlineFullscreenPlayerControl));
 
-  const handleTrackMenuAction = (
-    action: 'delete' | 'playlist' | 'album' | 'artist' | 'love' | 'less' | 'queue' | 'next'
-  ) => {
+  type TrackMenuAction =
+    | 'delete'
+    | 'playlist'
+    | 'album'
+    | 'artist'
+    | 'love'
+    | 'less'
+    | 'queue'
+    | 'next'
+    | 'share'
+    | 'artistPlaylist';
+
+  const handleTrackMenuAction = (action: TrackMenuAction) => {
     if (!track) return;
     switch (action) {
       case 'delete':
@@ -1173,6 +1304,14 @@ const PlayBar: React.FC<PlayBarProps> = ({
         onSuggestTrackLess?.(track);
         closeTrackMenu();
         break;
+      case 'share':
+        onShareTrack?.(track);
+        closeTrackMenu();
+        break;
+      case 'artistPlaylist':
+        onCreateArtistPlaylist?.(track);
+        closeTrackMenu();
+        break;
       case 'queue':
         onQueueTracks([track], false);
         closeTrackMenu();
@@ -1186,13 +1325,21 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }
   };
 
-  type TrackMenuAction =
-    'delete' | 'playlist' | 'album' | 'artist' | 'love' | 'less' | 'queue' | 'next';
   const allTrackMenuItems: Array<{ label: string; icon: string; action: TrackMenuAction }> = [
-    { label: 'Delete from library', icon: 'delete_forever', action: 'delete' },
+    {
+      label: androidApp && trackIsDesktopSynced ? 'Remove download' : 'Delete from library',
+      icon: androidApp && trackIsDesktopSynced ? 'cloud_off' : 'delete_forever',
+      action: 'delete',
+    },
     { label: 'Add to playlist', icon: 'playlist_add', action: 'playlist' },
     { label: 'Add to play queue', icon: 'queue_music', action: 'queue' },
     { label: 'Play next', icon: 'next_plan', action: 'next' },
+    ...(androidApp
+      ? ([
+          { label: 'Share Song', icon: 'share', action: 'share' },
+          { label: 'Create Playlist', icon: 'library_add', action: 'artistPlaylist' },
+        ] as Array<{ label: string; icon: string; action: TrackMenuAction }>)
+      : []),
     { label: primaryArtist || 'Unknown Artist', icon: 'person', action: 'artist' },
     { label: 'Show Album', icon: 'album', action: 'album' },
     {
@@ -1248,6 +1395,125 @@ const PlayBar: React.FC<PlayBarProps> = ({
         return 'repeat';
     }
   };
+
+  // ===== Android play queue drag-to-reorder =====
+  const ANP_QUEUE_ITEM_HEIGHT = 56;
+
+  const cancelQueueLongPress = () => {
+    if (queueLongPressRef.current !== null) {
+      window.clearTimeout(queueLongPressRef.current);
+      queueLongPressRef.current = null;
+    }
+  };
+
+  const beginQueueDrag = (index: number, pointerId: number, clientY: number) => {
+    if (!onQueueReorder || !useAndroidLayout) return;
+    cancelQueueLongPress();
+    queueDragRef.current = {
+      pointerId,
+      startIndex: index,
+      lastIndex: index,
+      startY: clientY,
+      itemHeight: ANP_QUEUE_ITEM_HEIGHT,
+    };
+    setQueueDragIndex(index);
+    setQueueDragOverIndex(index);
+  };
+
+  const scheduleQueueLongPress = (index: number, pointerId: number, clientY: number) => {
+    if (!onQueueReorder || !useAndroidLayout) return;
+    cancelQueueLongPress();
+    queueLongPressRef.current = window.setTimeout(() => {
+      queueLongPressRef.current = null;
+      beginQueueDrag(index, pointerId, clientY);
+    }, 420);
+  };
+
+  useEffect(() => {
+    if (queueDragIndex === null) return undefined;
+    const handleMove = (event: PointerEvent) => {
+      const state = queueDragRef.current;
+      if (!state || event.pointerId !== state.pointerId) return;
+      const offset = Math.round((event.clientY - state.startY) / state.itemHeight);
+      const target = Math.max(0, Math.min(playQueue.length - 1, state.startIndex + offset));
+      state.lastIndex = target;
+      setQueueDragOverIndex(target);
+    };
+    const handleEnd = () => {
+      const state = queueDragRef.current;
+      if (state && onQueueReorder && state.lastIndex !== state.startIndex) {
+        onQueueReorder(state.startIndex, state.lastIndex);
+      }
+      queueDragRef.current = null;
+      setQueueDragIndex(null);
+      setQueueDragOverIndex(null);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
+    };
+  }, [queueDragIndex, playQueue.length, onQueueReorder]);
+
+  const renderAnpQueueItem = (queuedTrack: Track, index: number) => {
+    const isDragging = queueDragIndex === index;
+    const isDragOver = queueDragOverIndex === index && queueDragIndex !== null && !isDragging;
+    return (
+      <li
+        key={`${queuedTrack.id}-${index}`}
+        id={`play-queue-row-${index}`}
+        className={[
+          'anp-queue-item',
+          isDragging ? 'dragging' : '',
+          isDragOver ? 'drag-over' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onPointerDown={(event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          scheduleQueueLongPress(index, event.pointerId, event.clientY);
+        }}
+        onPointerUp={cancelQueueLongPress}
+        onPointerCancel={cancelQueueLongPress}
+      >
+        <button
+          type='button'
+          className='anp-queue-item-main'
+          tabIndex={showPlayQueue ? 0 : -1}
+          onClick={() => onQueueSelect(index)}
+        >
+          {queuedTrack.albumArt ? (
+            <img className='anp-queue-art' src={queuedTrack.albumArt} alt='' />
+          ) : (
+            <span className='anp-queue-art anp-queue-art-empty'>
+              <span className='material-symbols-outlined' aria-hidden='true'>music_note</span>
+            </span>
+          )}
+          <span className='anp-queue-copy'>
+            <strong>{queuedTrack.name}</strong>
+            <small>{queuedTrack.artist}</small>
+          </span>
+        </button>
+        <button
+          type='button'
+          className='anp-queue-drag-handle'
+          aria-label={`Reorder ${queuedTrack.name}`}
+          tabIndex={showPlayQueue ? 0 : -1}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            beginQueueDrag(index, event.pointerId, event.clientY);
+          }}
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>drag_indicator</span>
+        </button>
+      </li>
+    );
+  };
+
   const shuffleControl = (
     <button
       aria-label='Shuffle'
@@ -1367,6 +1633,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const playBarStyle: React.CSSProperties & { '--expand-progress': number } = {
     height: `${displayHeight}px`,
     '--expand-progress': expandProgress,
+    ...(commitDuration !== null ? { transitionDuration: `${commitDuration}ms` } : {}),
   };
 
   return (
@@ -1404,6 +1671,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
             <div className='now-playing-artist-background' aria-hidden='true'>
               <TrackImageCrossfade src={artistBackgroundImage} alt='' />
               <div className='now-playing-artist-background-overlay' />
+            </div>
+          )}
+          {useCompactAndroidLayout && (
+            <div className='np-android-artwork-background' aria-hidden='true'>
+              <TrackImageCrossfade src={trackArtworkUrl ?? null} alt='' />
+              <div className='np-android-artwork-background-overlay' />
             </div>
           )}
           <div className='now-playing-header'>
@@ -1464,6 +1737,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
               hasSyncedLyrics ? 'has-synced-lyrics' : '',
               showVisualizer && !hasSyncedLyrics ? 'visualizer-in-lyrics-slot' : '',
               showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
+              showPlayQueue ? 'queue-open' : '',
+              (showPlainLyricsPanel || showSyncedLyricCaption) ? 'lyrics-open' : '',
+              (useCompactAndroidLayout && androidNpLayout === 'full-art') ? 'np-full-art' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -1476,7 +1752,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               if (
                 !track ||
                 target.closest(
-                  'button, input, select, textarea, a, [role="button"], .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .track-menu-popover'
+                  'button, input, select, textarea, a, [role="button"], .album-art, .track-info, .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .np-android-volume, .np-android-bottom-actions, .now-playing-header, .drag-handle, .track-menu-popover, .now-playing-artist-background, .player-mode-background'
                 )
               ) {
                 return;
@@ -1629,7 +1905,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                       onClick={toggleTrackMenu}
                     >
                       <span className='material-symbols-outlined' aria-hidden='true'>
-                        more_vert
+                        {useCompactAndroidLayout ? 'more_horiz' : 'more_vert'}
                       </span>
                     </button>
                     {isTrackMenuMounted && (
@@ -1738,21 +2014,77 @@ const PlayBar: React.FC<PlayBarProps> = ({
                             </button>
                           )
                         )}
+                        {/* Android: lyrics mode and synced timing controls in the "..." menu */}
+                        {androidApp && track.syncedLyrics && track.syncedLyrics.length > 0 && (
+                          <div
+                            className='track-menu-lyrics-section'
+                            role='group'
+                            aria-label='Lyrics options'
+                          >
+                            <button
+                              type='button'
+                              className='track-menu-item'
+                              role='menuitemcheckbox'
+                              aria-checked={showSyncedLyrics}
+                              onClick={() => setShowSyncedLyrics(!showSyncedLyrics)}
+                            >
+                              <span className='material-symbols-outlined' aria-hidden='true'>
+                                timelapse
+                              </span>
+                              <span>{showSyncedLyrics ? 'Synced lyrics on' : 'Synced lyrics off'}</span>
+                            </button>
+                            {showSyncedLyrics && (
+                              <div
+                                className='track-menu-item track-menu-timing-row'
+                                aria-label='Synchronized lyrics timing'
+                              >
+                                <button
+                                  type='button'
+                                  className='lyrics-delay-button'
+                                  aria-label='Show synchronized lyrics 0.1 seconds earlier'
+                                  title='Show lyrics earlier'
+                                  disabled={lyricOffsetSteps <= -5}
+                                  onClick={() =>
+                                    onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))
+                                  }
+                                >
+                                  <span className='material-symbols-outlined' aria-hidden='true'>
+                                    fast_rewind
+                                  </span>
+                                </button>
+                                <span
+                                  className='track-menu-timing-label'
+                                  aria-live='polite'
+                                  title='Positive values delay lyrics'
+                                >
+                                  {lyricOffsetLabel}
+                                </span>
+                                <button
+                                  type='button'
+                                  className='lyrics-delay-button'
+                                  aria-label='Delay synchronized lyrics by 0.1 seconds'
+                                  title='Delay lyrics'
+                                  disabled={lyricOffsetSteps >= 5}
+                                  onClick={() =>
+                                    onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))
+                                  }
+                                >
+                                  <span className='material-symbols-outlined' aria-hidden='true'>
+                                    fast_forward
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 )}
               </div>
-              {isAndroidApp ? (
-                <PlayerModeMarquee
-                  className='android-now-playing-artist'
-                  text={track?.artist || 'Unknown Artist'}
-                />
-              ) : (
-                <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
-                  {track?.artist || 'Unknown Artist'}
-                </p>
-              )}
+              <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
+                {track?.artist || 'Unknown Artist'}
+              </p>
               <p className='album-name' key={`album-${track?.id ?? 'none'}`}>
                 {track?.album || 'Unknown Album'}
               </p>
@@ -1881,6 +2213,59 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </section>
             )}
 
+            {useAndroidLayout ? (
+              <div className='anp-queue' aria-label='Play queue' aria-hidden={!showPlayQueue}>
+                <header className='anp-queue-header'>
+                  <div className='anp-queue-header-copy'>
+                    <h2>Now playing</h2>
+                    <p>{playQueue.length} tracks</p>
+                  </div>
+                  <button
+                    type='button'
+                    className='lyrics-close'
+                    aria-label='Close play queue'
+                    onClick={() => setShowPlayQueue(false)}
+                    tabIndex={showPlayQueue ? 0 : -1}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>close</span>
+                  </button>
+                </header>
+                {playQueue.length === 0 ? (
+                  <ol className='play-queue-list'>
+                    <li className='play-queue-empty'>Play a track to start a queue.</li>
+                  </ol>
+                ) : (
+                  <div className='anp-queue-sections'>
+                    {playQueueIndex > 0 && (
+                      <section className='anp-queue-section'>
+                        <h3>History</h3>
+                        <ol className='anp-queue-list'>
+                          {playQueue.slice(0, playQueueIndex).map((queuedTrack, index) => renderAnpQueueItem(queuedTrack, index))}
+                        </ol>
+                      </section>
+                    )}
+                    {playQueueIndex + 1 < playQueue.length && (
+                      <section className='anp-queue-section'>
+                        <h3>Up next</h3>
+                        <ol className='anp-queue-list'>
+                          {renderAnpQueueItem(playQueue[playQueueIndex + 1], playQueueIndex + 1)}
+                        </ol>
+                      </section>
+                    )}
+                    {playQueueIndex + 2 < playQueue.length && (
+                      <section className='anp-queue-section'>
+                        <h3>Upcoming</h3>
+                        <ol className='anp-queue-list'>
+                          {playQueue
+                            .slice(playQueueIndex + 2)
+                            .map((queuedTrack, offset) => renderAnpQueueItem(queuedTrack, playQueueIndex + 2 + offset))}
+                        </ol>
+                      </section>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
             <section
               className={`play-queue-panel ${showPlayQueue ? 'is-visible' : 'is-hidden'}`}
               aria-label='Play queue'
@@ -1938,6 +2323,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 </ol>
               )}
             </section>
+            )}
 
             {/* Progress Bar */}
             {lyricsEnabled && hasSyncedLyrics && track?.syncedLyrics && (
@@ -2028,70 +2414,69 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <TransportIcon name={getRepeatIcon()} />
               </button>
             </div>
-            {isAndroidApp && (
-              <>
-                <div className='android-now-playing-volume'>
-                  <button
-                    type='button'
-                    className='android-volume-mute'
-                    aria-label={volume === 0 ? 'Unmute' : 'Mute'}
-                    onClick={handleAndroidMuteToggle}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      {volume === 0 ? 'volume_off' : 'volume_down'}
-                    </span>
-                  </button>
-                  <input
-                    aria-label='Volume'
-                    type='range'
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={volume}
-                    onChange={(event) =>
-                      handleAndroidVolumeChange(event.currentTarget.valueAsNumber)
-                    }
-                    className='android-volume-slider'
-                    style={volumeSliderStyle}
-                  />
-                  <span
-                    className='material-symbols-outlined android-volume-level'
-                    aria-label={`Volume ${Math.round(volume * 100)} percent`}
-                    role='img'
-                  >
-                    {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+
+            {/* Android: Apple Music-style inline volume row */}
+            {useAndroidLayout && (
+              <div className='np-android-volume'>
+                <span className='material-symbols-outlined np-android-volume-icon' aria-hidden='true'>
+                  {volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+                </span>
+                <input
+                  aria-label='Volume'
+                  type='range'
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(event) => onVolumeChange(event.currentTarget.valueAsNumber)}
+                  className='np-android-volume-slider'
+                  style={volumeSliderStyle}
+                />
+                <span className='material-symbols-outlined np-android-volume-icon' aria-hidden='true'>
+                  volume_up
+                </span>
+              </div>
+            )}
+
+            {/* Android: Apple Music-style bottom icon actions */}
+            {useAndroidLayout && (
+              <div className='np-android-bottom-actions'>
+                <button
+                  type='button'
+                  className={`np-android-action${showLyrics ? ' active' : ''}`}
+                  aria-pressed={showLyrics}
+                  aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                  disabled={!lyricsEnabled || !track?.lyrics?.trim()}
+                  onClick={handleLyricsToggle}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>lyrics</span>
+                </button>
+                <button
+                  type='button'
+                  className={`np-android-action${showSyncedLyrics ? ' active' : ''}`}
+                  aria-pressed={showSyncedLyrics}
+                  aria-label={showSyncedLyrics ? 'Switch to plain lyrics' : 'Switch to synced lyrics'}
+                  disabled={!lyricsEnabled || !track?.lyrics?.trim() || !hasSyncedLyrics}
+                  onClick={() => {
+                    const nextSynced = !showSyncedLyrics;
+                    setShowSyncedLyrics(nextSynced);
+                    if (!showLyrics) updateLyricsVisibility(true);
+                  }}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    {showSyncedLyrics ? 'music_note' : 'subject'}
                   </span>
-                </div>
-                <div className='android-now-playing-actions'>
-                  <button
-                    type='button'
-                    aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
-                    aria-pressed={showLyrics}
-                    disabled={!lyricsEnabled || !canToggleLyrics}
-                    onClick={handleLyricsToggle}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      lyrics
-                    </span>
-                  </button>
-                  <button type='button' aria-label='Close Now Playing' onClick={handleCollapse}>
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      keyboard_arrow_down
-                    </span>
-                  </button>
-                  <button
-                    type='button'
-                    className={showPlayQueue ? 'active' : ''}
-                    aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
-                    aria-pressed={showPlayQueue}
-                    onClick={() => setShowPlayQueue((visible) => !visible)}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      queue_music
-                    </span>
-                  </button>
-                </div>
-              </>
+                </button>
+                <button
+                  type='button'
+                  className={`np-android-action${showPlayQueue ? ' active' : ''}`}
+                  aria-pressed={showPlayQueue}
+                  aria-label={showPlayQueue ? 'Close play queue' : 'Open play queue'}
+                  onClick={() => setShowPlayQueue((visible) => !visible)}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>queue_music</span>
+                </button>
+              </div>
             )}
           </div>
           {playerWindowMode !== 'normal' && (
@@ -2554,3 +2939,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 };
 
 export default PlayBar;
+
+
+
+

@@ -756,7 +756,6 @@ html[data-player-window-mode='mini'] .play-bar .lyrics-panel {
   display: none;
 }
 
-
 /* Drag Handle */
 .drag-handle {
   position: absolute;
@@ -825,7 +824,6 @@ html[data-player-window-mode='mini'] .play-bar .lyrics-panel {
   pointer-events: auto;
   transition-delay: 0s, 0s, 0s, 0s;
 }
-
 
 
 .now-playing-artist-background {
@@ -4177,22 +4175,305 @@ html[data-theme='light'] .now-playing.artist-background-enabled {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
 }
 
+html:not([data-android-app='true']) .now-playing.desktop-full-art-mode {
+  --full-art-panel-height: clamp(250px, 34vh, 310px);
+  overflow: hidden;
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+  color: #fff;
+}
 
+html:not([data-android-app='true']) .now-playing.desktop-full-art-mode::after {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--full-art-panel-height);
+  box-sizing: border-box;
+  padding: 35px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(13, 14, 18, 0.52), rgba(8, 9, 12, 0.86));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  content: '';
+  pointer-events: none;
+}
 
+html:not([data-android-app='true'])
+  .now-playing.desktop-full-art-mode
+  .np-android-artwork-background {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+}
 
+html:not([data-android-app='true'])
+  .now-playing.desktop-full-art-mode
+  .np-android-artwork-background
+  .track-image-crossfade
+  img {
+  filter: none;
+  transform: none;
+}
 
+html:not([data-android-app='true'])
+  .now-playing.desktop-full-art-mode
+  .np-android-artwork-background-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.24),
+    rgba(0, 0, 0, 0.02) 38%,
+    rgba(0, 0, 0, 0.22) 62%,
+    rgba(0, 0, 0, 0.52)
+  );
+}
 
+html:not([data-android-app='true'])
+  .now-playing.desktop-full-art-mode
+  .now-playing-artist-background {
+  display: none;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  opacity: 1;
+  transform: none;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art > .album-art,
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art > .audio-visualizer {
+  display: none;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art > .track-info {
+  position: absolute;
+  right: 35px;
+  bottom: calc(var(--full-art-panel-height) - 115px);
+  left: 35px;
+  z-index: 3;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
 
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .track-info
+  .track-title-row {
+  max-width: 100%;
+  margin: 0 0 4px;
+  justify-content: space-between;
+  gap: 12px;
+}
 
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .track-info
+  .track-name,
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .track-info
+  .artist-name,
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .track-info
+  .album-name {
+  color: #fff;
+  text-align: left;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
+}
 
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .track-info
+  .track-name {
+  max-width: 100%;
+  margin: 0;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .lyrics-actions {
+  position: absolute;
+  bottom: calc(150px - var(--full-art-panel-height));
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  white-space: nowrap;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .lyrics-toggle,
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .lyrics-mode-toggle,
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .lyrics-delay-button {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
 
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .progress-bar-container {
+  position: absolute;
+  right: 35px;
+  bottom: calc(var(--full-art-panel-height) - 145px);
+  left: 35px;
+  z-index: 3;
+  width: auto;
+  margin: 0;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .progress-bar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.34);
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .progress-fill {
+  background: #fff;
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art .time-display {
+  color: rgba(255, 255, 255, 0.7);
+}
 
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art > .expanded-controls {
+  position: absolute;
+  right: 35px;
+  bottom: 35px;
+  left: 35px;
+  z-index: 3;
+  justify-content: center;
+  gap: clamp(12px, 3vw, 36px);
+  margin: 0;
+}
 
+html:not([data-android-app='true']) .now-playing.desktop-full-art-mode .now-playing-header {
+  z-index: 6;
+}
+
+html:not([data-android-app='true']) .now-playing.desktop-full-art-mode .now-playing-close,
+html:not([data-android-app='true']) .now-playing.desktop-full-art-mode .now-playing-queue-toggle {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(12, 13, 16, 0.42);
+  color: #fff;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html:not([data-android-app='true']) .now-playing-container.desktop-full-art > .lyrics-panel {
+  position: absolute;
+  z-index: 4;
+  top: 100px;
+  right: 35px;
+  bottom: calc(var(--full-art-panel-height) + 50px);
+  left: 35px;
+  display: grid;
+  width: auto;
+  height: auto;
+  max-height: none;
+  place-items: center;
+  overflow: visible;
+  padding: 42px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: none;
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .lyrics-panel
+  .lyrics-panel-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .lyrics-panel
+  .lyrics-panel-header
+  > div:first-child {
+  display: none;
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .lyrics-panel
+  .lyrics-font-button,
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .lyrics-panel
+  .lyrics-close {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(12, 13, 16, 0.42);
+  color: #fff;
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .lyrics-panel
+  .lyrics-text {
+  width: 100%;
+  max-height: 100%;
+  margin: 0;
+  overflow-y: auto;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75);
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .synced-lyric-caption {
+  right: auto;
+  bottom: calc(var(--full-art-panel-height) + 50px);
+  left: 50%;
+  width: min(85%, 1000px);
+  color: #fff;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75);
+  transform: translate(-50%, 0);
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .synced-lyric-caption.is-visible {
+  transform: translate(-50%, 0);
+}
+
+html:not([data-android-app='true'])
+  .now-playing-container.desktop-full-art
+  > .synced-lyric-caption.is-hidden {
+  transform: translate(-50%, 16px);
+}
+
+@media (max-width: 860px) {
+  html:not([data-android-app='true']) .now-playing-container.desktop-full-art .lyrics-actions {
+    right: 35px;
+    left: auto;
+    justify-content: flex-end;
+  }
+}

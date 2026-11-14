@@ -321,16 +321,6 @@ const App = () => {
     () =>
       isAndroidApp && window.localStorage.getItem('luna-android-lock-screen-controls') !== 'false'
   );
-  const [settingsSection, setSettingsSection] = useState('appearance');
-  useEffect(() => {
-    if (!location.pathname.startsWith('/settings')) return;
-    const routeSection = location.pathname.split('/')[2];
-    setSettingsSection(
-      ['appearance', 'library', 'playback', 'nowplaying', 'about'].includes(routeSection)
-        ? routeSection
-        : 'appearance'
-    );
-  }, [location.pathname]);
   const [androidDockCompact, setAndroidDockCompact] = useState(
     () => isAndroidApp && window.localStorage.getItem('luna-android-dock-compact') === 'true'
   );
@@ -3115,8 +3105,6 @@ const App = () => {
           <TopNavbar
             tracks={libraryTracks}
             isAndroidApp={isAndroidApp}
-            settingsSection={settingsSection}
-            onSettingsSectionChange={setSettingsSection}
             androidLibrarySearchQuery={androidLibrarySearchQuery}
             onAndroidLibrarySearchQueryChange={setAndroidLibrarySearchQuery}
             sidebarOpen={!sidebarCollapsed}
@@ -3371,7 +3359,6 @@ const App = () => {
                       path='/settings'
                       element={
                         <Settings
-                          settingsSection={settingsSection}
                           androidDockShowLabels={androidDockShowLabels}
                           onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
                           androidPlayBarStyle={androidPlayBarStyle}
@@ -3458,7 +3445,6 @@ const App = () => {
                       path='/settings/*'
                       element={
                         <Settings
-                          settingsSection={settingsSection}
                           androidDockShowLabels={androidDockShowLabels}
                           onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
                           androidPlayBarStyle={androidPlayBarStyle}

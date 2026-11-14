@@ -546,6 +546,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
     allowDownload: showArtistImageBackground,
   });
+  const desktopFullArtworkUrl =
+    showArtistImageBackground && artistBackgroundImage ? artistBackgroundImage : trackArtworkUrl;
+  const desktopFullArtEnabled = Boolean(
+    isDesktopApp &&
+      !androidApp &&
+      playerWindowMode === 'normal' &&
+      nowPlayingLayout === 'full-art' &&
+      desktopFullArtworkUrl
+  );
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -1689,7 +1698,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
         {/* Expanded View - Now Playing */}
         <div
-          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${androidApp ? ' android-now-playing' : ''}`}
+          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${androidApp ? ' android-now-playing' : ''}${desktopFullArtEnabled ? ' desktop-full-art-mode' : ''}`}
           onPointerDown={handleDragStart}
         >
           {playerWindowMode !== 'normal' && (
@@ -1710,9 +1719,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <div className='now-playing-artist-background-overlay' />
             </div>
           )}
-          {(useCompactAndroidLayout || nowPlayingLayout === 'full-art') && (
+          {(useCompactAndroidLayout ||
+            (androidApp && nowPlayingLayout === 'full-art') ||
+            desktopFullArtEnabled) && (
             <div className='np-android-artwork-background' aria-hidden='true'>
-              <TrackImageCrossfade src={trackArtworkUrl ?? null} alt='' />
+              <TrackImageCrossfade
+                src={
+                  desktopFullArtEnabled
+                    ? (desktopFullArtworkUrl ?? null)
+                    : (trackArtworkUrl ?? null)
+                }
+                alt=''
+              />
               <div className='np-android-artwork-background-overlay' />
             </div>
           )}
@@ -1776,7 +1794,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
               showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
               showPlayQueue ? 'queue-open' : '',
               (showPlainLyricsPanel || showSyncedLyricCaption) ? 'lyrics-open' : '',
-              nowPlayingLayout === 'full-art' ? 'np-full-art' : '',
+              androidApp && nowPlayingLayout === 'full-art' ? 'np-full-art' : '',
+              desktopFullArtEnabled ? 'desktop-full-art' : '',
             ]
               .filter(Boolean)
               .join(' ')}

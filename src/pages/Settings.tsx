@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type {
   DesktopDeviceInfo,
   IconStyle,
@@ -33,7 +34,6 @@ const compareVersions = (left: string, right: string) => {
 };
 
 interface SettingsPageProps {
-  settingsSection: string;
   androidDockShowLabels: boolean;
   onAndroidDockShowLabelsChange: (show: boolean) => void;
   androidPlayBarStyle: AndroidPlayBarStyle;
@@ -153,7 +153,6 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
-  settingsSection,
   androidDockShowLabels,
   onAndroidDockShowLabelsChange,
   androidPlayBarStyle,
@@ -226,6 +225,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onRestartApp,
   onOpenWindowsDefaultApps,
 }) => {
+  const location = useLocation();
+  const requestedSection = location.pathname.split('/')[2];
+  const settingsSection = ['appearance', 'library', 'playback', 'nowplaying', 'about'].includes(
+    requestedSection
+  )
+    ? requestedSection
+    : 'appearance';
   const [showAboutReleaseNotes, setShowAboutReleaseNotes] = useState(false);
   const [desktopDeviceInfo, setDesktopDeviceInfo] = useState<DesktopDeviceInfo | null>(null);
   const [desktopDeviceInfoLoadFailed, setDesktopDeviceInfoLoadFailed] = useState(false);

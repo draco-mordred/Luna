@@ -16,8 +16,6 @@ import './TopNavbar.css';
 interface TopNavbarProps {
   tracks: Track[];
   isAndroidApp: boolean;
-  settingsSection: string;
-  onSettingsSectionChange: (section: string) => void;
   androidLibrarySearchQuery: string;
   onAndroidLibrarySearchQueryChange: (query: string) => void;
   sidebarOpen: boolean;
@@ -66,8 +64,6 @@ const SECTION_TITLES: Record<Section, string> = {
 const TopNavbar = ({
   tracks,
   isAndroidApp,
-  settingsSection,
-  onSettingsSectionChange,
   androidLibrarySearchQuery,
   onAndroidLibrarySearchQueryChange,
   sidebarOpen,
@@ -290,6 +286,7 @@ const TopNavbar = ({
   const canNavigateBack = isAndroidApp && path !== '' && path !== 'tracks';
   const showSyncNotice = isAndroidApp && androidUsbSyncNotice !== null;
   const settingsTabsVisible = section === 'settings' && !showSyncNotice;
+  const settingsSection = location.pathname.split('/')[2] ?? 'appearance';
   const isLibrarySectionRoute =
     ['/tracks', '/albums', '/artists', '/composer', '/genres'].includes(location.pathname) &&
     !location.pathname.endsWith('/detail');
@@ -432,7 +429,7 @@ const TopNavbar = ({
                 role='tab'
                 aria-selected={settingsSection === tab.id}
                 className={`tab-button${settingsSection === tab.id ? ' active' : ''}`}
-                onClick={() => onSettingsSectionChange(tab.id)}
+                onClick={() => navigate(`/settings/${tab.id}`)}
               >
                 <span className='material-symbols-outlined tab-icon' aria-hidden='true'>
                   {tab.icon}

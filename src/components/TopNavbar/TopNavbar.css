@@ -138,6 +138,15 @@ html[data-android-app='true'] .navbar-back-button {
   display: inline;
 }
 
+.settings-tabs-container .tab-button {
+  border: 0;
+  border-radius: 999px;
+}
+
+.settings-tabs-container .tab-button.active {
+  background: color-mix(in srgb, var(--system-accent) 15%, transparent);
+}
+
 /* Navbar Right */
 .navbar-right {
   display: flex;

@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import LibraryTrackList from '../components/LibraryTrackList';
+import CollectionContextMenu from '../components/CollectionContextMenu';
 import QueueContextMenu from '../components/QueueContextMenu';
 import type { Track } from '../services/MusicLibrary';
 import { getArtistInfo, type ArtistWebInfo } from '../services/artistImages';
@@ -93,9 +94,10 @@ const CollectionDetails = ({
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showMoreInfo, setShowMoreInfo] = useState(false);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const optionsRef = useRef<HTMLDivElement>(null);
+  const [showArtworkSecondaryHeader, setShowArtworkSecondaryHeader] = useState(false);
+  const artworkHeroRef = useRef<HTMLElement>(null);
   const isAndroid = isAndroidApp();
+  const hasArtworkHero = type === 'album' || type === 'artist';
   const name = searchParams.get('name')?.trim() ?? '';
   const artistName = searchParams.get('artist')?.trim() ?? '';
   const normalizedName = name.toLocaleLowerCase();
@@ -194,23 +196,28 @@ const CollectionDetails = ({
     };
   }, [image]);
   useEffect(() => {
-    if (!optionsOpen) return undefined;
-    const closeOnOutsideClick = (event: globalThis.PointerEvent) => {
-      if (event.target instanceof Node && !optionsRef.current?.contains(event.target)) {
-        setOptionsOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOptionsOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsideClick);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [optionsOpen]);
+    if (isAndroid || !hasArtworkHero) return undefined;
 
+    const hero = artworkHeroRef.current;
+    const scrollContainer = hero?.closest('.page-content');
+    if (!hero || !scrollContainer) return undefined;
+
+    const updateHeaderVisibility = () => {
+      const topNavbar = document.querySelector<HTMLElement>('.top-navbar');
+      const navbarBottom = topNavbar?.getBoundingClientRect().bottom ?? 0;
+      const shouldShow = hero.getBoundingClientRect().bottom <= navbarBottom;
+      setShowArtworkSecondaryHeader((visible) => (visible === shouldShow ? visible : shouldShow));
+    };
+
+    scrollContainer.addEventListener('scroll', updateHeaderVisibility, { passive: true });
+    window.addEventListener('resize', updateHeaderVisibility);
+    const initialVisibilityFrame = window.requestAnimationFrame(updateHeaderVisibility);
+    return () => {
+      window.cancelAnimationFrame(initialVisibilityFrame);
+      scrollContainer.removeEventListener('scroll', updateHeaderVisibility);
+      window.removeEventListener('resize', updateHeaderVisibility);
+    };
+  }, [artistName, hasArtworkHero, isAndroid, name, title]);
   const albumGenres = useMemo(
     () =>
       Array.from(
@@ -262,7 +269,6 @@ const CollectionDetails = ({
         : `${collectionTracks.length} tracks`;
 
   const isLoved = Boolean(firstTrack && lovedTrackIds?.includes(firstTrack.id));
-  const hasArtworkHero = type === 'album' || type === 'artist';
   const albumFavoriteKey = firstTrack ? `${firstTrack.album}\u0000${firstTrack.artist}` : '';
   const isCollectionFavorite =
     type === 'album'
@@ -271,7 +277,20 @@ const CollectionDetails = ({
         ? Boolean(favoriteArtistNames?.includes(title.toLocaleLowerCase()))
         : isLoved;
   const foregroundColor = getContrastingTextColor(dominantColor);
-
+  const toggleCollectionFavorite = () => {
+    if (type === 'album' || type === 'artist') {
+      onToggleFavoriteCollection?.(
+        type,
+        type === 'album' ? albumFavoriteKey : title.toLocaleLowerCase()
+      );
+    } else {
+      onToggleLove?.(firstTrack);
+    }
+  };
+  const openCollection = () => {
+    if (type === 'album') navigate(getLibraryItemPath('album', title, subtitle ?? ''));
+    else if (type === 'artist') navigate(getLibraryItemPath('artist', title));
+  };
   return (
     <div
       className={`collection-details-page${isAndroid ? ' android-collection-page' : ''}${hasArtworkHero ? ' collection-artwork-layout' : ''}`}
@@ -412,7 +431,7 @@ const CollectionDetails = ({
       </nav>
 
       {hasArtworkHero ? (
-        <header className='collection-artwork-hero'>
+        <header className='collection-artwork-hero' ref={artworkHeroRef}>
           <div className='collection-artwork-image' aria-hidden='true'>
             {image ? (
               <img src={image} alt='' />
@@ -422,7 +441,7 @@ const CollectionDetails = ({
               </span>
             )}
           </div>
-          <div className='collection-artwork-toolbar'>
+          <nav className='collection-artwork-page-topnav' aria-label='Collection actions'>
             <button
               type='button'
               className='collection-artwork-icon-button'
@@ -433,88 +452,44 @@ const CollectionDetails = ({
                 arrow_back
               </span>
             </button>
-            <div ref={optionsRef} className='collection-artwork-toolbar-actions'>
+            <div className='collection-artwork-page-topnav-actions'>
               <button
                 type='button'
                 className='collection-artwork-icon-button'
                 aria-label={isCollectionFavorite ? 'Remove from favorites' : 'Add to favorites'}
                 aria-pressed={isCollectionFavorite}
-                onClick={() => {
-                  if (type === 'album' || type === 'artist') {
-                    onToggleFavoriteCollection?.(
-                      type,
-                      type === 'album' ? albumFavoriteKey : title.toLocaleLowerCase()
-                    );
-                  } else {
-                    onToggleLove?.(firstTrack);
-                  }
-                }}
+                onClick={toggleCollectionFavorite}
               >
                 <span className='material-symbols-outlined' aria-hidden='true'>
                   {isCollectionFavorite ? 'favorite' : 'favorite_border'}
                 </span>
               </button>
-              <button
-                type='button'
-                className='collection-artwork-icon-button'
-                aria-label='More options'
-                aria-haspopup='menu'
-                aria-expanded={optionsOpen}
-                onClick={() => setOptionsOpen((open) => !open)}
-              >
-                <span className='material-symbols-outlined' aria-hidden='true'>
-                  more_horiz
-                </span>
-              </button>
-              {optionsOpen && (
-                <div
-                  className='collection-artwork-options-menu'
-                  role='menu'
-                  aria-label='Collection options'
-                >
+              <CollectionContextMenu
+                label={title}
+                tracks={collectionTracks}
+                isFavorite={isCollectionFavorite}
+                onOpen={openCollection}
+                onPlayNow={() => onPlayTrack(firstTrack, collectionTracks)}
+                onQueueTracks={onQueueTracks}
+                onAddToPlaylist={onAddToPlaylist}
+                onToggleFavorite={toggleCollectionFavorite}
+                renderTrigger={(onClick, isOpen) => (
                   <button
                     type='button'
-                    role='menuitem'
-                    onClick={() => {
-                      onQueueTracks(collectionTracks, true);
-                      setOptionsOpen(false);
-                    }}
+                    className='collection-artwork-icon-button'
+                    aria-label='More options'
+                    aria-haspopup='menu'
+                    aria-expanded={isOpen}
+                    onClick={onClick}
                   >
                     <span className='material-symbols-outlined' aria-hidden='true'>
-                      skip_next
+                      more_horiz
                     </span>
-                    Play next
                   </button>
-                  <button
-                    type='button'
-                    role='menuitem'
-                    onClick={() => {
-                      onQueueTracks(collectionTracks, false);
-                      setOptionsOpen(false);
-                    }}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      queue_music
-                    </span>
-                    Add to play queue
-                  </button>
-                  <button
-                    type='button'
-                    role='menuitem'
-                    onClick={() => {
-                      onAddToPlaylist?.(collectionTracks, title);
-                      setOptionsOpen(false);
-                    }}
-                  >
-                    <span className='material-symbols-outlined' aria-hidden='true'>
-                      playlist_add
-                    </span>
-                    Add to playlist
-                  </button>
-                </div>
-              )}
+                )}
+              />
             </div>
-          </div>
+          </nav>
           <div className='collection-artwork-content'>
             <div className='collection-artwork-info'>
               <p className='collection-details-type'>{type}</p>
@@ -617,6 +592,79 @@ const CollectionDetails = ({
         </QueueContextMenu>
       )}
 
+      {hasArtworkHero && !isAndroid && (
+        <div
+          className={`collection-artwork-secondary-header${showArtworkSecondaryHeader ? ' is-visible' : ''}`}
+          aria-hidden={!showArtworkSecondaryHeader}
+        >
+          <div className='collection-artwork-secondary-header-inner'>
+            <button
+              type='button'
+              className='collection-artwork-icon-button collection-artwork-secondary-back'
+              aria-label='Back'
+              onClick={() => navigate(-1)}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                arrow_back
+              </span>
+            </button>
+            <div className='collection-artwork-secondary-identity'>
+              {image ? (
+                <img src={image} alt='' />
+              ) : (
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {type === 'artist' ? 'person' : 'album'}
+                </span>
+              )}
+              <div>
+                <span className='collection-artwork-secondary-type'>{type}</span>
+                <strong title={title}>{title}</strong>
+                <span title={`${subtitle ?? ''}${subtitle ? ' · ' : ''}${detail}`}>
+                  {subtitle ? `${subtitle} · ${detail}` : detail}
+                </span>
+              </div>
+            </div>
+            <div className='collection-artwork-secondary-actions'>
+              <button
+                type='button'
+                className='collection-artwork-icon-button'
+                aria-label={isCollectionFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-pressed={isCollectionFavorite}
+                onClick={toggleCollectionFavorite}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {isCollectionFavorite ? 'favorite' : 'favorite_border'}
+                </span>
+              </button>
+              <CollectionContextMenu
+                label={title}
+                tracks={collectionTracks}
+                isFavorite={isCollectionFavorite}
+                onOpen={openCollection}
+                onPlayNow={() => onPlayTrack(firstTrack, collectionTracks)}
+                onQueueTracks={onQueueTracks}
+                onAddToPlaylist={onAddToPlaylist}
+                onToggleFavorite={toggleCollectionFavorite}
+                renderTrigger={(onClick, isOpen) => (
+                  <button
+                    type='button'
+                    className='collection-artwork-icon-button'
+                    aria-label='More options'
+                    aria-haspopup='menu'
+                    aria-expanded={isOpen}
+                    onClick={onClick}
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      more_horiz
+                    </span>
+                  </button>
+                )}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className='collection-details-tracks' aria-label={`${title} tracks`}>
         <h2>Tracks</h2>
         <LibraryTrackList
@@ -633,17 +681,32 @@ const CollectionDetails = ({
             {artistAlbums.length ? (
               <div className='collection-details-album-grid'>
                 {artistAlbums.map((album) => (
-                  <QueueContextMenu
+                  <CollectionContextMenu
                     key={album.name}
+                    label={album.name}
                     tracks={album.tracks}
+                    isFavorite={Boolean(
+                      favoriteAlbumKeys?.includes(
+                        `${album.name}\u0000${album.firstTrack.artist}`
+                      )
+                    )}
+                    onOpen={() => navigate(getLibraryItemPath('album', album.name, title))}
+                    onPlayNow={() => onPlayTrack(album.firstTrack, album.tracks)}
                     onQueueTracks={onQueueTracks}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onToggleFavorite={
+                      onToggleFavoriteCollection
+                        ? () =>
+                            onToggleFavoriteCollection('album', `${album.name}\u0000${album.firstTrack.artist}`)
+                        : undefined
+                    }
                   >
                     <CollectionAlbumCard
                       album={album}
                       onOpen={() => navigate(getLibraryItemPath('album', album.name, title))}
                       onPlay={() => onPlayTrack(album.firstTrack, album.tracks)}
                     />
-                  </QueueContextMenu>
+                  </CollectionContextMenu>
                 ))}
               </div>
             ) : (

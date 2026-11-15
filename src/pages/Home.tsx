@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
+import CollectionContextMenu from '../components/CollectionContextMenu';
 import {
   loadRecentMediaHistory,
   MAX_RECENT_MEDIA_ITEMS,
@@ -23,8 +24,12 @@ interface HomePageProps {
   favoriteAlbumKeys: string[];
   favoriteArtistNames: string[];
   autoDownloadArtistImages: boolean;
+  persistTopPickColors: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
+  onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  onAddToPlaylist: (tracks: Track[], label: string) => void;
   onToggleLove: (track: Track) => void;
+  onToggleFavoriteCollection: (type: 'album' | 'artist', key: string) => void;
   onShufflePlay: (tracks: Track[]) => void;
 }
 
@@ -48,6 +53,68 @@ interface TopPickGroup {
   genres: string[];
   tracks: Track[];
 }
+
+const hashTopPickPaletteValue = (value: string): string => {
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value.charCodeAt(index);
+    first = Math.imul(first ^ character, 16777619);
+    second = Math.imul(second ^ character, 3266489917);
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
+};
+
+const getTopPickPaletteStorageKey = (group: TopPickGroup): string =>
+  `luna-home-top-pick-colors:${hashTopPickPaletteValue(group.key)}`;
+
+const getTopPickPaletteSignature = (group: TopPickGroup): string =>
+  hashTopPickPaletteValue(
+    group.tracks
+      .slice(0, 4)
+      .map((track) => `${track.id}:${track.lastModified}`)
+      .join('|')
+  );
+
+const isValidRgbColor = (color: unknown): color is string =>
+  typeof color === 'string' &&
+  color.split(',').length === 3 &&
+  color.split(',').every((channel) => {
+    const value = Number(channel.trim());
+    return Number.isInteger(value) && value >= 0 && value <= 255;
+  });
+
+const loadTopPickColors = (
+  storageKey: string,
+  signature: string,
+  persistColors: boolean
+): Record<number, string> => {
+  if (!persistColors) return {};
+  try {
+    const savedColors = window.localStorage.getItem(storageKey);
+    if (!savedColors) return {};
+    const parsed: unknown = JSON.parse(savedColors);
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('signature' in parsed) ||
+      parsed.signature !== signature ||
+      !('colors' in parsed) ||
+      typeof parsed.colors !== 'object' ||
+      parsed.colors === null
+    ) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed.colors)
+        .filter(([index, color]) => ['0', '1', '2', '3'].includes(index) && isValidRgbColor(color))
+        .map(([index, color]) => [Number(index), color])
+    );
+  } catch (error) {
+    console.warn('Could not load saved Top Picks artwork colors:', error);
+    return {};
+  }
+};
 
 const HomeArtwork = memo(
   ({
@@ -133,20 +200,37 @@ const TopPicksCard = memo(
   ({
     group,
     colorUpdateOrder,
+    persistColors,
     onOpen,
     onPlayTrack,
     onShufflePlay,
   }: {
     group: TopPickGroup;
     colorUpdateOrder: number;
+    persistColors: boolean;
     onOpen: () => void;
     onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
     onShufflePlay: (tracks: Track[]) => void;
   }) => {
-    const [colors, setColors] = useState<Record<number, string>>({});
+    const storageKey = getTopPickPaletteStorageKey(group);
+    const paletteSignature = getTopPickPaletteSignature(group);
+    const [colors, setColors] = useState<Record<number, string>>(() =>
+      loadTopPickColors(storageKey, paletteSignature, persistColors)
+    );
     const handleColorResolved = useCallback((index: number, color: string) => {
       setColors((current) => (current[index] === color ? current : { ...current, [index]: color }));
     }, []);
+    useEffect(() => {
+      if (!persistColors) return;
+      try {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify({ signature: paletteSignature, colors })
+        );
+      } catch (error) {
+        console.warn('Could not save Top Picks artwork colors:', error);
+      }
+    }, [colors, paletteSignature, persistColors, storageKey]);
     const colorCallbacks = useMemo(
       () => [0, 1, 2, 3].map((index) => (color: string) => handleColorResolved(index, color)),
       [handleColorResolved]
@@ -171,7 +255,7 @@ const TopPicksCard = memo(
                 key={track.id}
                 track={track}
                 className={`home-top-pick-artwork artwork-${index + 1}`}
-                onColorResolved={colorCallbacks[index]}
+                onColorResolved={persistColors && colors[index] ? undefined : colorCallbacks[index]}
               />
             ))}
           </span>
@@ -256,8 +340,12 @@ const HomePage = ({
   favoriteAlbumKeys,
   favoriteArtistNames,
   autoDownloadArtistImages,
+  persistTopPickColors,
   onPlayTrack,
+  onQueueTracks,
+  onAddToPlaylist,
   onToggleLove,
+  onToggleFavoriteCollection,
   onShufflePlay,
 }: HomePageProps) => {
   const navigate = useNavigate();
@@ -439,30 +527,51 @@ const HomePage = ({
   const openAlbum = (album: AlbumGroup) =>
     navigate(getLibraryItemPath('album', album.name, album.artist));
   const openArtist = (artist: ArtistGroup) => navigate(getLibraryItemPath('artist', artist.name));
+  const renderAlbumCard = (album: AlbumGroup) => (
+    <CollectionContextMenu
+      key={album.key}
+      label={album.name}
+      tracks={album.tracks}
+      isFavorite={favoriteAlbumKeys.includes(album.key)}
+      onOpen={() => openAlbum(album)}
+      onPlayNow={() => onPlayTrack(album.tracks[0], album.tracks)}
+      onQueueTracks={onQueueTracks}
+      onAddToPlaylist={onAddToPlaylist}
+      onToggleFavorite={() => onToggleFavoriteCollection('album', album.key)}
+    >
+      <HomeAlbumCard album={album} onOpen={() => openAlbum(album)} />
+    </CollectionContextMenu>
+  );
+  const renderArtistCard = (artist: ArtistGroup) => (
+    <CollectionContextMenu
+      key={artist.name}
+      label={artist.name}
+      tracks={artist.tracks}
+      isFavorite={favoriteArtistNames.includes(artist.name.toLocaleLowerCase())}
+      onOpen={() => openArtist(artist)}
+      onPlayNow={() => onPlayTrack(artist.tracks[0], artist.tracks)}
+      onQueueTracks={onQueueTracks}
+      onAddToPlaylist={onAddToPlaylist}
+      onToggleFavorite={() => onToggleFavoriteCollection('artist', artist.name.toLocaleLowerCase())}
+    >
+      <HomeArtistCard
+        artist={artist}
+        autoDownloadArtistImages={autoDownloadArtistImages}
+        onOpen={() => openArtist(artist)}
+      />
+    </CollectionContextMenu>
+  );
 
   const renderAlbumRail = (items: AlbumGroup[], emptyMessage: string) =>
     items.length ? (
-      <div className='home-horizontal-rail'>
-        {items.map((album) => (
-          <HomeAlbumCard key={album.key} album={album} onOpen={() => openAlbum(album)} />
-        ))}
-      </div>
+      <div className='home-horizontal-rail'>{items.map(renderAlbumCard)}</div>
     ) : (
       <p className='home-empty'>{emptyMessage}</p>
     );
 
   const renderArtistRail = (items: ArtistGroup[], emptyMessage: string) =>
     items.length ? (
-      <div className='home-horizontal-rail home-artist-rail'>
-        {items.map((artist) => (
-          <HomeArtistCard
-            key={artist.name}
-            artist={artist}
-            autoDownloadArtistImages={autoDownloadArtistImages}
-            onOpen={() => openArtist(artist)}
-          />
-        ))}
-      </div>
+      <div className='home-horizontal-rail home-artist-rail'>{items.map(renderArtistCard)}</div>
     ) : (
       <p className='home-empty'>{emptyMessage}</p>
     );
@@ -533,9 +642,10 @@ const HomePage = ({
                   <div className='home-top-picks-grid'>
                     {topPickGroups.map((group, index) => (
                       <TopPicksCard
-                        key={group.key}
+                        key={`${getTopPickPaletteStorageKey(group)}:${getTopPickPaletteSignature(group)}`}
                         group={group}
                         colorUpdateOrder={index}
+                        persistColors={persistTopPickColors}
                         onOpen={() => openTopPick(group)}
                         onPlayTrack={onPlayTrack}
                         onShufflePlay={onShufflePlay}
@@ -674,9 +784,10 @@ const HomePage = ({
           <div className='home-horizontal-rail home-top-picks-rail'>
             {topPickGroups.map((group, index) => (
               <TopPicksCard
-                key={group.key}
+                key={`${getTopPickPaletteStorageKey(group)}:${getTopPickPaletteSignature(group)}`}
                 group={group}
                 colorUpdateOrder={index}
+                persistColors={persistTopPickColors}
                 onOpen={() => openTopPick(group)}
                 onPlayTrack={onPlayTrack}
                 onShufflePlay={onShufflePlay}
@@ -712,9 +823,7 @@ const HomePage = ({
             <h3>Albums</h3>
             {favoriteAlbums.length ? (
               <div className='home-horizontal-rail home-favorites-rail'>
-                {favoriteAlbums.map((album) => (
-                  <HomeAlbumCard key={album.key} album={album} onOpen={() => openAlbum(album)} />
-                ))}
+                {favoriteAlbums.map(renderAlbumCard)}
               </div>
             ) : (
               <p className='home-empty'>No favorite albums yet.</p>
@@ -724,14 +833,7 @@ const HomePage = ({
             <h3>Artists</h3>
             {favoriteArtists.length ? (
               <div className='home-horizontal-rail home-favorites-rail home-artist-rail'>
-                {favoriteArtists.map((artist) => (
-                  <HomeArtistCard
-                    key={artist.name}
-                    artist={artist}
-                    autoDownloadArtistImages={autoDownloadArtistImages}
-                    onOpen={() => openArtist(artist)}
-                  />
-                ))}
+                {favoriteArtists.map(renderArtistCard)}
               </div>
             ) : (
               <p className='home-empty'>No favorite artists yet.</p>

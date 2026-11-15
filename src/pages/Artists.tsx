@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
-import QueueContextMenu from '../components/QueueContextMenu';
+import CollectionContextMenu from '../components/CollectionContextMenu';
 import {
   getLibraryItemHash,
   getLibraryItemPath,
@@ -112,6 +112,9 @@ interface ArtistsPageProps {
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  favoriteArtistNames: string[];
+  onToggleFavoriteCollection: (type: 'album' | 'artist', key: string) => void;
+  onAddToPlaylist: (tracks: Track[], label: string) => void;
   onSyncTracks?: (tracks: Track[]) => void;
 }
 
@@ -121,6 +124,9 @@ const ArtistsPage = ({
   onPlayTrack,
   onShufflePlay,
   onQueueTracks,
+  favoriteArtistNames,
+  onToggleFavoriteCollection,
+  onAddToPlaylist,
   onSyncTracks,
 }: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
@@ -238,10 +244,18 @@ const ArtistsPage = ({
         ) : (
           <div className='artists-grid'>
             {sortedArtists.map((artist) => (
-              <QueueContextMenu
+              <CollectionContextMenu
                 key={artist.id}
+                label={artist.name}
                 tracks={artist.tracks}
+                isFavorite={favoriteArtistNames.includes(artist.name.toLocaleLowerCase())}
+                onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
+                onPlayNow={() => onPlayTrack(artist.tracks[0], artist.tracks)}
                 onQueueTracks={onQueueTracks}
+                onAddToPlaylist={onAddToPlaylist}
+                onToggleFavorite={() =>
+                  onToggleFavoriteCollection('artist', artist.name.toLocaleLowerCase())
+                }
                 onSyncTracks={onSyncTracks}
               >
                 <ArtistCard
@@ -250,7 +264,7 @@ const ArtistsPage = ({
                   onOpen={() => navigate(getLibraryItemPath('artist', artist.name))}
                   onPlayTrack={onPlayTrack}
                 />
-              </QueueContextMenu>
+              </CollectionContextMenu>
             ))}
           </div>
         )}

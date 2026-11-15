@@ -9,6 +9,14 @@
   box-shadow: 0 8px 28px var(--shadow-color);
 }
 
+.collection-context-menu-host {
+  display: contents;
+}
+
+.collection-context-menu {
+  min-width: 220px;
+}
+
 .queue-context-menu-item {
   display: block;
   width: 100%;

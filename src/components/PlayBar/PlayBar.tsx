@@ -7,12 +7,17 @@ import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
 import './PlayBar.css';
 import '../../styles/android-app.css';
-import type { PlayerWindowMode, VisualizerStyle } from '../../types/electron';
+import type {
+  DesktopPlayBarStyle,
+  PlayerWindowMode,
+  VisualizerStyle,
+} from '../../types/electron';
 import type { AndroidPlayBarStyle, NowPlayingLayout } from '../../types/android';
 import type { Playlist, Track } from '../../services/MusicLibrary';
 import { useLocation } from 'react-router-dom';
 
 const COLLAPSED_HEIGHT = 126.4;
+const FLOATING_DESKTOP_PLAYBAR_HEIGHT = 74;
 const getExpandedHeight = () => Math.max(COLLAPSED_HEIGHT, window.innerHeight);
 const getExpandProgress = (currentHeight: number) =>
   Math.max(
@@ -80,6 +85,7 @@ interface PlayBarProps {
   trackIsDesktopSynced?: boolean;
   isDesktopApp: boolean;
   androidPlayBarStyle: AndroidPlayBarStyle;
+  desktopPlayBarStyle: DesktopPlayBarStyle;
   nowPlayingLayout: NowPlayingLayout;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
@@ -424,7 +430,12 @@ const MiniSyncedLyrics = memo<{ text: string }>(({ text }) => {
   );
 });
 
-const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text, className }) => {
+const PlayerModeMarquee: React.FC<{
+  text: string;
+  className: string;
+  isHeading?: boolean;
+  onDoubleClick?: () => void;
+}> = ({ text, className, isHeading = false, onDoubleClick }) => {
   const elementRef = useRef<HTMLDivElement>(null);
   const isOverflowingRef = useRef(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -459,7 +470,10 @@ const PlayerModeMarquee: React.FC<{ text: string; className: string }> = ({ text
     <div
       ref={elementRef}
       className={`player-mode-marquee ${className} ${isOverflowing ? 'is-overflowing' : ''}`}
+      role={isHeading ? 'heading' : undefined}
+      aria-level={isHeading ? 2 : undefined}
       title={text}
+      onDoubleClick={onDoubleClick}
     >
       <span>{text}</span>
       {isOverflowing && <span aria-hidden='true'>{text}</span>}
@@ -507,6 +521,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   trackIsDesktopSynced = false,
   isDesktopApp,
   androidPlayBarStyle,
+  desktopPlayBarStyle,
   nowPlayingLayout,
   playerWindowMode,
   lyricOffsetSteps,
@@ -555,6 +570,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
       nowPlayingLayout === 'full-art' &&
       desktopFullArtworkUrl
   );
+  const useFloatingDesktopPlayBar = Boolean(
+    isDesktopApp && !androidApp && desktopPlayBarStyle === 'floating'
+  );
+  const useDesktopAlbumArtOnlyOpen = Boolean(isDesktopApp && !androidApp);
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -593,14 +612,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [isScrollingUp, setIsScrollingUp] = useState(false);
   const [plainLyricsFontStep, setPlainLyricsFontStep] = useState(0);
+  const [desktopLyricsAlignment, setDesktopLyricsAlignment] = useState<'left' | 'center' | 'right'>(
+    'center'
+  );
   const [lyricsHintTrackId, setLyricsHintTrackId] = useState<string | null>(null);
   const [syncedLyricsMode, setSyncedLyricsMode] = useState<{
     trackId: string | null;
     visible: boolean;
   }>({ trackId: null, visible: true });
   const [playbackPosition, setPlaybackPosition] = useState({ currentTime: 0, duration: 0 });
+  const [showRemainingTime, setShowRemainingTime] = useState(false);
   const seekbarFillRefs = useRef<Array<HTMLDivElement | null>>([]);
   const seekbarInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const progressDragPointerRef = useRef<number | null>(null);
   const miniPlayerRef = useRef<HTMLDivElement>(null);
   const trackMenuRef = useRef<HTMLDivElement>(null);
   const trackMenuToggleRef = useRef<HTMLButtonElement>(null);
@@ -687,6 +711,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
     showSyncedLyrics &&
     (androidApp ? showLyrics : showSyncedLyricsOnPlayBar && showMiniSyncedLyrics)
   );
+  const showMiniLyricsInline = isMiniSyncedLyricsVisible && !useFloatingDesktopPlayBar;
   const plainLyricsFontSize = `${0.95 + plainLyricsFontStep * 0.15}rem`;
   const visualizerLocation =
     showSyncedLyricCaption || showPlainLyricsPanel
@@ -963,6 +988,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }));
   };
 
+  const seekToPointerPosition = (element: HTMLDivElement, clientX: number) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || duration <= 0) return;
+
+    const progress = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    seekTo(progress * duration);
+  };
+
+  const finishProgressDrag = (pointerId: number) => {
+    if (progressDragPointerRef.current === pointerId) {
+      progressDragPointerRef.current = null;
+    }
+  };
+
   useLayoutEffect(() => {
     if (visualizerLocationRef.current === null) {
       visualizerLocationRef.current = visualizerLocation;
@@ -1037,6 +1076,13 @@ const PlayBar: React.FC<PlayBarProps> = ({
     }
     return texts.join('\n');
   }, [currentSyncedLyricIndex, track?.syncedLyrics]);
+  const showFloatingLyricsPopup = Boolean(
+    useFloatingDesktopPlayBar &&
+      state === 'collapsed' &&
+      !isDragging &&
+      isMiniSyncedLyricsVisible &&
+      currentSyncedLyricText.trim()
+  );
   const currentSyncedLyricKey = `${currentSyncedLyric?.time ?? ''}:${currentSyncedLyricText}`;
 
   const visibleLyrics = () => {
@@ -1158,6 +1204,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       )
     )
       return;
+    if (state === 'collapsed' && isDesktopApp && !androidApp) return;
     // When the Now Playing screen is already open, only allow the
     // collapse drag to begin from the top region of the screen so that
     // interacting with lyrics, sliders or the artwork never drags it shut.
@@ -1182,7 +1229,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const handleAlbumArtClick = () => {
     if (didDragRef.current) {
       didDragRef.current = false;
-      return;
+      if (!useDesktopAlbumArtOnlyOpen) return;
     }
     setState('expanded');
   };
@@ -1242,7 +1289,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const isCompactPlayBar = playBarWidth <= 768;
   const showInlineMiniPlayerControl = playBarWidth > 720;
   const showInlineFullscreenPlayerControl = playBarWidth > 640;
-  const showInlineVolumeControl = playBarWidth > 560;
+  const showInlineVolumeControl = playBarWidth > 560 && !useFloatingDesktopPlayBar;
   const showInlineLyricsControl = playBarWidth > 480;
   const hasOverflowControls =
     isCompactPlayBar ||
@@ -1368,6 +1415,13 @@ const PlayBar: React.FC<PlayBarProps> = ({
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  const durationTimeLabel = showRemainingTime
+    ? `-${formatTime(Math.max(0, duration - currentTime))}`
+    : formatTime(duration);
+  const durationTimeAction = showRemainingTime
+    ? 'Show total track duration'
+    : 'Show remaining track duration';
 
   // Calculate progress percentage
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -1656,6 +1710,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   const displayHeight = isDragging
     ? height
+    : useFloatingDesktopPlayBar && state === 'collapsed'
+      ? FLOATING_DESKTOP_PLAYBAR_HEIGHT
     : androidApp && state === 'collapsed'
       ? androidPlayBarStyle === 'trace'
         ? 16
@@ -1684,9 +1740,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
   return (
     <>
+      {showFloatingLyricsPopup &&
+        createPortal(
+          <div
+            className='desktop-floating-lyrics-popup'
+            aria-live='polite'
+            style={{ height: `${FLOATING_DESKTOP_PLAYBAR_HEIGHT * 2}px` }}
+          >
+            <MiniSyncedLyrics text={currentSyncedLyricText} />
+          </div>,
+          document.body
+        )}
       <div
         ref={playBarRef}
-        className={`play-bar ${state}${androidApp ? ` android-playbar android-playbar-${androidPlayBarStyle}` : ''}${androidApp && !track ? ' android-no-track' : ''}${androidApp && androidPlayBarStyle === 'trace' && showVisualizer ? ' android-trace-visualizer-active' : ''}${androidApp && isScrollingUp ? ' android-scrolling-up' : ''} ${isDragging ? 'dragging' : ''} ${
+        className={`play-bar ${state}${useFloatingDesktopPlayBar ? ' desktop-floating-playbar' : ''}${androidApp ? ` android-playbar android-playbar-${androidPlayBarStyle}` : ''}${androidApp && !track ? ' android-no-track' : ''}${androidApp && androidPlayBarStyle === 'trace' && showVisualizer ? ' android-trace-visualizer-active' : ''}${androidApp && isScrollingUp ? ' android-scrolling-up' : ''} ${isDragging ? 'dragging' : ''} ${
           playerWindowMode === 'mini' && isPlaying && !isMiniDockVisible ? 'mini-dock-hidden' : ''
         }`}
         style={playBarStyle}
@@ -1796,6 +1863,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               (showPlainLyricsPanel || showSyncedLyricCaption) ? 'lyrics-open' : '',
               androidApp && nowPlayingLayout === 'full-art' ? 'np-full-art' : '',
               desktopFullArtEnabled ? 'desktop-full-art' : '',
+              desktopFullArtEnabled ? `desktop-full-art-align-${desktopLyricsAlignment}` : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -1910,6 +1978,18 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   <PlayerModeMarquee
                     className='android-now-playing-title'
                     text={track?.name || 'No Track Selected'}
+                  />
+                ) : desktopFullArtEnabled ? (
+                  <PlayerModeMarquee
+                    key={track?.id ?? 'no-track'}
+                    className='track-name desktop-full-art-song-title'
+                    text={track?.name || 'No Track Selected'}
+                    isHeading
+                    onDoubleClick={() => {
+                      if (lyricsEnabled && track?.lyrics?.trim()) {
+                        updateLyricsVisibility(!showLyrics);
+                      }
+                    }}
                   />
                 ) : (
                   <h2
@@ -2138,13 +2218,31 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   </div>
                 )}
               </div>
-              <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
-                {track?.artist || 'Unknown Artist'}
-              </p>
-              <p className='album-name' key={`album-${track?.id ?? 'none'}`}>
-                {track?.album || 'Unknown Album'}
-              </p>
-              {lyricsEnabled && track?.lyrics?.trim() && (
+              {desktopFullArtEnabled ? (
+                <div className='desktop-full-art-track-meta'>
+                  <PlayerModeMarquee
+                    className='desktop-full-art-meta-item desktop-full-art-artist'
+                    text={track?.artist || 'Unknown Artist'}
+                  />
+                  <span className='desktop-full-art-meta-separator' aria-hidden='true'>
+                    •
+                  </span>
+                  <PlayerModeMarquee
+                    className='desktop-full-art-meta-item desktop-full-art-album'
+                    text={track?.album || 'Unknown Album'}
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className='artist-name' key={`artist-${track?.id ?? 'none'}`}>
+                    {track?.artist || 'Unknown Artist'}
+                  </p>
+                  <p className='album-name' key={`album-${track?.id ?? 'none'}`}>
+                    {track?.album || 'Unknown Album'}
+                  </p>
+                </>
+              )}
+              {!desktopFullArtEnabled && lyricsEnabled && track?.lyrics?.trim() && (
                 <div className='lyrics-actions'>
                   <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
                     <span className='material-symbols-outlined' aria-hidden='true'>
@@ -2198,6 +2296,87 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 </div>
               )}
             </div>
+
+            {desktopFullArtEnabled && lyricsEnabled && track?.lyrics?.trim() && (
+              <div className='lyrics-actions desktop-full-art-lyrics-actions'>
+                <div className='desktop-full-art-lyrics-actions-side left'>
+                  <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      lyrics
+                    </span>
+                    {showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                  </button>
+                  {hasSyncedLyrics && (
+                    <button
+                      type='button'
+                      className='lyrics-mode-toggle'
+                      onClick={() => setShowSyncedLyrics(!showSyncedLyrics)}
+                    >
+                      <span className='material-symbols-outlined' aria-hidden='true'>
+                        timelapse
+                      </span>
+                      {showSyncedLyrics ? 'Synced' : 'Plain'}
+                    </button>
+                  )}
+                </div>
+                <div className='desktop-full-art-lyrics-actions-side right'>
+                  <button
+                    type='button'
+                    className='lyrics-alignment-button'
+                    aria-label={`Lyrics alignment: ${desktopLyricsAlignment}. Change alignment`}
+                    title={`Lyrics alignment: ${desktopLyricsAlignment}`}
+                    onClick={() =>
+                      setDesktopLyricsAlignment((alignment) =>
+                        alignment === 'center'
+                          ? 'left'
+                          : alignment === 'left'
+                            ? 'right'
+                            : 'center'
+                      )
+                    }
+                  >
+                    <span className='material-symbols-outlined' aria-hidden='true'>
+                      {desktopLyricsAlignment === 'center'
+                        ? 'format_align_center'
+                        : desktopLyricsAlignment === 'left'
+                          ? 'format_align_left'
+                          : 'format_align_right'}
+                    </span>
+                  </button>
+                  {showSyncedLyrics && hasSyncedLyrics && (
+                    <div className='lyrics-delay-controls' aria-label='Synchronized lyrics timing'>
+                      <button
+                        type='button'
+                        className='lyrics-delay-button'
+                        aria-label='Show synchronized lyrics 0.1 seconds earlier'
+                        title='Show lyrics earlier'
+                        disabled={lyricOffsetSteps <= -5}
+                        onClick={() => onLyricOffsetStepsChange(Math.max(-5, lyricOffsetSteps - 1))}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          fast_rewind
+                        </span>
+                      </button>
+                      <span aria-live='polite' title='Positive values delay lyrics'>
+                        {lyricOffsetLabel}
+                      </span>
+                      <button
+                        type='button'
+                        className='lyrics-delay-button'
+                        aria-label='Delay synchronized lyrics by 0.1 seconds'
+                        title='Delay lyrics'
+                        disabled={lyricOffsetSteps >= 5}
+                        onClick={() => onLyricOffsetStepsChange(Math.min(5, lyricOffsetSteps + 1))}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          fast_forward
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {lyricsEnabled && track?.lyrics?.trim() && (
               <section
@@ -2404,10 +2583,22 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 aria-valuenow={currentTime}
                 onClick={(e) => {
                   if (!track) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const percent = (e.clientX - rect.left) / rect.width;
-                  seekTo(percent * duration);
+                  seekToPointerPosition(e.currentTarget, e.clientX);
                 }}
+                onPointerDown={(event) => {
+                  if (!track || duration <= 0 || event.button !== 0 || !event.isPrimary) return;
+                  event.preventDefault();
+                  progressDragPointerRef.current = event.pointerId;
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  seekToPointerPosition(event.currentTarget, event.clientX);
+                }}
+                onPointerMove={(event) => {
+                  if (progressDragPointerRef.current !== event.pointerId) return;
+                  seekToPointerPosition(event.currentTarget, event.clientX);
+                }}
+                onPointerUp={(event) => finishProgressDrag(event.pointerId)}
+                onPointerCancel={(event) => finishProgressDrag(event.pointerId)}
+                onLostPointerCapture={(event) => finishProgressDrag(event.pointerId)}
                 onKeyDown={(event) => {
                   if (!track || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
                   event.preventDefault();
@@ -2424,7 +2615,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </div>
               <div className='time-display'>
                 <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
+                <span>
+                  <button
+                    type='button'
+                    className='duration-time-toggle'
+                    aria-label={durationTimeAction}
+                    aria-pressed={showRemainingTime}
+                    title={durationTimeAction}
+                    disabled={!track || duration <= 0}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setShowRemainingTime((showing) => !showing)}
+                  >
+                    {durationTimeLabel}
+                  </button>
+                </span>
               </div>
             </div>
 
@@ -2481,6 +2685,44 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 <TransportIcon name={getRepeatIcon()} />
               </button>
             </div>
+
+            {desktopFullArtEnabled && (
+              <div className='desktop-full-art-volume'>
+                <button
+                  type='button'
+                  aria-label='Decrease volume'
+                  title='Decrease volume'
+                  disabled={volume <= 0}
+                  onClick={() => onVolumeChange(Math.max(0, volume - 0.05))}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    volume_down
+                  </span>
+                </button>
+                <input
+                  aria-label='Volume'
+                  type='range'
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(event) => onVolumeChange(event.currentTarget.valueAsNumber)}
+                  className='desktop-full-art-volume-slider'
+                  style={volumeSliderStyle}
+                />
+                <button
+                  type='button'
+                  aria-label='Increase volume'
+                  title='Increase volume'
+                  disabled={volume >= 1}
+                  onClick={() => onVolumeChange(Math.min(1, volume + 0.05))}
+                >
+                  <span className='material-symbols-outlined' aria-hidden='true'>
+                    volume_up
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* Android: Apple Music-style inline volume row */}
             {useAndroidLayout && (
@@ -2658,7 +2900,20 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     disabled={!track}
                   />
                 </div>
-                <span className='mini-time'>{formatTime(duration)}</span>
+                <span className='mini-time'>
+                  <button
+                    type='button'
+                    className='duration-time-toggle'
+                    aria-label={durationTimeAction}
+                    aria-pressed={showRemainingTime}
+                    title={durationTimeAction}
+                    disabled={!track || duration <= 0}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setShowRemainingTime((showing) => !showing)}
+                  >
+                    {durationTimeLabel}
+                  </button>
+                </span>
               </div>
             </div>
           )}
@@ -2667,24 +2922,45 @@ const PlayBar: React.FC<PlayBarProps> = ({
         {/* Collapsed View - Mini Player */}
         <div
           ref={miniPlayerRef}
-          className={`mini-player ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
+          className={`mini-player ${showMiniLyricsInline ? 'showing-mini-lyrics' : ''}`}
           onPointerDown={handleDragStart}
           aria-hidden={state === 'expanded'}
           data-playback-state={isPlaying ? 'playing' : 'paused'}
         >
           <div
-            className={`track-info-mini ${isMiniSyncedLyricsVisible ? 'showing-mini-lyrics' : ''}`}
-            role='button'
-            tabIndex={state === 'expanded' ? -1 : 0}
-            aria-label='Expand player'
-            onClick={handleAlbumArtClick}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              handleAlbumArtClick();
-            }}
+            className={`track-info-mini ${showMiniLyricsInline ? 'showing-mini-lyrics' : ''}`}
+            role={useDesktopAlbumArtOnlyOpen ? undefined : 'button'}
+            tabIndex={
+              useDesktopAlbumArtOnlyOpen || state === 'expanded' ? -1 : 0
+            }
+            aria-label={useDesktopAlbumArtOnlyOpen ? undefined : 'Expand player'}
+            onClick={useDesktopAlbumArtOnlyOpen ? undefined : handleAlbumArtClick}
+            onKeyDown={
+              useDesktopAlbumArtOnlyOpen
+                ? undefined
+                : (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    handleAlbumArtClick();
+                  }
+            }
           >
-            <div className='album-art-mini'>
+            <div
+              className='album-art-mini'
+              role={useDesktopAlbumArtOnlyOpen ? 'button' : undefined}
+              tabIndex={useDesktopAlbumArtOnlyOpen && state !== 'expanded' ? 0 : -1}
+              aria-label={useDesktopAlbumArtOnlyOpen ? 'Open Now Playing' : undefined}
+              onClick={useDesktopAlbumArtOnlyOpen ? handleAlbumArtClick : undefined}
+              onKeyDown={
+                useDesktopAlbumArtOnlyOpen
+                  ? (event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      handleAlbumArtClick();
+                    }
+                  : undefined
+              }
+            >
               {!trackArtworkUrl && <div className='default-art-mini'>{DEFAULT_ALBUM_ART}</div>}
               <TrackImageCrossfade
                 src={trackArtworkUrl ?? null}
@@ -2734,18 +3010,31 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 disabled={!track}
               />
             </div>
-            <span className='mini-time'>{formatTime(duration)}</span>
+            <span className='mini-time'>
+              <button
+                type='button'
+                className='duration-time-toggle'
+                aria-label={durationTimeAction}
+                aria-pressed={showRemainingTime}
+                title={durationTimeAction}
+                disabled={!track || duration <= 0}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => setShowRemainingTime((showing) => !showing)}
+              >
+                {durationTimeLabel}
+              </button>
+            </span>
           </div>
 
           {/* Controls */}
           <div
-            className={`mini-player-control-cluster ${isMiniSyncedLyricsVisible && !androidApp ? 'showing-mini-lyrics' : ''}`}
+            className={`mini-player-control-cluster ${showMiniLyricsInline && !androidApp ? 'showing-mini-lyrics' : ''}`}
           >
-            {isMiniSyncedLyricsVisible && !androidApp ? (
+            {showMiniLyricsInline && !androidApp ? (
               <MiniSyncedLyrics text={currentSyncedLyricText} />
             ) : (
               <div className='controls'>
-                {!isCompactPlayBar && shuffleControl}
+                {(!isCompactPlayBar || useFloatingDesktopPlayBar) && shuffleControl}
                 <button
                   className='control-btn mini-previous-button'
                   onClick={onPrevious}
@@ -2778,7 +3067,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 >
                   <TransportIcon name='next' />
                 </button>
-                {!isCompactPlayBar && repeatControl}
+                {(!isCompactPlayBar || useFloatingDesktopPlayBar) && repeatControl}
               </div>
             )}
           </div>
@@ -2848,8 +3137,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
               hasSyncedLyrics &&
               showInlineLyricsControl &&
               renderLyricsControl(false)}
-            {showInlineVolumeControl && renderVolumeControl(false)}
-            {hasOverflowControls && (
+            {useFloatingDesktopPlayBar && renderVolumeControl(false)}
+            {!useFloatingDesktopPlayBar && showInlineVolumeControl && renderVolumeControl(false)}
+            {hasOverflowControls && !useFloatingDesktopPlayBar && (
               <div className='more-options'>
                 <button
                   aria-label='More options'
@@ -2860,7 +3150,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     setShowVolumeSlider(false);
                   }}
                 >
-                  <span className='material-symbols-outlined'>menu</span>
+                  <span className='material-symbols-outlined'>
+                    {useFloatingDesktopPlayBar ? 'more_horiz' : 'menu'}
+                  </span>
                 </button>
                 {showOptionsMenu && (
                   <div className='more-options-menu'>

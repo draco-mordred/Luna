@@ -649,3 +649,8 @@
     transition: none;
   }
 }
+
+html:not([data-android-app='true']) .home-top-pick-card,
+html:not([data-android-app='true']) .home-top-picks-grid .home-top-pick-card {
+  height: 320px;
+}

@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type {
   DesktopDeviceInfo,
+  DesktopPlayBarStyle,
   IconStyle,
   SeekbarStyle,
   VisualizerStyle,
@@ -40,6 +41,8 @@ interface SettingsPageProps {
   onAndroidPlayBarStyleChange: (style: AndroidPlayBarStyle) => void;
   nowPlayingLayout: NowPlayingLayout;
   onNowPlayingLayoutChange: (layout: NowPlayingLayout) => void;
+  desktopPlayBarStyle: DesktopPlayBarStyle;
+  onDesktopPlayBarStyleChange: (style: DesktopPlayBarStyle) => void;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   accentColor: string;
@@ -159,6 +162,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onAndroidPlayBarStyleChange,
   nowPlayingLayout,
   onNowPlayingLayoutChange,
+  desktopPlayBarStyle,
+  onDesktopPlayBarStyleChange,
   themeMode,
   onThemeChange,
   accentColor,
@@ -590,6 +595,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </select>
             </div>
           </div>
+          {isDesktopApp && !isAndroidApp && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>Desktop Playbar Style</h3>
+                <p>Choose the standard bottom player or a floating compact player</p>
+              </div>
+              <div className='setting-control'>
+                <select
+                  className='appearance-select'
+                  aria-label='Desktop playbar style'
+                  value={desktopPlayBarStyle}
+                  onChange={(event) =>
+                    onDesktopPlayBarStyleChange(
+                      event.currentTarget.value as DesktopPlayBarStyle
+                    )
+                  }
+                >
+                  <option value='standard'>Standard</option>
+                  <option value='floating'>Floating</option>
+                </select>
+              </div>
+            </div>
+          )}
           </SettingsCategory>
         </div>
       ),

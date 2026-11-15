@@ -48,6 +48,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type WindowMaterial = 'default' | 'mica' | 'frosty';
 export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
 export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
+export type DesktopPlayBarStyle = 'standard' | 'floating';
 export type VisualizerStyle =
   | 'wave-smooth'
   | 'wave-sharp'
@@ -69,6 +70,7 @@ export interface AppSettings {
   gaplessPlayback: boolean;
   iconStyle: IconStyle;
   seekbarStyle: SeekbarStyle;
+  desktopPlayBarStyle: DesktopPlayBarStyle;
   visualizerStyle: VisualizerStyle;
   showVisualizer: boolean;
   autoDownloadArtistImages: boolean;
@@ -196,6 +198,7 @@ declare global {
             | 'gaplessPlayback'
             | 'iconStyle'
             | 'seekbarStyle'
+            | 'desktopPlayBarStyle'
             | 'visualizerStyle'
             | 'showVisualizer'
             | 'autoDownloadArtistImages'

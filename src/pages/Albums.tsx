@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../components/AlphaNumericIndex';
-import QueueContextMenu from '../components/QueueContextMenu';
+import CollectionContextMenu from '../components/CollectionContextMenu';
 import {
   getLibraryItemHash,
   getLibraryItemPath,
@@ -29,6 +29,9 @@ interface AlbumsPageProps {
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onShufflePlay: (tracks: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  favoriteAlbumKeys: string[];
+  onToggleFavoriteCollection: (type: 'album' | 'artist', key: string) => void;
+  onAddToPlaylist: (tracks: Track[], label: string) => void;
   onSyncTracks?: (tracks: Track[]) => void;
 }
 
@@ -181,6 +184,9 @@ const AlbumsPage = ({
   onPlayTrack,
   onShufflePlay,
   onQueueTracks,
+  favoriteAlbumKeys,
+  onToggleFavoriteCollection,
+  onAddToPlaylist,
   onSyncTracks,
 }: AlbumsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'artist' | 'year' | 'tracks'>('name');
@@ -312,38 +318,56 @@ const AlbumsPage = ({
           <div className={`albums-container ${viewMode}`}>
             {viewMode === 'grid' ? (
               <div className='albums-grid'>
-                {sortedAlbums.map((album) => (
-                  <QueueContextMenu
-                    key={album.id}
-                    tracks={album.tracks}
-                    onQueueTracks={onQueueTracks}
-                    onSyncTracks={onSyncTracks}
-                  >
-                    <AlbumCard
-                      album={album}
-                      onPlayTrack={onPlayTrack}
-                      onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
-                    />
-                  </QueueContextMenu>
-                ))}
+                {sortedAlbums.map((album) => {
+                  const favoriteKey = `${album.name}\u0000${album.artist}`;
+                  const openAlbum = () =>
+                    navigate(getLibraryItemPath('album', album.name, album.artist));
+                  return (
+                    <CollectionContextMenu
+                      key={album.id}
+                      label={album.name}
+                      tracks={album.tracks}
+                      isFavorite={favoriteAlbumKeys.includes(favoriteKey)}
+                      onOpen={openAlbum}
+                      onPlayNow={() => onPlayTrack(album.firstTrack, album.tracks)}
+                      onQueueTracks={onQueueTracks}
+                      onAddToPlaylist={onAddToPlaylist}
+                      onToggleFavorite={() => onToggleFavoriteCollection('album', favoriteKey)}
+                      onSyncTracks={onSyncTracks}
+                    >
+                      <AlbumCard album={album} onPlayTrack={onPlayTrack} onOpen={openAlbum} />
+                    </CollectionContextMenu>
+                  );
+                })}
               </div>
             ) : (
               <div className='albums-list'>
-                {sortedAlbums.map((album, index) => (
-                  <QueueContextMenu
-                    key={album.id}
-                    tracks={album.tracks}
-                    onQueueTracks={onQueueTracks}
-                    onSyncTracks={onSyncTracks}
-                  >
-                    <AlbumListItem
-                      album={album}
-                      index={index}
-                      onPlayTrack={onPlayTrack}
-                      onOpen={() => navigate(getLibraryItemPath('album', album.name, album.artist))}
-                    />
-                  </QueueContextMenu>
-                ))}
+                {sortedAlbums.map((album, index) => {
+                  const favoriteKey = `${album.name}\u0000${album.artist}`;
+                  const openAlbum = () =>
+                    navigate(getLibraryItemPath('album', album.name, album.artist));
+                  return (
+                    <CollectionContextMenu
+                      key={album.id}
+                      label={album.name}
+                      tracks={album.tracks}
+                      isFavorite={favoriteAlbumKeys.includes(favoriteKey)}
+                      onOpen={openAlbum}
+                      onPlayNow={() => onPlayTrack(album.firstTrack, album.tracks)}
+                      onQueueTracks={onQueueTracks}
+                      onAddToPlaylist={onAddToPlaylist}
+                      onToggleFavorite={() => onToggleFavoriteCollection('album', favoriteKey)}
+                      onSyncTracks={onSyncTracks}
+                    >
+                      <AlbumListItem
+                        album={album}
+                        index={index}
+                        onPlayTrack={onPlayTrack}
+                        onOpen={openAlbum}
+                      />
+                    </CollectionContextMenu>
+                  );
+                })}
               </div>
             )}
           </div>

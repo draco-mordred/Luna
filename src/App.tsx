@@ -37,6 +37,7 @@ import {
 import type { AndroidAppearance, AndroidDeviceInfo } from './services/androidMusicLibrary';
 import type {
   AppSettings,
+  DesktopPlayBarStyle,
   IconStyle,
   MusicLibraryResponse,
   MusicLibraryScanProgress,
@@ -100,6 +101,11 @@ const getInitialAndroidPlayBarStyle = (): AndroidPlayBarStyle => {
     ? (savedStyle as AndroidPlayBarStyle)
     : 'floating';
 };
+
+const getInitialDesktopPlayBarStyle = (): DesktopPlayBarStyle =>
+  window.localStorage.getItem('luna-desktop-playbar-style') === 'floating'
+    ? 'floating'
+    : 'standard';
 
 const getInitialThemeMode = (): ThemeMode => {
   const savedTheme = window.localStorage.getItem('luna-theme');
@@ -330,6 +336,9 @@ const App = () => {
   );
   const [androidPlayBarStyle, setAndroidPlayBarStyle] =
     useState<AndroidPlayBarStyle>(getInitialAndroidPlayBarStyle);
+  const [desktopPlayBarStyle, setDesktopPlayBarStyle] = useState<DesktopPlayBarStyle>(() =>
+    isAndroidApp ? 'standard' : getInitialDesktopPlayBarStyle()
+  );
   const [nowPlayingLayout, setNowPlayingLayout] = useState<NowPlayingLayout>(() => {
     const savedLayout =
       window.localStorage.getItem('luna-now-playing-layout') ??
@@ -876,6 +885,7 @@ const App = () => {
         );
         setIconStyle(normalizeIconStyle(settings.iconStyle));
         setSeekbarStyle(settings.seekbarStyle ?? getInitialSeekbarStyle());
+        setDesktopPlayBarStyle(settings.desktopPlayBarStyle ?? getInitialDesktopPlayBarStyle());
         setVisualizerStyle(settings.visualizerStyle ?? getInitialVisualizerStyle());
         setShowVisualizer(
           settings.showVisualizer ?? window.localStorage.getItem('luna-show-visualizer') === 'true'
@@ -1153,6 +1163,9 @@ const App = () => {
     window.localStorage.setItem('luna-gapless-playback', String(gaplessPlayback));
     window.localStorage.setItem('luna-icon-style', iconStyle);
     window.localStorage.setItem('luna-seekbar-style', seekbarStyle);
+    if (window.electronAPI && !isAndroidApp) {
+      window.localStorage.setItem('luna-desktop-playbar-style', desktopPlayBarStyle);
+    }
     window.localStorage.setItem('luna-visualizer-style', visualizerStyle);
     window.localStorage.setItem('luna-show-visualizer', String(showVisualizer));
     window.localStorage.setItem(
@@ -1184,6 +1197,7 @@ const App = () => {
           gaplessPlayback,
           iconStyle,
           seekbarStyle,
+          desktopPlayBarStyle,
           visualizerStyle,
           showVisualizer,
           autoDownloadArtistImages,
@@ -1214,6 +1228,7 @@ const App = () => {
     gaplessPlayback,
     volumeNormalization,
     iconStyle,
+    desktopPlayBarStyle,
     isShuffled,
     lastPlayedTrackPath,
     repeatMode,
@@ -2777,6 +2792,10 @@ const App = () => {
     root.setAttribute('data-window-material', windowMaterialAppliedAtLaunch);
     root.setAttribute('data-icon-style', iconStyle);
     root.setAttribute('data-seekbar-style', seekbarStyle);
+    root.setAttribute(
+      'data-desktop-playbar-style',
+      window.electronAPI && !isAndroidApp ? desktopPlayBarStyle : 'none'
+    );
     root.setAttribute('data-player-window-mode', playerWindowMode);
     root.style.setProperty('--accent', activeAccent);
     root.style.setProperty('--accent-rgb', `${red}, ${green}, ${blue}`);
@@ -2907,6 +2926,7 @@ const App = () => {
     isAndroidApp,
     androidAmoledDarkMode,
     iconStyle,
+    desktopPlayBarStyle,
     seekbarStyle,
     systemAccentColor,
     systemTheme,
@@ -3146,8 +3166,14 @@ const App = () => {
                           favoriteAlbumKeys={favoriteAlbumKeys}
                           favoriteArtistNames={favoriteArtistNames}
                           autoDownloadArtistImages={autoDownloadArtistImages}
+                          persistTopPickColors={Boolean(window.electronAPI)}
                           onPlayTrack={playTrack}
+                          onQueueTracks={handleQueueTracks}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                           onToggleLove={(track) => handleToggleLove(track)}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
                           onShufflePlay={rememberRecentMedia ? shufflePlayTracks : () => {
                             setLibraryError('Enable Remember recent media in Settings to shuffle recent tracks.');
                           }}
@@ -3200,6 +3226,11 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onQueueTracks={handleQueueTracks}
+                          favoriteAlbumKeys={favoriteAlbumKeys}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                           onSyncTracks={handleSyncTracks}
                         />
                       }
@@ -3232,6 +3263,11 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onShufflePlay={shufflePlayTracks}
                           onQueueTracks={handleQueueTracks}
+                          favoriteArtistNames={favoriteArtistNames}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                           onSyncTracks={handleSyncTracks}
                         />
                       }
@@ -3352,6 +3388,12 @@ const App = () => {
                           tracks={libraryTracks}
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
+                          favoriteAlbumKeys={favoriteAlbumKeys}
+                          favoriteArtistNames={favoriteArtistNames}
+                          onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          onAddToPlaylist={(collectionTracks, label) =>
+                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                          }
                         />
                       }
                     />
@@ -3365,6 +3407,8 @@ const App = () => {
                           onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
                           nowPlayingLayout={nowPlayingLayout}
                           onNowPlayingLayoutChange={setNowPlayingLayout}
+                          desktopPlayBarStyle={desktopPlayBarStyle}
+                          onDesktopPlayBarStyleChange={setDesktopPlayBarStyle}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3451,6 +3495,8 @@ const App = () => {
                           onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
                           nowPlayingLayout={nowPlayingLayout}
                           onNowPlayingLayoutChange={setNowPlayingLayout}
+                          desktopPlayBarStyle={desktopPlayBarStyle}
+                          onDesktopPlayBarStyleChange={setDesktopPlayBarStyle}
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3704,6 +3750,7 @@ const App = () => {
           isDesktopApp={Boolean(window.electronAPI)}
           androidPlayBarStyle={androidPlayBarStyle}
           nowPlayingLayout={nowPlayingLayout}
+          desktopPlayBarStyle={desktopPlayBarStyle}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}
           onLyricOffsetStepsChange={setLyricOffsetSteps}

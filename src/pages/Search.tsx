@@ -1,18 +1,33 @@
 import { memo, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Track } from '../services/MusicLibrary';
 import { buildSearchGroups } from '../services/search';
+import CollectionContextMenu from '../components/CollectionContextMenu';
 import QueueContextMenu from '../components/QueueContextMenu';
 import { artistCreditIncludes } from '../utils/artistCredits';
+import { getLibraryItemPath } from '../utils/libraryNavigation';
 import './Search.css';
 
 interface SearchPageProps {
   tracks: Track[];
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onQueueTracks: (tracks: Track[], playNext: boolean) => void;
+  favoriteAlbumKeys: string[];
+  favoriteArtistNames: string[];
+  onToggleFavoriteCollection: (type: 'album' | 'artist', key: string) => void;
+  onAddToPlaylist: (tracks: Track[], label: string) => void;
 }
 
-const SearchPage = ({ tracks, onPlayTrack, onQueueTracks }: SearchPageProps) => {
+const SearchPage = ({
+  tracks,
+  onPlayTrack,
+  onQueueTracks,
+  favoriteAlbumKeys,
+  favoriteArtistNames,
+  onToggleFavoriteCollection,
+  onAddToPlaylist,
+}: SearchPageProps) => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showAllByGroup, setShowAllByGroup] = useState<Record<string, boolean>>({});
   const query = searchParams.get('q') ?? '';
@@ -88,9 +103,8 @@ const SearchPage = ({ tracks, onPlayTrack, onQueueTracks }: SearchPageProps) => 
                           : item.type === 'artist'
                             ? tracks.filter((track) => artistCreditIncludes(track.artist, item.title))
                             : tracks.filter((track) => track.genre === item.title);
-                      return (
-                        <QueueContextMenu key={`${group.title}-${item.id}`} tracks={queueTracks} onQueueTracks={onQueueTracks}>
-                          <button
+                      const resultCard = (
+                        <button
                             type="button"
                             className="search-result-card"
                             onClick={() => {
@@ -106,7 +120,51 @@ const SearchPage = ({ tracks, onPlayTrack, onQueueTracks }: SearchPageProps) => 
                               <strong>{item.title}</strong>
                               <span>{item.subtitle}</span>
                             </div>
-                          </button>
+                        </button>
+                      );
+                      if (item.type === 'album' || item.type === 'artist') {
+                        const albumTitle = queueTracks[0]?.album ?? item.title;
+                        const albumArtist = queueTracks[0]?.artist ?? item.subtitle;
+                        const isAlbum = item.type === 'album';
+                        const favoriteKey = isAlbum
+                          ? `${albumTitle}\u0000${albumArtist}`
+                          : item.title.toLocaleLowerCase();
+                        const isFavorite = isAlbum
+                          ? favoriteAlbumKeys.includes(favoriteKey)
+                          : favoriteArtistNames.includes(favoriteKey);
+                        return (
+                          <CollectionContextMenu
+                            key={`${group.title}-${item.id}`}
+                            label={item.title}
+                            tracks={queueTracks}
+                            isFavorite={isFavorite}
+                            onOpen={() =>
+                              navigate(
+                                isAlbum
+                                  ? getLibraryItemPath('album', albumTitle, albumArtist)
+                                  : getLibraryItemPath('artist', item.title)
+                              )
+                            }
+                            onPlayNow={() => {
+                              if (queueTracks[0]) onPlayTrack(queueTracks[0], queueTracks);
+                            }}
+                            onQueueTracks={onQueueTracks}
+                            onAddToPlaylist={onAddToPlaylist}
+                            onToggleFavorite={() =>
+                              onToggleFavoriteCollection(isAlbum ? 'album' : 'artist', favoriteKey)
+                            }
+                          >
+                            {resultCard}
+                          </CollectionContextMenu>
+                        );
+                      }
+                      return (
+                        <QueueContextMenu
+                          key={`${group.title}-${item.id}`}
+                          tracks={queueTracks}
+                          onQueueTracks={onQueueTracks}
+                        >
+                          {resultCard}
                         </QueueContextMenu>
                       );
                     })}

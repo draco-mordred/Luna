@@ -280,6 +280,7 @@ const DEFAULT_SETTINGS = {
   gaplessPlayback: false,
   iconStyle: 'material',
   seekbarStyle: 'default',
+  desktopPlayBarStyle: 'standard',
   visualizerStyle: 'bars-alternating',
   showVisualizer: false,
   autoDownloadArtistImages: true,
@@ -541,6 +542,9 @@ const readAppSettings = async () => {
     seekbarStyle: ['default', 'windows', 'vlc', 'apple', 'samsung'].includes(saved.seekbarStyle)
       ? saved.seekbarStyle
       : DEFAULT_SETTINGS.seekbarStyle,
+    desktopPlayBarStyle: ['standard', 'floating'].includes(saved.desktopPlayBarStyle)
+      ? saved.desktopPlayBarStyle
+      : DEFAULT_SETTINGS.desktopPlayBarStyle,
     visualizerStyle: [
       'wave-smooth',
       'wave-sharp',
@@ -603,6 +607,7 @@ const readAppSettings = async () => {
     saved.crossfadeSeconds !== settings.crossfadeSeconds ||
     saved.iconStyle !== settings.iconStyle ||
     saved.seekbarStyle !== settings.seekbarStyle ||
+    saved.desktopPlayBarStyle !== settings.desktopPlayBarStyle ||
     saved.visualizerStyle !== settings.visualizerStyle ||
     saved.showVisualizer !== settings.showVisualizer ||
     saved.autoDownloadArtistImages !== settings.autoDownloadArtistImages ||
@@ -695,6 +700,12 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Invalid seekbar style.');
     }
     next.seekbarStyle = patch.seekbarStyle;
+  }
+  if (patch.desktopPlayBarStyle !== undefined) {
+    if (!['standard', 'floating'].includes(patch.desktopPlayBarStyle)) {
+      throw new TypeError('Invalid desktop playbar style.');
+    }
+    next.desktopPlayBarStyle = patch.desktopPlayBarStyle;
   }
   if (patch.visualizerStyle !== undefined) {
     if (

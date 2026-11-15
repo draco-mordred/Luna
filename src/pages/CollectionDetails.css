@@ -515,7 +515,8 @@ html[data-android-app='true'] .android-collection-bg::after {
   padding: calc(env(safe-area-inset-top, 0px) + 18px) clamp(18px, 0vw, 56px) 28px;
   background: rgb(var(--collection-dominant-color));
   color: var(--collection-foreground-color);
-  top: -140px
+  top: -140px;
+  margin-bottom: -140px;
 }
 
 .collection-artwork-image,
@@ -556,33 +557,30 @@ html[data-android-app='true'] .android-collection-bg::after {
   content: '';
 }
 
-.collection-artwork-toolbar,
 .collection-artwork-content {
   position: relative;
   z-index: 1;
 }
 
-.collection-artwork-toolbar {
-  position: fixed;
-  z-index: 1200;
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  right: clamp(16px, 0vw, 56px);
-  left: clamp(16px, 0vw, 56px);
+.collection-artwork-page-topnav {
+  position: relative;
+  z-index: 2;
   display: flex;
+  width: 100%;
+  min-height: 60px;
   align-items: center;
   justify-content: space-between;
-  pointer-events: none;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--collection-foreground-color) 14%, transparent);
+  background: color-mix(in srgb, var(--collection-dominant-color) 24%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
-.collection-artwork-toolbar > div {
-  position: relative;
+.collection-artwork-page-topnav-actions {
   display: flex;
+  align-items: center;
   gap: 10px;
-  pointer-events: auto;
-}
-
-.collection-artwork-toolbar > button {
-  pointer-events: auto;
 }
 
 .collection-artwork-icon-button {
@@ -610,46 +608,116 @@ html[data-android-app='true'] .android-collection-bg::after {
   box-shadow: 0 7px 22px rgba(0, 0, 0, 0.24);
 }
 
-.collection-artwork-options-menu {
-  position: absolute;
-  top: 52px;
-  right: 0;
-  z-index: 2;
-  display: grid;
-  min-width: 200px;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--collection-foreground-color) 18%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--collection-dominant-color) 88%, transparent);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-}
-
-.collection-artwork-options-menu button {
+.collection-artwork-secondary-header {
+  position: sticky;
+  z-index: 20;
+  top: 0px;
   display: flex;
+  height: 64px;
+  justify-content: center;
+  margin-bottom: -64px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease,
+    visibility 0s linear 200ms;
+  pointer-events: none;
+}
+
+.collection-artwork-secondary-header.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
+  pointer-events: auto;
+}
+
+.collection-artwork-secondary-header-inner {
+  display: grid;
+  width: min(100% - 32px, 1360px);
+  height: 80px;
+  grid-template-columns: minmax(44px, 1fr) minmax(0, auto) minmax(44px, 1fr);
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
+  gap: 12px;
+  margin: 4px auto 0;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--collection-foreground-color) 20%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--collection-dominant-color) 76%, transparent);
   color: var(--collection-foreground-color);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
-.collection-artwork-options-menu button:hover,
-.collection-artwork-options-menu button:focus-visible {
-  outline: none;
+.collection-artwork-secondary-identity {
+  display: flex;
+  min-width: 0;
+  max-width: min(520px, 48vw);
+  align-items: center;
+  justify-self: center;
+  gap: 10px;
+}
+
+.collection-artwork-secondary-identity > img,
+.collection-artwork-secondary-identity > .material-symbols-outlined {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
   background: color-mix(in srgb, var(--collection-foreground-color) 12%, transparent);
+  color: var(--collection-foreground-color);
+  object-fit: cover;
 }
 
-.collection-artwork-options-menu .material-symbols-outlined {
-  font-size: 20px;
+.collection-artwork-secondary-identity > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.collection-artwork-secondary-type {
+  color: color-mix(in srgb, var(--collection-foreground-color) 68%, transparent);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.collection-artwork-secondary-identity strong,
+.collection-artwork-secondary-identity > div > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-artwork-secondary-identity strong {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.collection-artwork-secondary-identity > div > span:last-child {
+  color: color-mix(in srgb, var(--collection-foreground-color) 78%, transparent);
+  font-size: 0.68rem;
+}
+
+.collection-artwork-secondary-back {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.collection-artwork-secondary-actions {
+  position: relative;
+  display: flex;
+  grid-column: 3;
+  justify-self: end;
+  gap: 8px;
 }
 
 .collection-artwork-content {
@@ -663,7 +731,7 @@ html[data-android-app='true'] .android-collection-bg::after {
     padding: 15px 15px;
     backdrop-filter: brightness(0.8) blur(20px);
     border-radius: 20px;
-    top: 140px;
+    top: 70px;
 }
 
 .collection-artwork-info {
@@ -750,22 +818,26 @@ html[data-android-app='true'] .android-collection-bg::after {
 }
 
 .collection-artwork-layout .collection-details-tracks {
-    /* width: min(100% - 32px, 1360px); */
-    margin: 0 auto;
-    border: 1px solid rgb(255 255 255 / 0.1);
-    border-radius: 16px;
-   background: rgb(var(--collection-dominant-color) / 0.58);
-    color: var(--collection-foreground-color);
-    backdrop-filter: blur(26px) saturate(125%);
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: min(100% - 5px, 1360px);
+  margin: 0 auto;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+  background: rgb(var(--collection-dominant-color) / 0.58);
+  color: var(--collection-foreground-color);
+  backdrop-filter: blur(26px) saturate(125%);
+      border-top-left-radius: 0px;
     border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    position: absolute;
-    top: 60%;
-    left: 5px;
-    right: 5px;
-    bottom: -15%;
-    /* overflow: scroll; */
-    padding-bottom: 5.5%;
+    padding-top: 45px;
+}
+
+.collection-artwork-layout .collection-details-tracks .library-track-list {
+  height: auto;
+  overflow: visible;
 }
 
 .collection-artwork-layout .collection-details-tracks h2 {
@@ -892,8 +964,52 @@ html[data-android-app='true'] .android-collection-bg::after {
   }
 }
 
+@media (max-width: 768px) {
+  html:not([data-android-app='true']) .collection-artwork-secondary-header-inner {
+    width: calc(100% - 16px);
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 5px 8px;
+  }
+
+  html:not([data-android-app='true']) .collection-artwork-secondary-identity {
+    grid-column: 2;
+    justify-self: stretch;
+    gap: 7px;
+  }
+
+  html:not([data-android-app='true'])
+    .collection-artwork-secondary-identity
+    > img,
+  html:not([data-android-app='true'])
+    .collection-artwork-secondary-identity
+    > .material-symbols-outlined {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  html:not([data-android-app='true']) .collection-artwork-secondary-back {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  html:not([data-android-app='true']) .collection-artwork-secondary-actions {
+    grid-column: 3;
+    gap: 4px;
+  }
+
+  html:not([data-android-app='true']) .collection-artwork-secondary-actions > button {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .collection-artwork-info,
+  .collection-artwork-secondary-header,
   .collection-artwork-icon-button,
   .collection-artwork-play-button {
     transition: none;

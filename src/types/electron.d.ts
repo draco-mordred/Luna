@@ -49,6 +49,7 @@ export type WindowMaterial = 'default' | 'mica' | 'frosty';
 export type IconStyle = 'material' | 'windows' | 'apple' | 'vlc' | 'round-filled' | 'round-outline';
 export type SeekbarStyle = 'default' | 'windows' | 'vlc' | 'apple' | 'samsung';
 export type DesktopPlayBarStyle = 'standard' | 'floating';
+export type DesktopTitleBarStyle = 'windows' | 'macos' | 'music';
 export type VisualizerStyle =
   | 'wave-smooth'
   | 'wave-sharp'
@@ -71,6 +72,7 @@ export interface AppSettings {
   iconStyle: IconStyle;
   seekbarStyle: SeekbarStyle;
   desktopPlayBarStyle: DesktopPlayBarStyle;
+  desktopTitleBarStyle: DesktopTitleBarStyle;
   visualizerStyle: VisualizerStyle;
   showVisualizer: boolean;
   autoDownloadArtistImages: boolean;
@@ -199,6 +201,7 @@ declare global {
             | 'iconStyle'
             | 'seekbarStyle'
             | 'desktopPlayBarStyle'
+            | 'desktopTitleBarStyle'
             | 'visualizerStyle'
             | 'showVisualizer'
             | 'autoDownloadArtistImages'

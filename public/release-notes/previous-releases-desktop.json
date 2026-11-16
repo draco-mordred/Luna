@@ -1,5 +1,9 @@
 [
   {
+    "version": "2.0.71126",
+    "summary": "**Optional Android USB setup:** Windows setup can download the official Android SDK Platform Tools, and macOS/Linux offer an opt-in download on first launch. Review and accept Google's terms before downloading; an internet connection is required, and setup can be skipped. **Remembered settings and sync panels:** Settin"
+  },
+  {
     "version": "1.1.301026",
     "summary": "**A refined mini player:** Keep the player within a compact 640 × 490 pixel window, play or pause by clicking the artwork, and let the controls smoothly hide during playback when idle. **Improved player modes:** Fullscreen playback controls remain centered, and mini/fullscreen seekbars now match the selected seekbar st"
   },

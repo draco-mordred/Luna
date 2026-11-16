@@ -3,6 +3,7 @@ import type { Track } from '../services/MusicLibrary';
 import type { PlayerWindowMode } from '../types/electron';
 import { useArtistImage } from '../services/artistImages';
 import { splitArtistCredits } from '../utils/artistCredits';
+import AudioOutputSelector from './PlayBar/AudioOutputSelector';
 import './StreamingPlayBar.css';
 
 interface StreamingPlayBarProps {
@@ -24,6 +25,8 @@ interface StreamingPlayBarProps {
   onToggleShuffle: () => void;
   repeatMode: 'off' | 'one' | 'all';
   onToggleRepeat: () => void;
+  audioOutputDeviceId: string;
+  onAudioOutputDeviceChange: (deviceId: string) => Promise<void>;
 }
 
 const formatTime = (seconds: number) => {
@@ -50,6 +53,8 @@ const StreamingPlayBar = ({
   onToggleShuffle,
   repeatMode,
   onToggleRepeat,
+  audioOutputDeviceId,
+  onAudioOutputDeviceChange,
 }: StreamingPlayBarProps) => {
   const [playbackPosition, setPlaybackPosition] = useState({
     trackId: track.id,
@@ -205,6 +210,12 @@ const StreamingPlayBar = ({
             </div>
           )}
           <div className='streaming-player-mode-controls'>
+            {isDesktopApp && (
+              <AudioOutputSelector
+                selectedDeviceId={audioOutputDeviceId}
+                onSelectDevice={onAudioOutputDeviceChange}
+              />
+            )}
             <button
               type='button'
               className={isShuffled ? 'active' : ''}

@@ -281,6 +281,7 @@ const DEFAULT_SETTINGS = {
   iconStyle: 'material',
   seekbarStyle: 'default',
   desktopPlayBarStyle: 'standard',
+  desktopTitleBarStyle: 'windows',
   visualizerStyle: 'bars-alternating',
   showVisualizer: false,
   autoDownloadArtistImages: true,
@@ -545,6 +546,9 @@ const readAppSettings = async () => {
     desktopPlayBarStyle: ['standard', 'floating'].includes(saved.desktopPlayBarStyle)
       ? saved.desktopPlayBarStyle
       : DEFAULT_SETTINGS.desktopPlayBarStyle,
+    desktopTitleBarStyle: ['windows', 'macos', 'music'].includes(saved.desktopTitleBarStyle)
+      ? saved.desktopTitleBarStyle
+      : DEFAULT_SETTINGS.desktopTitleBarStyle,
     visualizerStyle: [
       'wave-smooth',
       'wave-sharp',
@@ -608,6 +612,7 @@ const readAppSettings = async () => {
     saved.iconStyle !== settings.iconStyle ||
     saved.seekbarStyle !== settings.seekbarStyle ||
     saved.desktopPlayBarStyle !== settings.desktopPlayBarStyle ||
+    saved.desktopTitleBarStyle !== settings.desktopTitleBarStyle ||
     saved.visualizerStyle !== settings.visualizerStyle ||
     saved.showVisualizer !== settings.showVisualizer ||
     saved.autoDownloadArtistImages !== settings.autoDownloadArtistImages ||
@@ -706,6 +711,12 @@ const updateAppSettings = async (patch) => {
       throw new TypeError('Invalid desktop playbar style.');
     }
     next.desktopPlayBarStyle = patch.desktopPlayBarStyle;
+  }
+  if (patch.desktopTitleBarStyle !== undefined) {
+    if (!['windows', 'macos', 'music'].includes(patch.desktopTitleBarStyle)) {
+      throw new TypeError('Invalid desktop title bar style.');
+    }
+    next.desktopTitleBarStyle = patch.desktopTitleBarStyle;
   }
   if (patch.visualizerStyle !== undefined) {
     if (

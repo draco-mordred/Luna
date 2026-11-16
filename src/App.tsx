@@ -23,6 +23,10 @@ import WindowTitleBar from './components/WindowTitleBar/WindowTitleBar';
 import type { Playlist, Track } from './services/MusicLibrary';
 import { getAudiomackPlaybackUrl } from './services/audiomack';
 import {
+  setAudioContextOutputDevice,
+  setAudioOutputForElements,
+} from './services/audioOutputDevices';
+import {
   getAndroidAppearance,
   getAndroidDeviceInfo,
   isAndroidApp as detectAndroidApp,
@@ -38,6 +42,7 @@ import type { AndroidAppearance, AndroidDeviceInfo } from './services/androidMus
 import type {
   AppSettings,
   DesktopPlayBarStyle,
+  DesktopTitleBarStyle,
   IconStyle,
   MusicLibraryResponse,
   MusicLibraryScanProgress,
@@ -106,6 +111,11 @@ const getInitialDesktopPlayBarStyle = (): DesktopPlayBarStyle =>
   window.localStorage.getItem('luna-desktop-playbar-style') === 'floating'
     ? 'floating'
     : 'standard';
+
+const getInitialDesktopTitleBarStyle = (): DesktopTitleBarStyle => {
+  const savedStyle = window.localStorage.getItem('luna-desktop-titlebar-style');
+  return savedStyle === 'macos' || savedStyle === 'music' ? savedStyle : 'windows';
+};
 
 const getInitialThemeMode = (): ThemeMode => {
   const savedTheme = window.localStorage.getItem('luna-theme');
@@ -339,15 +349,24 @@ const App = () => {
   const [desktopPlayBarStyle, setDesktopPlayBarStyle] = useState<DesktopPlayBarStyle>(() =>
     isAndroidApp ? 'standard' : getInitialDesktopPlayBarStyle()
   );
+  const [desktopTitleBarStyle, setDesktopTitleBarStyle] = useState<DesktopTitleBarStyle>(
+    getInitialDesktopTitleBarStyle
+  );
   const [nowPlayingLayout, setNowPlayingLayout] = useState<NowPlayingLayout>(() => {
     const savedLayout =
       window.localStorage.getItem('luna-now-playing-layout') ??
       window.localStorage.getItem('luna-android-np-layout');
-    return savedLayout === 'full-art' ? 'full-art' : 'standard';
+    return savedLayout === 'full-art' || savedLayout === 'theatre' ? savedLayout : 'standard';
   });
+  const [audioOutputDeviceId, setAudioOutputDeviceId] = useState(
+    () => window.localStorage.getItem('luna-audio-output-device') || 'default'
+  );
   useEffect(() => {
     window.localStorage.setItem('luna-now-playing-layout', nowPlayingLayout);
   }, [nowPlayingLayout]);
+  useEffect(() => {
+    window.localStorage.setItem('luna-audio-output-device', audioOutputDeviceId);
+  }, [audioOutputDeviceId]);
   const [androidLibrarySearchQuery, setAndroidLibrarySearchQuery] = useState('');
   const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(isAndroidApp);
   const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
@@ -507,6 +526,7 @@ const App = () => {
     axis: 'undecided' | 'horizontal' | 'vertical';
   } | null>(null);
   const pageTransitionRef = useRef<HTMLDivElement | null>(null);
+  const mainAreaRef = useRef<HTMLDivElement | null>(null);
   const androidLibrarySwipeCleanupRef = useRef<number | null>(null);
   const [librarySwipeEnter, setLibrarySwipeEnter] = useState<{
     dir: 'next' | 'prev';
@@ -787,6 +807,19 @@ const App = () => {
         audioSourceNodesRef.current.set(audio, source);
       }
 
+      if (audioOutputDeviceId !== 'default') {
+        void setAudioContextOutputDevice(audioContext, audioOutputDeviceId).catch(
+          (error: unknown) => {
+            console.error('Could not restore the selected audio output:', error);
+            setLibraryError(
+              error instanceof Error
+                ? `Could not restore the selected audio output: ${error.message}`
+                : 'Could not restore the selected audio output.'
+            );
+          }
+        );
+      }
+
       if (audioContext.state === 'suspended') {
         void audioContext.resume().catch((error: unknown) => {
           console.error('Could not resume the audio visualizer context:', error);
@@ -796,7 +829,7 @@ const App = () => {
       console.error('Could not initialize audio visualization:', error);
       setLibraryError('Could not initialize the audio visualizer.');
     }
-  }, [volumeNormalization]);
+  }, [audioOutputDeviceId, volumeNormalization]);
 
   useEffect(
     () => () => {
@@ -886,6 +919,7 @@ const App = () => {
         setIconStyle(normalizeIconStyle(settings.iconStyle));
         setSeekbarStyle(settings.seekbarStyle ?? getInitialSeekbarStyle());
         setDesktopPlayBarStyle(settings.desktopPlayBarStyle ?? getInitialDesktopPlayBarStyle());
+        setDesktopTitleBarStyle(settings.desktopTitleBarStyle ?? 'windows');
         setVisualizerStyle(settings.visualizerStyle ?? getInitialVisualizerStyle());
         setShowVisualizer(
           settings.showVisualizer ?? window.localStorage.getItem('luna-show-visualizer') === 'true'
@@ -1165,6 +1199,7 @@ const App = () => {
     window.localStorage.setItem('luna-seekbar-style', seekbarStyle);
     if (window.electronAPI && !isAndroidApp) {
       window.localStorage.setItem('luna-desktop-playbar-style', desktopPlayBarStyle);
+      window.localStorage.setItem('luna-desktop-titlebar-style', desktopTitleBarStyle);
     }
     window.localStorage.setItem('luna-visualizer-style', visualizerStyle);
     window.localStorage.setItem('luna-show-visualizer', String(showVisualizer));
@@ -1198,6 +1233,7 @@ const App = () => {
           iconStyle,
           seekbarStyle,
           desktopPlayBarStyle,
+          desktopTitleBarStyle,
           visualizerStyle,
           showVisualizer,
           autoDownloadArtistImages,
@@ -1229,6 +1265,7 @@ const App = () => {
     volumeNormalization,
     iconStyle,
     desktopPlayBarStyle,
+    desktopTitleBarStyle,
     isShuffled,
     lastPlayedTrackPath,
     repeatMode,
@@ -1882,6 +1919,13 @@ const App = () => {
   }, [isPlaying]);
 
   const handleVolumeChange = (newVolume: number) => setVolume(newVolume);
+  const handleAudioOutputDeviceChange = useCallback(async (deviceId: string) => {
+    const audioElements = [audioARef.current, audioBRef.current, audiomackAudioRef.current].filter(
+      (audio): audio is HTMLAudioElement => audio !== null
+    );
+    await setAudioOutputForElements(audioElements, deviceId, audioContextRef.current);
+    setAudioOutputDeviceId(deviceId);
+  }, []);
   const handleSeek = useCallback(
     (time: number) => {
       if (!Number.isFinite(time)) return;
@@ -2796,6 +2840,10 @@ const App = () => {
       'data-desktop-playbar-style',
       window.electronAPI && !isAndroidApp ? desktopPlayBarStyle : 'none'
     );
+    root.setAttribute(
+      'data-desktop-titlebar-style',
+      window.electronAPI && !isAndroidApp ? desktopTitleBarStyle : 'windows'
+    );
     root.setAttribute('data-player-window-mode', playerWindowMode);
     root.style.setProperty('--accent', activeAccent);
     root.style.setProperty('--accent-rgb', `${red}, ${green}, ${blue}`);
@@ -2927,6 +2975,7 @@ const App = () => {
     androidAmoledDarkMode,
     iconStyle,
     desktopPlayBarStyle,
+    desktopTitleBarStyle,
     seekbarStyle,
     systemAccentColor,
     systemTheme,
@@ -2939,6 +2988,17 @@ const App = () => {
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => setSidebarCollapsed((collapsed) => !collapsed), []);
+  const handleDesktopMainAreaClick = useCallback(() => {
+    if (window.electronAPI && !isAndroidApp && window.innerWidth <= 769 && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+    }
+  }, [isAndroidApp, sidebarCollapsed]);
+  useEffect(() => {
+    const mainArea = mainAreaRef.current;
+    if (!mainArea) return undefined;
+    mainArea.addEventListener('click', handleDesktopMainAreaClick);
+    return () => mainArea.removeEventListener('click', handleDesktopMainAreaClick);
+  }, [handleDesktopMainAreaClick]);
   const clearLibrarySwipeStyle = () => {
     const el = pageTransitionRef.current;
     if (!el) return;
@@ -3104,7 +3164,7 @@ const App = () => {
       )}
       {window.electronAPI?.platform === 'win32' &&
         (windowMaterialAppliedAtLaunch === 'default' || playerWindowMode !== 'normal') && (
-          <WindowTitleBar />
+          <WindowTitleBar desktopTitleBarStyle={desktopTitleBarStyle} />
         )}
       <div className='app-container'>
         {/* Sidebar */}
@@ -3120,10 +3180,11 @@ const App = () => {
         />
 
         {/* Main Content Area */}
-        <div className='main-area'>
+        <div ref={mainAreaRef} className='main-area'>
           {/* Top Navigation */}
           <TopNavbar
             tracks={libraryTracks}
+            isDesktopApp={Boolean(window.electronAPI)}
             isAndroidApp={isAndroidApp}
             androidLibrarySearchQuery={androidLibrarySearchQuery}
             onAndroidLibrarySearchQueryChange={setAndroidLibrarySearchQuery}
@@ -3409,6 +3470,12 @@ const App = () => {
                           onNowPlayingLayoutChange={setNowPlayingLayout}
                           desktopPlayBarStyle={desktopPlayBarStyle}
                           onDesktopPlayBarStyleChange={setDesktopPlayBarStyle}
+                          desktopTitleBarStyle={desktopTitleBarStyle}
+                          onDesktopTitleBarStyleChange={setDesktopTitleBarStyle}
+                          customTitleBarAvailable={
+                            window.electronAPI?.platform === 'win32' &&
+                            windowMaterialAppliedAtLaunch === 'default'
+                          }
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3497,6 +3564,12 @@ const App = () => {
                           onNowPlayingLayoutChange={setNowPlayingLayout}
                           desktopPlayBarStyle={desktopPlayBarStyle}
                           onDesktopPlayBarStyleChange={setDesktopPlayBarStyle}
+                          desktopTitleBarStyle={desktopTitleBarStyle}
+                          onDesktopTitleBarStyleChange={setDesktopTitleBarStyle}
+                          customTitleBarAvailable={
+                            window.electronAPI?.platform === 'win32' &&
+                            windowMaterialAppliedAtLaunch === 'default'
+                          }
                           themeMode={themeMode}
                           onThemeChange={setThemeMode}
                           accentColor={
@@ -3705,6 +3778,8 @@ const App = () => {
           onToggleShuffle={handleToggleShuffle}
           repeatMode={repeatMode}
           onToggleRepeat={handleToggleRepeat}
+          audioOutputDeviceId={audioOutputDeviceId}
+          onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
         />
       ) : (
         <PlayBar
@@ -3750,6 +3825,8 @@ const App = () => {
           isDesktopApp={Boolean(window.electronAPI)}
           androidPlayBarStyle={androidPlayBarStyle}
           nowPlayingLayout={nowPlayingLayout}
+          audioOutputDeviceId={audioOutputDeviceId}
+          onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
           desktopPlayBarStyle={desktopPlayBarStyle}
           playerWindowMode={playerWindowMode}
           lyricOffsetSteps={lyricOffsetSteps}

@@ -108,6 +108,25 @@
 
 .streaming-play-bar-volume input {
   width: min(120px, 100%);
+  height: 11px;
+}
+
+.streaming-play-bar-volume input::-webkit-slider-runnable-track {
+  height: 11px;
+}
+
+.streaming-play-bar-volume input::-webkit-slider-thumb {
+  width: 11px;
+  height: 11px;
+}
+
+.streaming-play-bar-volume input::-moz-range-track {
+  height: 11px;
+}
+
+.streaming-play-bar-volume input::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
 }
 
 .streaming-play-bar-progress {

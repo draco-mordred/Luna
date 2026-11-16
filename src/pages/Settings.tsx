@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type {
   DesktopDeviceInfo,
   DesktopPlayBarStyle,
+  DesktopTitleBarStyle,
   IconStyle,
   SeekbarStyle,
   VisualizerStyle,
@@ -43,6 +44,9 @@ interface SettingsPageProps {
   onNowPlayingLayoutChange: (layout: NowPlayingLayout) => void;
   desktopPlayBarStyle: DesktopPlayBarStyle;
   onDesktopPlayBarStyleChange: (style: DesktopPlayBarStyle) => void;
+  desktopTitleBarStyle: DesktopTitleBarStyle;
+  onDesktopTitleBarStyleChange: (style: DesktopTitleBarStyle) => void;
+  customTitleBarAvailable: boolean;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   accentColor: string;
@@ -164,6 +168,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onNowPlayingLayoutChange,
   desktopPlayBarStyle,
   onDesktopPlayBarStyleChange,
+  desktopTitleBarStyle,
+  onDesktopTitleBarStyleChange,
+  customTitleBarAvailable,
   themeMode,
   onThemeChange,
   accentColor,
@@ -618,6 +625,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
           )}
+          {isDesktopApp && !isAndroidApp && customTitleBarAvailable && (
+            <div className='setting-item'>
+              <div className='setting-info'>
+                <h3>Desktop title bar</h3>
+                <p>Choose Windows controls, macOS traffic lights, or music-inspired controls</p>
+              </div>
+              <div className='setting-control'>
+                <select
+                  className='appearance-select'
+                  aria-label='Desktop title bar style'
+                  value={desktopTitleBarStyle}
+                  onChange={(event) =>
+                    onDesktopTitleBarStyleChange(
+                      event.currentTarget.value as DesktopTitleBarStyle
+                    )
+                  }
+                >
+                  <option value='windows'>Windows</option>
+                  <option value='macos'>macOS</option>
+                  <option value='music'>Music</option>
+                </select>
+              </div>
+            </div>
+          )}
           </SettingsCategory>
         </div>
       ),
@@ -963,7 +994,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           <div className='setting-item'>
             <div className='setting-info'>
               <h3>Now Playing layout</h3>
-              <p>Choose the standard layout or a full-artwork backdrop for the player</p>
+              <p>Choose the standard, full-artwork, or Theatre player layout</p>
             </div>
             <div className='setting-control'>
               <select
@@ -976,6 +1007,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               >
                 <option value='standard'>Standard</option>
                 <option value='full-art'>Full artwork</option>
+                <option value='theatre'>Theatre</option>
               </select>
             </div>
           </div>

@@ -266,7 +266,7 @@ html[data-android-app='true'] {
   html[data-android-app='true'] .np-android-volume-slider {
     flex: 1 1 auto;
     width: auto;
-    height: 6px;
+    height: 4px;
     margin: 0;
     appearance: none;
     -webkit-appearance: none;
@@ -282,19 +282,30 @@ html[data-android-app='true'] {
   html[data-android-app='true'] .np-android-volume-slider::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 11px;
+    height: 11px;
     border: 0;
     border-radius: 50%;
     background: var(--anp-text);
   }
 
   html[data-android-app='true'] .np-android-volume-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 11px;
+    height: 11px;
     border: 0;
     border-radius: 50%;
     background: var(--anp-text);
+  }
+
+  html[data-android-app='true'] .np-android-volume-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    background: transparent;
+  }
+
+  html[data-android-app='true'] .np-android-volume-slider::-moz-range-track {
+    height: 4px;
+    border: 0;
+    background: transparent;
   }
 
   /* --- Bottom action bar: lyrics / lyrics-mode / queue --- */
@@ -441,6 +452,269 @@ html[data-android-app='true'] {
     padding-bottom: 2dvh;
   }
 }
+
+  html[data-android-app='true'] .now-playing.theatre-mode {
+    padding: 0;
+  }
+
+  html[data-android-app='true'] .now-playing.theatre-mode .now-playing-header {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 100%;
+    z-index: 8;
+    display: block;
+    pointer-events: none;
+  }
+
+  html[data-android-app='true'] .now-playing.theatre-mode .now-playing-header > span {
+    position: absolute;
+    top: calc(var(--anp-safe-top) + 4px);
+    left: 50%;
+    display: block;
+    transform: translateX(-50%);
+    color: var(--anp-text);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+  }
+
+  html[data-android-app='true'] .now-playing.theatre-mode .now-playing-header .now-playing-close {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    pointer-events: auto;
+  }
+
+  html[data-android-app='true'] .now-playing-container.np-full-art.np-theatre {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  html[data-android-app='true'] .now-playing-container.np-full-art.np-theatre::before {
+    position: absolute;
+    z-index: 1;
+    right: 12px;
+    bottom: 0;
+    left: 12px;
+    height: calc(30% + var(--anp-safe-bottom));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 22px 22px 0 0;
+    background: color-mix(in srgb, var(--player-accent) 10%, rgba(12, 13, 16, 0.54));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    content: '';
+    pointer-events: none;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .album-art {
+    position: absolute;
+    z-index: 4;
+    top: calc(var(--anp-safe-top) + 70px);
+    left: 20px;
+    display: block;
+    width: 76px;
+    height: 76px;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 14px;
+    opacity: 1;
+    transform: none;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .album-art
+    img,
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .album-art
+    .default-art {
+    border-radius: 14px;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .track-info {
+    position: absolute;
+    z-index: 4;
+    top: calc(var(--anp-safe-top) + 66px);
+    right: 20px;
+    left: 110px;
+    width: auto;
+    height: 84px;
+    margin: 0;
+    padding: 4px 8px;
+    justify-content: center;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    text-align: left;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .track-info
+    .track-name {
+    color: #fff;
+    text-align: left;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .track-info
+    .artist-name {
+    display: inline-block;
+    max-width: 48%;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: left;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .track-info
+    .album-name {
+    display: inline-block;
+    max-width: 48%;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: left;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .track-info
+    .album-name::before {
+    content: ' • ';
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .lyrics-panel {
+    position: absolute;
+    z-index: 3;
+    top: calc(var(--anp-safe-top) + 170px);
+    right: 16px;
+    bottom: calc(30% + var(--anp-safe-bottom) + 12px);
+    left: 16px;
+    display: grid;
+    width: auto;
+    height: auto;
+    max-height: none;
+    place-items: center;
+    margin: 0;
+    padding: 10px 16px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--player-accent) 8%, rgba(8, 8, 10, 0.22));
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .lyrics-panel
+    .lyrics-panel-header {
+    display: none;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .lyrics-panel
+    .lyrics-text {
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    color: #fff;
+    text-align: center;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .synced-lyric-caption {
+    position: absolute;
+    z-index: 3;
+    top: calc(var(--anp-safe-top) + 170px);
+    right: 16px;
+    bottom: calc(30% + var(--anp-safe-bottom) + 12px);
+    left: 16px;
+    display: flex;
+    width: auto;
+    height: auto;
+    max-width: none;
+    min-height: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    margin: 0;
+    padding: 10px;
+    overflow: hidden;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--player-accent) 8%, rgba(8, 8, 10, 0.14));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transform: none;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .progress-bar-container {
+    position: absolute;
+    z-index: 4;
+    right: 28px;
+    bottom: calc(30% - 6px);
+    left: 28px;
+    width: auto;
+    margin: 0;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .expanded-controls {
+    position: absolute;
+    z-index: 4;
+    right: 24px;
+    bottom: calc(var(--anp-safe-bottom) + 68px);
+    left: 24px;
+    justify-content: center;
+    gap: clamp(18px, 6vw, 46px);
+    margin: 0;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .np-android-volume {
+    position: absolute;
+    z-index: 4;
+    right: 72px;
+    bottom: calc(var(--anp-safe-bottom) + 30px);
+    left: 72px;
+    margin: 0;
+  }
+
+  html[data-android-app='true']
+    .now-playing-container.np-full-art.np-theatre
+    > .np-android-bottom-actions {
+    position: absolute;
+    z-index: 4;
+    right: 24px;
+    bottom: calc(var(--anp-safe-bottom) + 150px);
+    left: 24px;
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+  }
 
 /* =====================================================================
    4. Tablet (821–1200px) — flat surface, large artwork, full transport

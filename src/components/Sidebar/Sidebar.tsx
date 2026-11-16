@@ -1,7 +1,8 @@
-import { memo, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { Playlist } from '../../services/MusicLibrary';
 import type { Track } from '../../services/MusicLibrary';
+import { buildSearchGroups } from '../../services/search';
 import PlaylistArtwork from '../PlaylistArtwork';
 import { DEVELOPER_GITHUB, DEVELOPER_NAME } from '../../constants/developer';
 import { useDeveloperAvatar } from '../../hooks/useDeveloperAvatar';
@@ -31,15 +32,29 @@ const Sidebar: React.FC<SidebarProps> = ({
   const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const [playlistsExpanded, setPlaylistsExpanded] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const searchRouteQuery = location.pathname.startsWith('/search')
+    ? (new URLSearchParams(location.search).get('q') ?? '')
+    : '';
+  const searchRouteKey = `${location.pathname}${location.search}`;
+  const [searchDraft, setSearchDraft] = useState(() => ({
+    route: searchRouteKey,
+    query: searchRouteQuery,
+  }));
+  const searchQuery = searchDraft.route === searchRouteKey ? searchDraft.query : searchRouteQuery;
+  const updateSearchQuery = (query: string) => setSearchDraft({ route: searchRouteKey, query });
+  const focusSearchWhenExpandedRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const developerAvatar = useDeveloperAvatar();
+  const searchGroups = useMemo(() => buildSearchGroups(tracks, searchQuery), [searchQuery, tracks]);
   const path = location.pathname.split('/')[1] || '';
   const activeSection = ['tracks', 'albums', 'artists', 'composer', 'genres'].includes(path)
     ? 'library'
     : path === ''
       ? 'home'
-    : path === 'playlists'
-      ? 'playlists'
-      : path || 'library';
+      : path === 'playlists'
+        ? 'playlists'
+        : path || 'library';
   const formatPlaylistDuration = (seconds: number) => {
     const totalMinutes = Math.floor(seconds / 60);
     const hours = Math.floor(totalMinutes / 60);
@@ -48,6 +63,23 @@ const Sidebar: React.FC<SidebarProps> = ({
     return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`;
   };
   const closeDrawerAfterNavigation = isAndroidApp ? onToggle : undefined;
+
+  useEffect(() => {
+    if (!collapsed && focusSearchWhenExpandedRef.current) {
+      searchInputRef.current?.focus();
+      focusSearchWhenExpandedRef.current = false;
+    }
+  }, [collapsed]);
+
+  const submitSearch = (query: string) => {
+    const trimmedQuery = query.trim();
+    navigate(trimmedQuery ? `/search?q=${encodeURIComponent(trimmedQuery)}` : '/search');
+    if (window.innerWidth <= 769 && !collapsed) onToggle();
+  };
+
+  const handleSearchInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') submitSearch(event.currentTarget.value);
+  };
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -65,6 +97,83 @@ const Sidebar: React.FC<SidebarProps> = ({
           </span>
         </button>
       </div>
+
+      {isDesktopApp && (
+        <div className={`sidebar-search-section${collapsed ? ' collapsed' : ''}`}>
+          {collapsed ? (
+            <button
+              type='button'
+              className='sidebar-search-button nav-button'
+              aria-label='Open search'
+              title='Search'
+              onClick={() => {
+                focusSearchWhenExpandedRef.current = true;
+                onToggle();
+              }}
+            >
+              <span className='nav-icon' aria-hidden='true'>
+                search
+              </span>
+            </button>
+          ) : (
+            <>
+              <label className='sidebar-search-input'>
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  search
+                </span>
+                <input
+                  ref={searchInputRef}
+                  type='search'
+                  value={searchQuery}
+                  placeholder='Search library'
+                  aria-label='Search the library'
+                  onChange={(event) => updateSearchQuery(event.currentTarget.value)}
+                  onKeyDown={handleSearchInputKeyDown}
+                />
+              </label>
+              {searchQuery.trim() && (
+                <div className='sidebar-search-results' role='listbox' aria-label='Search results'>
+                  {searchGroups.some((group) => group.items.length > 0) ? (
+                    searchGroups.map((group) =>
+                      group.items.length > 0 ? (
+                        <div key={group.title} className='sidebar-search-result-group'>
+                          <div className='sidebar-search-result-header'>{group.title}</div>
+                          {group.items.slice(0, 4).map((item) => (
+                            <button
+                              key={`${group.title}-${item.id}`}
+                              type='button'
+                              className='sidebar-search-result-item'
+                              role='option'
+                              aria-selected='false'
+                              onClick={() => submitSearch(searchQuery)}
+                            >
+                              <span className='material-symbols-outlined' aria-hidden='true'>
+                                {item.type === 'track'
+                                  ? 'music_note'
+                                  : item.type === 'album'
+                                    ? 'album'
+                                    : item.type === 'artist'
+                                      ? 'person'
+                                      : 'tag'}
+                              </span>
+                              <span className='sidebar-search-result-copy'>
+                                <strong>{item.title}</strong>
+                                <small>{item.subtitle}</small>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null
+                    )
+                  ) : (
+                    <div className='sidebar-search-empty'>No matches found.</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className='sidebar-nav'>
@@ -160,17 +269,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <span className='nav-icon'>playlist_add</span>
               {!collapsed && <span className='nav-label'>Playlists</span>}
-            </Link>
-          </li>
-
-          <li className='nav-item'>
-            <Link
-              to='/search'
-              className={`nav-button ${activeSection === 'search' ? 'active' : ''}`}
-              onClick={closeDrawerAfterNavigation}
-            >
-              <span className='nav-icon'>search</span>
-              {!collapsed && <span className='nav-label'>Search</span>}
             </Link>
           </li>
         </ul>

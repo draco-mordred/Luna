@@ -1,0 +1,6 @@
+Luna Music Desktop v2.0.151126
+
+Highlights
+- Added a theme-aware Floating Playbar with blurred transparency, smooth expansion into Now Playing, album-art-only activation, and a synced-lyrics popup.
+- Refined Full Artwork with responsive title and album/artist marquees, consistent seekbar scrubbing and styling, a remaining-time toggle, and integrated volume controls.
+- Collection pages now have a collapsing centered header and richer album/artist actions; Home Top Picks palettes persist. Added optional Android USB/platform-tools setup.

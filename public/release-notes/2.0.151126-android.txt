@@ -1,0 +1,6 @@
+Luna Music Android v2.0.151126
+
+Highlights
+- Redesigned Now Playing and navigation for phones and tablets, including responsive portrait/landscape layouts, artwork-backed lyrics, and smoother player/dock interactions.
+- Added an interactive waveform seekbar, queue drag-and-drop with haptic feedback, and a sing-along lyrics toggle.
+- Album and artist pages now offer richer play, queue, favorite, and playlist actions; playback controls also support consistent seekbar styling and elapsed/remaining-time toggling.

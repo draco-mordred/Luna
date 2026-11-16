@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect, useMemo, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import AudioVisualizer from './AudioVisualizer';
+import AudioOutputSelector from './AudioOutputSelector';
 import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex';
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
@@ -18,6 +19,9 @@ import { useLocation } from 'react-router-dom';
 
 const COLLAPSED_HEIGHT = 126.4;
 const FLOATING_DESKTOP_PLAYBAR_HEIGHT = 74;
+const FLOATING_TRANSITION_EXIT_MS = 240;
+const FLOATING_TRANSITION_ENTER_MS = 480;
+const FLOATING_TRANSITION_RETURN_MS = 420;
 const getExpandedHeight = () => Math.max(COLLAPSED_HEIGHT, window.innerHeight);
 const getExpandProgress = (currentHeight: number) =>
   Math.max(
@@ -87,6 +91,8 @@ interface PlayBarProps {
   androidPlayBarStyle: AndroidPlayBarStyle;
   desktopPlayBarStyle: DesktopPlayBarStyle;
   nowPlayingLayout: NowPlayingLayout;
+  audioOutputDeviceId: string;
+  onAudioOutputDeviceChange: (deviceId: string) => Promise<void>;
   playerWindowMode: PlayerWindowMode;
   lyricOffsetSteps: number;
   onLyricOffsetStepsChange: (steps: number) => void;
@@ -523,6 +529,8 @@ const PlayBar: React.FC<PlayBarProps> = ({
   androidPlayBarStyle,
   desktopPlayBarStyle,
   nowPlayingLayout,
+  audioOutputDeviceId,
+  onAudioOutputDeviceChange,
   playerWindowMode,
   lyricOffsetSteps,
   onLyricOffsetStepsChange,
@@ -561,20 +569,67 @@ const PlayBar: React.FC<PlayBarProps> = ({
     enabled: showArtistImageBackground || playerWindowMode !== 'normal',
     allowDownload: showArtistImageBackground,
   });
-  const desktopFullArtworkUrl =
-    showArtistImageBackground && artistBackgroundImage ? artistBackgroundImage : trackArtworkUrl;
+  const currentTrackId = track?.id;
+  const artistArtworkDelayCycle = useMemo(
+    () => ({ trackId: currentTrackId, enabled: showArtistImageBackground }),
+    [currentTrackId, showArtistImageBackground]
+  );
+  const [artistArtworkDelayPassedCycle, setArtistArtworkDelayPassedCycle] = useState<
+    typeof artistArtworkDelayCycle | null
+  >(null);
+  useEffect(() => {
+    if (!artistArtworkDelayCycle.enabled || !artistArtworkDelayCycle.trackId) return undefined;
+    const timeout = window.setTimeout(() => {
+      setArtistArtworkDelayPassedCycle(artistArtworkDelayCycle);
+    }, 3000);
+    return () => window.clearTimeout(timeout);
+  }, [artistArtworkDelayCycle]);
+  const artistArtworkDelayElapsed =
+    !showArtistImageBackground ||
+    (Boolean(currentTrackId) && artistArtworkDelayPassedCycle === artistArtworkDelayCycle);
+  const visibleArtistBackgroundImage = artistArtworkDelayElapsed ? artistBackgroundImage : null;
+  const fullArtworkUrl =
+    showArtistImageBackground && visibleArtistBackgroundImage
+      ? visibleArtistBackgroundImage
+      : trackArtworkUrl;
   const desktopFullArtEnabled = Boolean(
     isDesktopApp &&
       !androidApp &&
       playerWindowMode === 'normal' &&
-      nowPlayingLayout === 'full-art' &&
-      desktopFullArtworkUrl
+      nowPlayingLayout === 'full-art'
+  );
+  const desktopTheatreEnabled = Boolean(
+    isDesktopApp &&
+      !androidApp &&
+      playerWindowMode === 'normal' &&
+      nowPlayingLayout === 'theatre'
+  );
+  const desktopArtworkLayoutEnabled = desktopFullArtEnabled || desktopTheatreEnabled;
+  const androidTheatreEnabled = Boolean(
+    androidApp && playerWindowMode === 'normal' && nowPlayingLayout === 'theatre'
+  );
+  const usePreferredArtworkBackground = Boolean(
+    desktopArtworkLayoutEnabled ||
+      (androidApp &&
+        playerWindowMode === 'normal' &&
+        (nowPlayingLayout === 'full-art' || nowPlayingLayout === 'theatre'))
   );
   const useFloatingDesktopPlayBar = Boolean(
     isDesktopApp && !androidApp && desktopPlayBarStyle === 'floating'
   );
   const useDesktopAlbumArtOnlyOpen = Boolean(isDesktopApp && !androidApp);
   const [state, setState] = useState<'collapsed' | 'expanded'>('collapsed');
+  const [desktopFloatingTransition, setDesktopFloatingTransition] = useState<
+    | 'idle'
+    | 'opening-out'
+    | 'opening-expand'
+    | 'opening-in'
+    | 'closing-out'
+    | 'closing-shrink'
+    | 'closing-in'
+  >('idle');
+  const floatingTransitionTimeoutRef = useRef<number | null>(null);
+  const floatingTransitionFrameRef = useRef<number | null>(null);
   const [height, setHeight] = useState(COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
@@ -851,15 +906,119 @@ const PlayBar: React.FC<PlayBarProps> = ({
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
   }, [isTrackMenuMounted, showTrackMenu, showPlaylistSubmenu]);
-  const handleCollapse = () => {
+  const clearFloatingTransitionTimeout = useCallback(() => {
+    if (floatingTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(floatingTransitionTimeoutRef.current);
+      floatingTransitionTimeoutRef.current = null;
+    }
+    if (floatingTransitionFrameRef.current !== null) {
+      window.cancelAnimationFrame(floatingTransitionFrameRef.current);
+      floatingTransitionFrameRef.current = null;
+    }
+  }, []);
+
+  const startFloatingTransitionPhase = useCallback(
+    (phase: 'opening-in' | 'closing-in', duration: number) => {
+      floatingTransitionFrameRef.current = window.requestAnimationFrame(() => {
+        floatingTransitionFrameRef.current = window.requestAnimationFrame(() => {
+          floatingTransitionFrameRef.current = null;
+          setDesktopFloatingTransition(phase);
+          floatingTransitionTimeoutRef.current = window.setTimeout(() => {
+            floatingTransitionTimeoutRef.current = null;
+            setDesktopFloatingTransition('idle');
+          }, duration);
+        });
+      });
+    },
+    []
+  );
+
+  const handleExpand = useCallback(() => {
+    if (!useFloatingDesktopPlayBar) {
+      setState('expanded');
+      return;
+    }
+    if (desktopFloatingTransition !== 'idle' || state !== 'collapsed') return;
+
+    clearFloatingTransitionTimeout();
+    setDesktopFloatingTransition('opening-out');
+    const exitDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 0
+      : FLOATING_TRANSITION_EXIT_MS;
+    floatingTransitionTimeoutRef.current = window.setTimeout(() => {
+      floatingTransitionTimeoutRef.current = null;
+      currentHeightRef.current = getExpandedHeight();
+      setHeight(currentHeightRef.current);
+      setState('expanded');
+      setDesktopFloatingTransition('opening-expand');
+      const enterDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 0
+        : FLOATING_TRANSITION_ENTER_MS;
+      startFloatingTransitionPhase('opening-in', enterDuration);
+    }, exitDuration);
+  }, [
+    clearFloatingTransitionTimeout,
+    desktopFloatingTransition,
+    startFloatingTransitionPhase,
+    state,
+    useFloatingDesktopPlayBar,
+  ]);
+
+  const handleCollapse = useCallback(() => {
     currentHeightRef.current = getExpandedHeight();
-    setState('collapsed');
     setIsDragging(false);
-  };
+    if (
+      useFloatingDesktopPlayBar &&
+      state === 'expanded' &&
+      (desktopFloatingTransition === 'idle' || desktopFloatingTransition === 'opening-in')
+    ) {
+      clearFloatingTransitionTimeout();
+      setDesktopFloatingTransition('closing-out');
+      const exitDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 0
+        : FLOATING_TRANSITION_EXIT_MS;
+      floatingTransitionTimeoutRef.current = window.setTimeout(() => {
+        floatingTransitionTimeoutRef.current = null;
+        setState('collapsed');
+        setDesktopFloatingTransition('closing-shrink');
+        const returnDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 0
+          : FLOATING_TRANSITION_RETURN_MS;
+        startFloatingTransitionPhase('closing-in', returnDuration);
+      }, exitDuration);
+      return;
+    }
+    clearFloatingTransitionTimeout();
+    setDesktopFloatingTransition('idle');
+    setState('collapsed');
+  }, [
+    clearFloatingTransitionTimeout,
+    desktopFloatingTransition,
+    startFloatingTransitionPhase,
+    state,
+    useFloatingDesktopPlayBar,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearFloatingTransitionTimeout();
+    },
+    [clearFloatingTransitionTimeout]
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-now-playing-open', String(state === 'expanded'));
+    window.dispatchEvent(new Event('luna-now-playing-state-change'));
+    return () => {
+      root.removeAttribute('data-now-playing-open');
+      window.dispatchEvent(new Event('luna-now-playing-state-change'));
+    };
+  }, [state]);
 
   useEffect(() => {
     const activeTrackId = track?.id;
-    const openNowPlaying = () => setState('expanded');
+    const openNowPlaying = () => handleExpand();
     const toggleLyrics = () => {
       if (!lyricsEnabled || !canToggleLyrics || !activeTrackId) return;
       setLyricsVisibility({ trackId: activeTrackId, visible: !showLyrics });
@@ -872,7 +1031,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       window.removeEventListener('luna-open-now-playing', openNowPlaying);
       window.removeEventListener('luna-toggle-lyrics', toggleLyrics);
     };
-  }, [canToggleLyrics, lyricsEnabled, showLyrics, track?.id]);
+  }, [canToggleLyrics, handleExpand, lyricsEnabled, showLyrics, track?.id]);
 
   useEffect(() => {
     if (playerWindowMode !== 'mini' || !isPlaying) return undefined;
@@ -913,7 +1072,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       window.removeEventListener('luna-android-collapse-now-playing', collapseNowPlaying);
       window.removeEventListener('luna-collapse-now-playing', collapseNowPlaying);
     };
-  }, [state]);
+  }, [handleCollapse, state]);
 
   useEffect(() => {
     window.addEventListener('luna-track-changed', closeTrackMenu);
@@ -1079,6 +1238,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   const showFloatingLyricsPopup = Boolean(
     useFloatingDesktopPlayBar &&
       state === 'collapsed' &&
+      desktopFloatingTransition !== 'closing-shrink' &&
       !isDragging &&
       isMiniSyncedLyricsVisible &&
       currentSyncedLyricText.trim()
@@ -1180,7 +1340,11 @@ const PlayBar: React.FC<PlayBarProps> = ({
         commitDurationClearRef.current = null;
         setCommitDuration(null);
       }, nextCommitDuration + 60);
-      setState(shouldExpand ? 'expanded' : 'collapsed');
+      if (!shouldExpand && useFloatingDesktopPlayBar && state === 'expanded') {
+        handleCollapse();
+      } else {
+        setState(shouldExpand ? 'expanded' : 'collapsed');
+      }
       setHeight(currentHeightRef.current);
       setIsDragging(false);
     };
@@ -1193,7 +1357,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       window.removeEventListener('pointerup', handlePointerEnd);
       window.removeEventListener('pointercancel', handlePointerEnd);
     };
-  }, [isDragging]);
+  }, [handleCollapse, isDragging, state, useFloatingDesktopPlayBar]);
 
   const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
     if (playerWindowMode !== 'normal') return;
@@ -1231,7 +1395,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
       didDragRef.current = false;
       if (!useDesktopAlbumArtOnlyOpen) return;
     }
-    setState('expanded');
+    handleExpand();
   };
 
   const handleLyricsToggle = () => {
@@ -1321,12 +1485,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
         closeTrackMenu();
         break;
       case 'album':
-        setState('collapsed');
+        handleCollapse();
         onShowAlbum?.(track);
         closeTrackMenu();
         break;
       case 'artist':
-        setState('collapsed');
+        handleCollapse();
         onShowArtist?.(track);
         closeTrackMenu();
         break;
@@ -1743,9 +1907,9 @@ const PlayBar: React.FC<PlayBarProps> = ({
       {showFloatingLyricsPopup &&
         createPortal(
           <div
-            className='desktop-floating-lyrics-popup'
+            className={`desktop-floating-lyrics-popup${desktopFloatingTransition === 'opening-out' ? ' is-exiting' : ''}${desktopFloatingTransition === 'closing-in' ? ' is-returning' : ''}`}
             aria-live='polite'
-            style={{ height: `${FLOATING_DESKTOP_PLAYBAR_HEIGHT * 2}px` }}
+            style={{ height: `${FLOATING_DESKTOP_PLAYBAR_HEIGHT + 26}px` }}
           >
             <MiniSyncedLyrics text={currentSyncedLyricText} />
           </div>,
@@ -1753,7 +1917,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
         )}
       <div
         ref={playBarRef}
-        className={`play-bar ${state}${useFloatingDesktopPlayBar ? ' desktop-floating-playbar' : ''}${androidApp ? ` android-playbar android-playbar-${androidPlayBarStyle}` : ''}${androidApp && !track ? ' android-no-track' : ''}${androidApp && androidPlayBarStyle === 'trace' && showVisualizer ? ' android-trace-visualizer-active' : ''}${androidApp && isScrollingUp ? ' android-scrolling-up' : ''} ${isDragging ? 'dragging' : ''} ${
+        className={`play-bar ${state}${useFloatingDesktopPlayBar ? ' desktop-floating-playbar' : ''}${useFloatingDesktopPlayBar && desktopFloatingTransition !== 'idle' ? ` desktop-floating-${desktopFloatingTransition}` : ''}${androidApp ? ` android-playbar android-playbar-${androidPlayBarStyle}` : ''}${androidApp && !track ? ' android-no-track' : ''}${androidApp && androidPlayBarStyle === 'trace' && showVisualizer ? ' android-trace-visualizer-active' : ''}${androidApp && isScrollingUp ? ' android-scrolling-up' : ''} ${isDragging ? 'dragging' : ''} ${
           playerWindowMode === 'mini' && isPlaying && !isMiniDockVisible ? 'mini-dock-hidden' : ''
         }`}
         style={playBarStyle}
@@ -1765,14 +1929,14 @@ const PlayBar: React.FC<PlayBarProps> = ({
 
         {/* Expanded View - Now Playing */}
         <div
-          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${androidApp ? ' android-now-playing' : ''}${desktopFullArtEnabled ? ' desktop-full-art-mode' : ''}`}
+          className={`now-playing ${state === 'expanded' || isDragging ? 'visible' : 'hidden'} ${showArtistImageBackground ? 'artist-background-enabled' : ''}${androidApp ? ' android-now-playing' : ''}${desktopArtworkLayoutEnabled ? ' desktop-full-art-mode' : ''}${desktopTheatreEnabled || androidTheatreEnabled ? ' theatre-mode' : ''}${desktopTheatreEnabled ? ' desktop-theatre-mode' : ''}`}
           onPointerDown={handleDragStart}
         >
           {playerWindowMode !== 'normal' && (
             <div className='player-mode-background' aria-hidden='true'>
-              {(artistBackgroundImage || trackArtworkUrl) && (
+              {(visibleArtistBackgroundImage || trackArtworkUrl) && (
                 <TrackImageCrossfade
-                  src={artistBackgroundImage || trackArtworkUrl || null}
+                  src={visibleArtistBackgroundImage || trackArtworkUrl || null}
                   alt=''
                   className='player-mode-background-image'
                 />
@@ -1780,24 +1944,27 @@ const PlayBar: React.FC<PlayBarProps> = ({
               <div className='player-mode-background-overlay' />
             </div>
           )}
-          {artistBackgroundImage && playerWindowMode === 'normal' && (
+          {visibleArtistBackgroundImage && playerWindowMode === 'normal' && (
             <div className='now-playing-artist-background' aria-hidden='true'>
-              <TrackImageCrossfade src={artistBackgroundImage} alt='' />
+              <TrackImageCrossfade src={visibleArtistBackgroundImage} alt='' />
               <div className='now-playing-artist-background-overlay' />
             </div>
           )}
           {(useCompactAndroidLayout ||
-            (androidApp && nowPlayingLayout === 'full-art') ||
-            desktopFullArtEnabled) && (
+            (androidApp && (nowPlayingLayout === 'full-art' || nowPlayingLayout === 'theatre')) ||
+            desktopArtworkLayoutEnabled) && (
             <div className='np-android-artwork-background' aria-hidden='true'>
               <TrackImageCrossfade
                 src={
-                  desktopFullArtEnabled
-                    ? (desktopFullArtworkUrl ?? null)
+                  usePreferredArtworkBackground
+                    ? (fullArtworkUrl ?? null)
                     : (trackArtworkUrl ?? null)
                 }
                 alt=''
               />
+              {desktopArtworkLayoutEnabled && !fullArtworkUrl && (
+                <div className='np-desktop-default-art'>{DEFAULT_ALBUM_ART}</div>
+              )}
               <div className='np-android-artwork-background-overlay' />
             </div>
           )}
@@ -1839,6 +2006,12 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 </button>
               </div>
             )}
+            {isDesktopApp && !androidApp && (
+              <AudioOutputSelector
+                selectedDeviceId={audioOutputDeviceId}
+                onSelectDevice={onAudioOutputDeviceChange}
+              />
+            )}
             <button
               type='button'
               className={`now-playing-queue-toggle ${showPlayQueue ? 'active' : ''}`}
@@ -1860,10 +2033,14 @@ const PlayBar: React.FC<PlayBarProps> = ({
               showVisualizer && !hasSyncedLyrics ? 'visualizer-in-lyrics-slot' : '',
               showVisualizer && visualizerLocation === 'below-art' ? 'visualizer-below-art' : '',
               showPlayQueue ? 'queue-open' : '',
-              (showPlainLyricsPanel || showSyncedLyricCaption) ? 'lyrics-open' : '',
-              androidApp && nowPlayingLayout === 'full-art' ? 'np-full-art' : '',
-              desktopFullArtEnabled ? 'desktop-full-art' : '',
-              desktopFullArtEnabled ? `desktop-full-art-align-${desktopLyricsAlignment}` : '',
+              showPlainLyricsPanel || showSyncedLyricCaption ? 'lyrics-open' : '',
+              androidApp && (nowPlayingLayout === 'full-art' || nowPlayingLayout === 'theatre')
+                ? 'np-full-art'
+                : '',
+              androidTheatreEnabled ? 'np-theatre' : '',
+              desktopArtworkLayoutEnabled ? 'desktop-full-art' : '',
+              desktopArtworkLayoutEnabled ? `desktop-full-art-align-${desktopLyricsAlignment}` : '',
+              desktopTheatreEnabled ? 'desktop-theatre' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -1876,7 +2053,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               if (
                 !track ||
                 target.closest(
-                  'button, input, select, textarea, a, [role="button"], .album-art, .track-info, .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .np-android-volume, .np-android-bottom-actions, .now-playing-header, .drag-handle, .track-menu-popover, .now-playing-artist-background, .player-mode-background'
+                  'button, input, select, textarea, a, [role="button"], .album-art, .track-info, .lyrics-panel, .synced-lyric-caption, .progress-bar-container, .expanded-controls, .np-android-volume, .np-android-bottom-actions, .now-playing-header, .drag-handle, .track-menu-popover, .audio-output-selector-menu, .now-playing-artist-background, .player-mode-background'
                 )
               ) {
                 return;
@@ -1979,7 +2156,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                     className='android-now-playing-title'
                     text={track?.name || 'No Track Selected'}
                   />
-                ) : desktopFullArtEnabled ? (
+                ) : desktopArtworkLayoutEnabled ? (
                   <PlayerModeMarquee
                     key={track?.id ?? 'no-track'}
                     className='track-name desktop-full-art-song-title'
@@ -2218,7 +2395,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   </div>
                 )}
               </div>
-              {desktopFullArtEnabled ? (
+              {desktopArtworkLayoutEnabled ? (
                 <div className='desktop-full-art-track-meta'>
                   <PlayerModeMarquee
                     className='desktop-full-art-meta-item desktop-full-art-artist'
@@ -2242,7 +2419,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
                   </p>
                 </>
               )}
-              {!desktopFullArtEnabled && lyricsEnabled && track?.lyrics?.trim() && (
+              {!desktopArtworkLayoutEnabled && lyricsEnabled && track?.lyrics?.trim() && (
                 <div className='lyrics-actions'>
                   <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
                     <span className='material-symbols-outlined' aria-hidden='true'>
@@ -2297,7 +2474,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               )}
             </div>
 
-            {desktopFullArtEnabled && lyricsEnabled && track?.lyrics?.trim() && (
+            {desktopArtworkLayoutEnabled && lyricsEnabled && track?.lyrics?.trim() && (
               <div className='lyrics-actions desktop-full-art-lyrics-actions'>
                 <div className='desktop-full-art-lyrics-actions-side left'>
                   <button type='button' className='lyrics-toggle' onClick={handleLyricsToggle}>
@@ -2686,7 +2863,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
               </button>
             </div>
 
-            {desktopFullArtEnabled && (
+            {desktopArtworkLayoutEnabled && (
               <div className='desktop-full-art-volume'>
                 <button
                   type='button'

@@ -15,6 +15,7 @@ import './TopNavbar.css';
 
 interface TopNavbarProps {
   tracks: Track[];
+  isDesktopApp: boolean;
   isAndroidApp: boolean;
   androidLibrarySearchQuery: string;
   onAndroidLibrarySearchQueryChange: (query: string) => void;
@@ -63,6 +64,7 @@ const SECTION_TITLES: Record<Section, string> = {
 
 const TopNavbar = ({
   tracks,
+  isDesktopApp,
   isAndroidApp,
   androidLibrarySearchQuery,
   onAndroidLibrarySearchQueryChange,
@@ -85,11 +87,16 @@ const TopNavbar = ({
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [androidUsbSyncNotice, setAndroidUsbSyncNotice] = useState<AndroidUsbSyncNotice | null>(
     null
   );
 
   const searchGroups = useMemo(() => buildSearchGroups(tracks, searchQuery), [searchQuery, tracks]);
+
+  useEffect(() => {
+    if (isSearchExpanded) searchInputRef.current?.focus();
+  }, [isSearchExpanded]);
 
   useEffect(() => {
     if (!isAndroidApp) return undefined;
@@ -290,7 +297,8 @@ const TopNavbar = ({
   const isLibrarySectionRoute =
     ['/tracks', '/albums', '/artists', '/composer', '/genres'].includes(location.pathname) &&
     !location.pathname.endsWith('/detail');
-  const libraryTabsVisible = section === 'library' && !showSyncNotice && (!isAndroidApp || isLibrarySectionRoute);
+  const libraryTabsVisible =
+    section === 'library' && !showSyncNotice && (!isAndroidApp || isLibrarySectionRoute);
   const secondaryTabsVisible = libraryTabsVisible || settingsTabsVisible;
   const androidNavigationVisible =
     !isAndroidApp || libraryTabsVisible || settingsTabsVisible || showSyncNotice;
@@ -500,85 +508,86 @@ const TopNavbar = ({
         </div>
       )}
 
-      <div className='navbar-right' ref={searchRef}>
-        {/* Search */}
-        <div className={`search-inline ${isSearchExpanded ? 'open' : ''}`}>
-          <button
-            type='button'
-            className='navbar-button search-button'
-            aria-label='Search'
-            onClick={() => setIsSearchExpanded((current) => !current)}
-          >
-            <span className='material-symbols-outlined'>search</span>
-          </button>
+      <div className='navbar-right'>
+        {!isDesktopApp && (
+          <div className={`search-inline ${isSearchExpanded ? 'open' : ''}`} ref={searchRef}>
+            <button
+              type='button'
+              className='navbar-button search-button'
+              aria-label='Search'
+              onClick={() => setIsSearchExpanded((current) => !current)}
+            >
+              <span className='material-symbols-outlined'>search</span>
+            </button>
 
-          {isSearchExpanded && (
-            <div className='search-dropdown'>
-              <div className='search-input-row'>
-                <span className='material-symbols-outlined'>search</span>
-                <input
-                  type='text'
-                  value={searchQuery}
-                  placeholder='Search library'
-                  aria-label='Search the library'
-                  autoFocus
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={handleSearchInputKeyDown}
-                />
-              </div>
+            {isSearchExpanded && (
+              <div className='search-dropdown'>
+                <div className='search-input-row'>
+                  <span className='material-symbols-outlined'>search</span>
+                  <input
+                    type='text'
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    placeholder='Search library'
+                    aria-label='Search the library'
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={handleSearchInputKeyDown}
+                  />
+                </div>
 
-              <div className='search-results-panel'>
-                {searchQuery.trim() ? (
-                  searchGroups.some((group) => group.items.length > 0) ? (
-                    searchGroups.map((group) =>
-                      group.items.length > 0 ? (
-                        <div key={group.title} className='search-result-group'>
-                          <div className='search-result-header'>{group.title}</div>
-                          {group.items.slice(0, 4).map((item) => (
-                            <button
-                              key={`${group.title}-${item.id}`}
-                              type='button'
-                              className='search-result-item'
-                              onClick={() => {
-                                if (item.type === 'track' && item.track) {
+                <div className='search-results-panel'>
+                  {searchQuery.trim() ? (
+                    searchGroups.some((group) => group.items.length > 0) ? (
+                      searchGroups.map((group) =>
+                        group.items.length > 0 ? (
+                          <div key={group.title} className='search-result-group'>
+                            <div className='search-result-header'>{group.title}</div>
+                            {group.items.slice(0, 4).map((item) => (
+                              <button
+                                key={`${group.title}-${item.id}`}
+                                type='button'
+                                className='search-result-item'
+                                onClick={() => {
+                                  if (item.type === 'track' && item.track) {
+                                    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                                    setIsSearchExpanded(false);
+                                    return;
+                                  }
                                   navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
                                   setIsSearchExpanded(false);
-                                  return;
-                                }
-                                navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-                                setIsSearchExpanded(false);
-                              }}
-                            >
-                              <span className='material-symbols-outlined'>
-                                {item.type === 'track'
-                                  ? 'music_note'
-                                  : item.type === 'album'
-                                    ? 'album'
-                                    : item.type === 'artist'
-                                      ? 'person'
-                                      : 'tag'}
-                              </span>
-                              <span className='search-result-copy'>
-                                <strong>{item.title}</strong>
-                                <small>{item.subtitle}</small>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null
+                                }}
+                              >
+                                <span className='material-symbols-outlined'>
+                                  {item.type === 'track'
+                                    ? 'music_note'
+                                    : item.type === 'album'
+                                      ? 'album'
+                                      : item.type === 'artist'
+                                        ? 'person'
+                                        : 'tag'}
+                                </span>
+                                <span className='search-result-copy'>
+                                  <strong>{item.title}</strong>
+                                  <small>{item.subtitle}</small>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null
+                      )
+                    ) : (
+                      <div className='search-empty-state-inline'>No matches found.</div>
                     )
                   ) : (
-                    <div className='search-empty-state-inline'>No matches found.</div>
-                  )
-                ) : (
-                  <div className='search-empty-state-inline'>
-                    Type a song, artist, album, or genre.
-                  </div>
-                )}
+                    <div className='search-empty-state-inline'>
+                      Type a song, artist, album, or genre.
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Account/Profile */}
         <div className='account-section' ref={accountMenuRef}>
@@ -676,76 +685,90 @@ const TopNavbar = ({
           )}
         </div>
 
-        {/* Options/Settings */}
-        <div className='options-section' ref={settingsMenuRef}>
-          <button className='navbar-button options-button' onClick={toggleSettingsMenu}>
-            <span className='material-symbols-outlined'>more_vert</span>
-          </button>
+        {!isDesktopApp && (
+          <div className='options-section' ref={settingsMenuRef}>
+            <button className='navbar-button options-button' onClick={toggleSettingsMenu}>
+              <span className='material-symbols-outlined'>more_vert</span>
+            </button>
 
-          {showSettingsMenu && (
-            <div className='settings-menu'>
-              <div className='menu-header'>
-                <h3>Options</h3>
+            {showSettingsMenu && (
+              <div className='settings-menu'>
+                <div className='menu-header'>
+                  <h3>Options</h3>
+                </div>
+                <ul className='menu-list'>
+                  <li className='menu-item'>
+                    <Link
+                      className='menu-button'
+                      to='/settings'
+                      onClick={() => setShowSettingsMenu(false)}
+                    >
+                      <span className='material-symbols-outlined'>settings</span>
+                      <span>Settings</span>
+                    </Link>
+                  </li>
+                  <li className='menu-item'>
+                    <button
+                      className='menu-button'
+                      onClick={() => {
+                        setShowSettingsMenu(false);
+                        void onSelectMusicFolders();
+                      }}
+                    >
+                      <span className='material-symbols-outlined'>
+                        {isAndroidApp ? 'library_music' : 'folder_open'}
+                      </span>
+                      <span>{isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}</span>
+                    </button>
+                  </li>
+                  <li className='menu-item'>
+                    <button
+                      className='menu-button'
+                      onClick={() => {
+                        setShowSettingsMenu(false);
+                        void onRescanMusicLibrary();
+                      }}
+                    >
+                      <span className='material-symbols-outlined'>refresh</span>
+                      <span>{isAndroidApp ? 'Scan Device Library' : 'Rescan Library'}</span>
+                    </button>
+                  </li>
+                  <li className='menu-item divider'>
+                    <button className='menu-button'>
+                      <span className='material-symbols-outlined'>help</span>
+                      <span>Help</span>
+                    </button>
+                  </li>
+                  <li className='menu-item'>
+                    <button
+                      className='menu-button'
+                      onClick={() => {
+                        setShowSettingsMenu(false);
+                        navigate('/settings/about');
+                      }}
+                    >
+                      <span className='material-symbols-outlined'>info</span>
+                      <span>About</span>
+                    </button>
+                  </li>
+                </ul>
               </div>
-              <ul className='menu-list'>
-                <li className='menu-item'>
-                  <Link
-                    className='menu-button'
-                    to='/settings'
-                    onClick={() => setShowSettingsMenu(false)}
-                  >
-                    <span className='material-symbols-outlined'>settings</span>
-                    <span>Settings</span>
-                  </Link>
-                </li>
-                <li className='menu-item'>
-                  <button
-                    className='menu-button'
-                    onClick={() => {
-                      setShowSettingsMenu(false);
-                      void onSelectMusicFolders();
-                    }}
-                  >
-                    <span className='material-symbols-outlined'>
-                      {isAndroidApp ? 'library_music' : 'folder_open'}
-                    </span>
-                    <span>{isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}</span>
-                  </button>
-                </li>
-                <li className='menu-item'>
-                  <button
-                    className='menu-button'
-                    onClick={() => {
-                      setShowSettingsMenu(false);
-                      void onRescanMusicLibrary();
-                    }}
-                  >
-                    <span className='material-symbols-outlined'>refresh</span>
-                    <span>{isAndroidApp ? 'Scan Device Library' : 'Rescan Library'}</span>
-                  </button>
-                </li>
-                <li className='menu-item divider'>
-                  <button className='menu-button'>
-                    <span className='material-symbols-outlined'>help</span>
-                    <span>Help</span>
-                  </button>
-                </li>
-                <li className='menu-item'>
-                  <button
-                    className='menu-button'
-                    onClick={() => {
-                      setShowSettingsMenu(false);
-                      navigate('/settings/about');
-                    }}
-                  >
-                    <span className='material-symbols-outlined'>info</span>
-                    <span>About</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+        {isDesktopApp && (
+          <button
+            type='button'
+            className='navbar-add-folder-button'
+            aria-label='Add music folder'
+            onClick={() => void onSelectMusicFolders()}
+          >
+            <span className='material-symbols-outlined' aria-hidden='true'>
+              create_new_folder
+            </span>
+            <span>Add folder</span>
+          </button>
+        )}
       </div>
     </nav>
   );

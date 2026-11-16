@@ -5,7 +5,7 @@
   height: 140px;
   flex: 0 0 112px;
   background: color-mix(in srgb, var(--bg-secondary) 76%, transparent);
-  border-bottom: 1px solid var(--border);
+  /* border-bottom: 1px solid var(--border); */
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -183,6 +183,44 @@ html[data-android-app='true'] .navbar-back-button {
 
 .navbar-button .material-symbols-outlined {
   font-size: 1.2rem;
+}
+
+.navbar-add-folder-button {
+  display: inline-flex;
+  min-width: max-content;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--system-accent) 48%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--system-accent) 10%, var(--bg-secondary));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.navbar-add-folder-button:hover {
+  border-color: var(--system-accent);
+  background: color-mix(in srgb, var(--system-accent) 22%, var(--bg-secondary));
+  color: var(--system-accent);
+}
+
+.navbar-add-folder-button:active {
+  transform: scale(0.97);
+}
+
+.navbar-add-folder-button .material-symbols-outlined {
+  font-size: 1.1rem;
 }
 
 .android-sidebar-toggle {
@@ -506,6 +544,13 @@ html[data-android-app='true'] .android-sidebar-toggle {
   .navbar-button {
     width: 36px;
     height: 36px;
+  }
+
+  .navbar-add-folder-button {
+    height: 36px;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 0.78rem;
   }
 
   .navbar-right {

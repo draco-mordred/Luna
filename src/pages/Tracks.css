@@ -180,7 +180,7 @@
 .track-library-link:hover,
 .track-library-link:focus-visible {
   color: var(--system-accent);
-  text-decoration: underline;
+  /* text-decoration: underline; */
   text-underline-offset: 3px;
 }
 
@@ -210,6 +210,8 @@
 .track-item.playing .track-number,
 .track-item.playing .track-name,
 .track-item.playing .track-artist,
+.track-item.playing .track-artist-credit,
+.track-item.playing .track-library-link,
 .track-item.playing .track-album,
 .track-item.playing .track-genre,
 .track-item.playing .track-year,
@@ -218,7 +220,7 @@
 }
 
 .track-item.playing {
-  background: color-mix(in srgb, var(--system-accent) 18%, var(--bg-secondary));
+  background: color-mix(in srgb, var(--system-accent) 25%, var(--bg-secondary));
   box-shadow: inset 3px 0 var(--system-accent);
 }
 
@@ -237,7 +239,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 5px;
   padding: 8px 5px;
   background: transparent;
@@ -251,7 +253,7 @@
     color 0.2s ease,
     background-color 0.2s ease;
   /* margin: 0px 25px 0px -30px;*/
-  margin: 0px 25% 0px -15%;
+  margin: 0px 0 0px -5px;
 }
 
 .sort-button:hover {
@@ -332,7 +334,7 @@
 .track-duration {
   font-size: 0.85rem;
   color: var(--text-tertiary);
-  text-align: right;
+  text-align: center;
 }
 
 @media (max-width: 1100px) {

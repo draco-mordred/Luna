@@ -1,6 +1,6 @@
 .sync-page {
   display: grid;
-  width: min(1120px, 100%);
+  width: min(3120px, 100%);
   gap: 20px;
   margin: 0 auto;
   padding: 24px;

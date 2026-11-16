@@ -1,18 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppIcon from '../AppIcon';
-import type { PlayerWindowMode, UsbSyncProgress } from '../../types/electron';
+import type { DesktopTitleBarStyle, PlayerWindowMode, UsbSyncProgress } from '../../types/electron';
 import { USB_SYNC_INDICATOR_EVENT, type UsbSyncIndicator } from '../../services/usbSyncIndicator';
 
-const WindowTitleBar = () => {
+interface WindowTitleBarProps {
+  desktopTitleBarStyle: DesktopTitleBarStyle;
+}
+
+const WindowTitleBar = ({ desktopTitleBarStyle }: WindowTitleBarProps) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [playerWindowMode, setPlayerWindowMode] = useState<PlayerWindowMode>('normal');
+  const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(
+    () => document.documentElement.getAttribute('data-now-playing-open') === 'true'
+  );
   const [syncIndicator, setSyncIndicator] = useState<UsbSyncIndicator | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const syncIndicatorTimeoutRef = useRef<number | null>(null);
+  const historyIndex = window.history.state?.idx;
   const canNavigateBack =
-    playerWindowMode === 'normal' && location.pathname !== '/' && location.pathname !== '/tracks';
+    playerWindowMode === 'normal' &&
+    (isNowPlayingOpen ||
+      (typeof historyIndex === 'number' && historyIndex > 0) ||
+      (location.pathname !== '/' && location.pathname !== '/tracks'));
   const syncProgressPercent =
     syncIndicator?.status === 'complete'
       ? 100
@@ -49,6 +60,17 @@ const WindowTitleBar = () => {
       unsubscribeMaximized();
       unsubscribeMode();
     };
+  }, []);
+
+  useEffect(() => {
+    const handleNowPlayingStateChange = () => {
+      setIsNowPlayingOpen(
+        document.documentElement.getAttribute('data-now-playing-open') === 'true'
+      );
+    };
+    window.addEventListener('luna-now-playing-state-change', handleNowPlayingStateChange);
+    return () =>
+      window.removeEventListener('luna-now-playing-state-change', handleNowPlayingStateChange);
   }, []);
 
   useEffect(() => {
@@ -136,6 +158,10 @@ const WindowTitleBar = () => {
   };
 
   const navigateBack = () => {
+    if (isNowPlayingOpen) {
+      window.dispatchEvent(new Event('luna-collapse-now-playing'));
+      return;
+    }
     const historyIndex = window.history.state?.idx;
     if (typeof historyIndex === 'number' && historyIndex > 0) navigate(-1);
     else if (location.pathname.startsWith('/settings/')) navigate('/settings');
@@ -146,28 +172,110 @@ const WindowTitleBar = () => {
     else navigate('/');
   };
 
+  const isMacosStyle = desktopTitleBarStyle === 'macos';
+  const appBrand = (
+    <>
+      <AppIcon className='window-titlebar-icon' />
+      <span>Luna Music</span>
+    </>
+  );
+  const backButton = (
+    <button
+      type='button'
+      className='window-titlebar-button window-titlebar-back'
+      aria-label='Go back'
+      title={canNavigateBack ? 'Go back' : 'No previous page'}
+      disabled={!canNavigateBack}
+      onClick={canNavigateBack ? navigateBack : undefined}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <span className='material-symbols-outlined' aria-hidden='true'>
+        arrow_back
+      </span>
+    </button>
+  );
+  const minimizeIcon = desktopTitleBarStyle === 'music' ? 'music_note' : 'remove';
+  const maximizeIcon =
+    desktopTitleBarStyle === 'music' ? 'album' : isMaximized ? 'filter_none' : 'crop_square';
+  const windowControls = (
+    <div
+      className={`window-titlebar-controls${isMacosStyle ? ' macos-controls' : ''}`}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      {playerWindowMode !== 'mini' && (
+        <button
+          type='button'
+          className={`window-titlebar-button${isMacosStyle ? ' traffic-light minimize' : ''}`}
+          aria-label='Minimize window'
+          title='Minimize'
+          onClick={() => runWindowAction(window.electronAPI?.minimizeWindow)}
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            {minimizeIcon}
+          </span>
+        </button>
+      )}
+      {playerWindowMode === 'normal' ? (
+        <button
+          type='button'
+          className={`window-titlebar-button${isMacosStyle ? ' traffic-light maximize' : ''}`}
+          aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
+          title={isMaximized ? 'Restore' : 'Maximize'}
+          onClick={toggleMaximize}
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            {maximizeIcon}
+          </span>
+        </button>
+      ) : playerWindowMode === 'fullscreen' ? (
+        <button
+          type='button'
+          className={`window-titlebar-button${isMacosStyle ? ' traffic-light maximize' : ''}`}
+          aria-label='Exit fullscreen player mode'
+          title='Exit fullscreen player mode'
+          onClick={() => void exitPlayerMode()}
+        >
+          <span className='material-symbols-outlined' aria-hidden='true'>
+            {desktopTitleBarStyle === 'music' ? 'album' : 'close_fullscreen'}
+          </span>
+        </button>
+      ) : null}
+      <button
+        type='button'
+        className={`window-titlebar-button close${isMacosStyle ? ' traffic-light close-light' : ''}`}
+        aria-label='Close window'
+        title='Close'
+        onClick={() => runWindowAction(window.electronAPI?.closeWindow)}
+      >
+        <span className='material-symbols-outlined' aria-hidden='true'>
+          {desktopTitleBarStyle === 'music' ? 'stop_circle' : 'close'}
+        </span>
+      </button>
+    </div>
+  );
+
   return (
     <header
-      className={`window-titlebar ${playerWindowMode}${syncIndicator ? ` syncing-${syncIndicator.status}` : ''}`}
+      className={`window-titlebar ${playerWindowMode} ${desktopTitleBarStyle}${syncIndicator ? ` syncing-${syncIndicator.status}` : ''}`}
       onDoubleClick={playerWindowMode === 'normal' ? toggleMaximize : undefined}
     >
-      <div className='window-titlebar-brand'>
-        {canNavigateBack && (
-          <button
-            type='button'
-            className='window-titlebar-button window-titlebar-back'
-            aria-label='Go back'
-            onClick={navigateBack}
-            onDoubleClick={(event) => event.stopPropagation()}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              arrow_back
-            </span>
-          </button>
-        )}
-        <AppIcon className='window-titlebar-icon' />
-        <span>Luna Music</span>
-      </div>
+      {isMacosStyle ? (
+        <>
+          {windowControls}
+          <div className='window-titlebar-brand window-titlebar-macos-brand'>{appBrand}</div>
+          <div className='window-titlebar-macos-back'>
+            {backButton}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className='window-titlebar-brand'>
+            {backButton}
+            {appBrand}
+          </div>
+          {windowControls}
+        </>
+      )}
       {syncIndicator && (
         <div
           className={`window-titlebar-sync ${syncIndicator.status}`}
@@ -213,54 +321,6 @@ const WindowTitleBar = () => {
           <span style={{ width: `${syncProgressPercent}%` }} />
         </div>
       )}
-      <div className='window-titlebar-controls' onDoubleClick={(event) => event.stopPropagation()}>
-        {playerWindowMode !== 'mini' && (
-          <button
-            type='button'
-            className='window-titlebar-button'
-            aria-label='Minimize window'
-            onClick={() => runWindowAction(window.electronAPI?.minimizeWindow)}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              remove
-            </span>
-          </button>
-        )}
-        {playerWindowMode === 'normal' ? (
-          <button
-            type='button'
-            className='window-titlebar-button'
-            aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
-            onClick={toggleMaximize}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              {isMaximized ? 'filter_none' : 'crop_square'}
-            </span>
-          </button>
-        ) : playerWindowMode === 'fullscreen' ? (
-          <button
-            type='button'
-            className='window-titlebar-button'
-            aria-label='Exit fullscreen player mode'
-            title='Exit fullscreen player mode'
-            onClick={() => void exitPlayerMode()}
-          >
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              close_fullscreen
-            </span>
-          </button>
-        ) : null}
-        <button
-          type='button'
-          className='window-titlebar-button close'
-          aria-label='Close window'
-          onClick={() => runWindowAction(window.electronAPI?.closeWindow)}
-        >
-          <span className='material-symbols-outlined' aria-hidden='true'>
-            close
-          </span>
-        </button>
-      </div>
     </header>
   );
 };

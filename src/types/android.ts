@@ -8,4 +8,4 @@ export type AndroidPlayBarStyle =
   | 'trace'
   | 'spin';
 
-export type NowPlayingLayout = 'standard' | 'full-art';
+export type NowPlayingLayout = 'standard' | 'full-art' | 'theatre';

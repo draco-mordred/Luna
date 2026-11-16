@@ -141,9 +141,123 @@
   color: var(--titlebar-hover-icon);
 }
 
+.window-titlebar-button:disabled {
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.window-titlebar-button:disabled:hover {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
 .window-titlebar-button .material-symbols-outlined {
   font-size: 1rem;
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.window-titlebar.macos .macos-controls {
+  position: absolute;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-titlebar.macos .traffic-light {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: rgba(32, 24, 24, 0.8);
+}
+
+.window-titlebar.macos .traffic-light.minimize {
+  background: #f5bd4f;
+}
+
+.window-titlebar.macos .traffic-light.maximize {
+  background: #35c759;
+}
+
+.window-titlebar.macos .traffic-light.close-light {
+  background: #ff5f57;
+}
+
+.window-titlebar.macos .traffic-light:hover {
+  filter: brightness(0.9);
+}
+
+.window-titlebar.macos .traffic-light .material-symbols-outlined {
+  font-size: 9px;
+  opacity: 0;
+  font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 14;
+}
+
+.window-titlebar.macos .traffic-light:hover .material-symbols-outlined,
+.window-titlebar.macos .traffic-light:focus-visible .material-symbols-outlined {
+  opacity: 1;
+}
+
+.window-titlebar.macos .window-titlebar-macos-brand {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.window-titlebar.macos .window-titlebar-macos-back {
+  position: absolute;
+  top: 2px;
+  right: 14px;
+  display: flex;
+  height: 30px;
+  align-items: center;
+}
+
+.window-titlebar.macos .window-titlebar-back {
+  width: 34px;
+  height: 30px;
+  margin: 0;
+  border-radius: 9px;
+}
+
+.window-titlebar.music .window-titlebar-controls {
+  gap: 3px;
+}
+
+.window-titlebar.music .window-titlebar-controls .window-titlebar-button:not(.close) {
+  width: 42px;
+}
+
+.window-titlebar.music .window-titlebar-button.close {
+  width: 46px;
+}
+
+.window-titlebar.music .window-titlebar-controls .material-symbols-outlined {
+  color: var(--system-accent);
+  font-size: 1.15rem;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+}
+
+.window-titlebar.music .window-titlebar-controls .window-titlebar-button:hover {
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--system-accent) 20%, transparent);
+  color: var(--system-accent);
+}
+
+.window-titlebar.music .window-titlebar-button.close:hover {
+  background: color-mix(in srgb, var(--system-accent) 24%, transparent);
+  color: var(--system-accent);
 }
 
 @keyframes window-titlebar-sync-spin {

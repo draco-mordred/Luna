@@ -645,10 +645,10 @@ html[data-native-titlebar='true'] .sidebar.collapsed {
   /* padding: 68px 0 0 0; */
 }
 
-@media (max-width: 768px) {
+@media (max-width: 769px) {
   .main-area {
-    left: 58px;
-    right: 4px;
+    left: 55px;
+    right: 0px;
     position: absolute;
     top: 0px;
     bottom: 0;
@@ -664,6 +664,7 @@ html[data-native-titlebar='true'] .sidebar.collapsed {
   scrollbar-gutter: stable;
   padding-top: 140px;
   padding-bottom: var(--playbar-collapsed-height);
+  overflow-x: hidden;
 }
 
 .page-content.settings-route-content {
@@ -721,21 +722,22 @@ html[data-android-app='true'] .page-content.settings-route-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--system-accent) 55%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--system-accent) 14%, var(--bg-secondary));
+  gap: 10px;
+  min-height: 35px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--system-accent) 85%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--system-accent) 70%, var(--bg-secondary));
   color: var(--text-primary);
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 150ms ease,
     border-color 150ms ease,
     transform 150ms ease;
+    font-size: 15px;
 }
 
 .shuffle-play-button:hover:not(:disabled) {
@@ -955,6 +957,42 @@ html[data-android-app='true'] .page-content.settings-route-content {
   animation:
     playback-notice-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both,
     playback-notice-pulse 620ms ease-in-out 420ms 1;
+}
+
+html:not([data-android-app='true']) .album-art,
+html:not([data-android-app='true']) .album-art-mini,
+html:not([data-android-app='true']) .album-cover,
+html:not([data-android-app='true']) .album-list-cover,
+html:not([data-android-app='true']) .home-artwork,
+html:not([data-android-app='true']) .home-artist-image,
+html:not([data-android-app='true']) .artist-image,
+html:not([data-android-app='true']) .collection-artwork-image,
+html:not([data-android-app='true']) .collection-details-image,
+html:not([data-android-app='true']) .collection-details-album-cover,
+html:not([data-android-app='true']) .android-collection-art,
+html:not([data-android-app='true']) .playlist-artwork-disc,
+html:not([data-android-app='true']) .playlist-artwork-grid,
+html:not([data-android-app='true']) .home-top-pick-artwork,
+html:not([data-android-app='true']) .home-top-pick-artwork-grid {
+  border: 0 !important;
+}
+
+html:not([data-android-app='true'])
+  :is(
+    .album-art,
+    .album-art-mini,
+    .album-cover,
+    .album-list-cover,
+    .home-artwork,
+    .home-artist-image,
+    .artist-image,
+    .collection-details-album-cover,
+    .collection-details-image,
+    .android-collection-art,
+    .playlist-artwork-tile
+  )
+  img {
+  border: 0 !important;
 }
 
 .playback-notice.exiting {

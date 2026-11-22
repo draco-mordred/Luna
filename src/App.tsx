@@ -72,6 +72,7 @@ import {
 import { getLibraryItemPath } from './utils/libraryNavigation';
 import { getDominantImageColor } from './utils/imageColors';
 import { splitArtistCredits } from './utils/artistCredits';
+import { createMusicMix } from './utils/musicMix';
 import packageJson from '../package.json';
 
 const Tracks = lazy(() => import('./pages/Tracks'));
@@ -1797,6 +1798,48 @@ const App = () => {
       });
     },
     [playQueue, playQueueIndex]
+  );
+
+  const handleStartMusicMix = useCallback(
+    (seedTrack: Track) => {
+      const currentQueueTrack = playQueue[playQueueIndex];
+      const isCurrentQueueTrack = currentQueueTrack?.id === seedTrack.id;
+      const excludedTrackIds = new Set(
+        isCurrentQueueTrack
+          ? playQueue.slice(playQueueIndex + 1).map((track) => track.id)
+          : []
+      );
+      const recentPlayCounts = rememberRecentMedia ? loadRecentMediaHistory().playCounts : {};
+      const mix = createMusicMix(seedTrack, libraryTracks, excludedTrackIds, {
+        lovedTrackIds: new Set(lovedTrackIds),
+        playCounts: recentPlayCounts,
+      });
+      if (mix.length === 0) {
+        showPlaybackNotice('There are no other local tracks available for a Music Mix.');
+        return;
+      }
+
+      if (isCurrentQueueTrack) {
+        handleQueueTracks(mix, true);
+        showPlaybackNotice(`Music Mix queued: ${mix.length} tracks will play next.`);
+        return;
+      }
+
+      playQueueBaseRef.current = mix;
+      setPlayQueue(mix);
+      void playQueueFrom(mix, 0);
+      showPlaybackNotice(`Starting a Music Mix with ${mix.length} local tracks.`);
+    },
+    [
+      handleQueueTracks,
+      libraryTracks,
+      lovedTrackIds,
+      playQueue,
+      playQueueFrom,
+      playQueueIndex,
+      rememberRecentMedia,
+      showPlaybackNotice,
+    ]
   );
 
   const handleQueueReorder = useCallback(
@@ -3778,6 +3821,7 @@ const App = () => {
           onToggleShuffle={handleToggleShuffle}
           repeatMode={repeatMode}
           onToggleRepeat={handleToggleRepeat}
+          onStartMusicMix={handleStartMusicMix}
           audioOutputDeviceId={audioOutputDeviceId}
           onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
         />
@@ -3816,6 +3860,7 @@ const App = () => {
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
           onQueueTracks={handleQueueTracks}
+          onStartMusicMix={handleStartMusicMix}
           onQueueReorder={handleQueueReorder}
           onShareTrack={handleShareTrack}
           onCreateArtistPlaylist={handleCreateArtistPlaylist}

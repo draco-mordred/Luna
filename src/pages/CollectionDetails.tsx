@@ -1,4 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import LibraryTrackList from '../components/LibraryTrackList';
 import CollectionContextMenu from '../components/CollectionContextMenu';
@@ -10,10 +18,27 @@ import { getLibraryItemPath } from '../utils/libraryNavigation';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
 import { isAndroidApp } from '../services/androidMusicLibrary';
-import { getContrastingTextColor, getDominantImageColor } from '../utils/imageColors';
+import {
+  createArtworkColorSampler,
+  getContrastingTextColor,
+  getDominantImageColor,
+  type ArtworkColorSampler,
+} from '../utils/imageColors';
 import './CollectionDetails.css';
 
 type CollectionType = 'album' | 'artist' | 'genre';
+
+const getObjectPositionFraction = (position: string, axis: 'x' | 'y') => {
+  const [horizontal = '50%', vertical = '50%'] = position.split(/\s+/);
+  const value = axis === 'x' ? horizontal : vertical;
+  const percentage = Number.parseFloat(value);
+  if (value.endsWith('%') && Number.isFinite(percentage)) {
+    return Math.max(0, Math.min(1, percentage / 100));
+  }
+  if (value === 'left' || value === 'top') return 0;
+  if (value === 'right' || value === 'bottom') return 1;
+  return 0.5;
+};
 
 interface CollectionDetailsProps {
   type: CollectionType;
@@ -184,7 +209,10 @@ const CollectionDetails = ({
     type === 'artist' && artistWebInfo?.artist === title?.toLocaleLowerCase()
       ? (artistWebInfo?.info.imageUrl ?? androidAlbumArt)
       : androidAlbumArt;
+  const isDesktopCollection =
+    Boolean(window.electronAPI) && !isAndroid && hasArtworkHero && Boolean(image);
   const [dominantColor, setDominantColor] = useState('19, 23, 31');
+  const foregroundColor = getContrastingTextColor(dominantColor);
   useEffect(() => {
     if (!image) return undefined;
     let active = true;
@@ -195,6 +223,158 @@ const CollectionDetails = ({
       active = false;
     };
   }, [image]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (hasArtworkHero && image) {
+      root.setAttribute('data-collection-artwork-theme', 'true');
+    } else {
+      root.removeAttribute('data-collection-artwork-theme');
+    }
+    if (isDesktopCollection) {
+      root.setAttribute('data-collection-topbar-theme', 'true');
+    } else {
+      root.removeAttribute('data-collection-topbar-theme');
+    }
+    return () => {
+      root.removeAttribute('data-collection-artwork-theme');
+      root.removeAttribute('data-collection-topbar-theme');
+      root.style.removeProperty('--collection-artwork-color');
+      root.style.removeProperty('--collection-artwork-foreground-color');
+      root.style.removeProperty('--collection-topbar-color');
+      root.style.removeProperty('--collection-topbar-foreground-color');
+    };
+  }, [hasArtworkHero, image, isDesktopCollection]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (hasArtworkHero && image) {
+      root.style.setProperty('--collection-artwork-color', dominantColor);
+      root.style.setProperty('--collection-artwork-foreground-color', foregroundColor);
+    } else {
+      root.style.removeProperty('--collection-artwork-color');
+      root.style.removeProperty('--collection-artwork-foreground-color');
+    }
+    if (isDesktopCollection && image) {
+      root.style.setProperty('--collection-topbar-color', dominantColor);
+      root.style.setProperty('--collection-topbar-foreground-color', foregroundColor);
+    } else {
+      root.style.removeProperty('--collection-topbar-color');
+      root.style.removeProperty('--collection-topbar-foreground-color');
+    }
+  }, [dominantColor, foregroundColor, hasArtworkHero, image, isDesktopCollection]);
+  useEffect(() => {
+    if (!hasArtworkHero || !image) return undefined;
+
+    const hero = artworkHeroRef.current;
+    const artworkImage = hero?.querySelector<HTMLImageElement>('.collection-artwork-image img');
+    if (!hero || !artworkImage) return undefined;
+
+    let active = true;
+    let sampler: ArtworkColorSampler | null = null;
+    let animationFrame = 0;
+    const textTargetsSelector = [
+      '.collection-artwork-info .collection-details-type',
+      '.collection-artwork-info h1',
+      '.collection-artwork-info .collection-details-subtitle',
+      '.collection-artwork-info .collection-details-meta',
+      '.collection-artwork-more-info',
+      '.collection-artwork-show-more',
+      '.collection-artwork-page-topnav',
+      '.collection-artwork-page-topnav .collection-artwork-icon-button',
+    ].join(', ');
+
+    const updateTextColors = () => {
+      animationFrame = 0;
+      if (!active || !artworkImage.complete || !artworkImage.naturalWidth) return;
+      const activeSampler = sampler;
+      if (!activeSampler) return;
+
+      const imageRect = artworkImage.getBoundingClientRect();
+      if (!imageRect.width || !imageRect.height) return;
+
+      const imageScale = Math.max(
+        imageRect.width / artworkImage.naturalWidth,
+        imageRect.height / artworkImage.naturalHeight
+      );
+      const renderedWidth = artworkImage.naturalWidth * imageScale;
+      const renderedHeight = artworkImage.naturalHeight * imageScale;
+      const objectPosition = getComputedStyle(artworkImage).objectPosition;
+      const cropLeft =
+        (renderedWidth - imageRect.width) * getObjectPositionFraction(objectPosition, 'x');
+      const cropTop =
+        (renderedHeight - imageRect.height) * getObjectPositionFraction(objectPosition, 'y');
+
+      hero.querySelectorAll<HTMLElement>(textTargetsSelector).forEach((element) => {
+        const elementRect = element.getBoundingClientRect();
+        const left = Math.max(elementRect.left, imageRect.left);
+        const top = Math.max(elementRect.top, imageRect.top);
+        const right = Math.min(elementRect.right, imageRect.right);
+        const bottom = Math.min(elementRect.bottom, imageRect.bottom);
+        if (right <= left || bottom <= top) {
+          element.style.removeProperty('--collection-local-foreground-color');
+          element.style.removeProperty('--collection-local-contrast-shadow');
+          return;
+        }
+
+        const color = activeSampler(
+          (left - imageRect.left + cropLeft) / renderedWidth,
+          (top - imageRect.top + cropTop) / renderedHeight,
+          (right - left) / renderedWidth,
+          (bottom - top) / renderedHeight
+        );
+        if (!color) {
+          element.style.removeProperty('--collection-local-foreground-color');
+          element.style.removeProperty('--collection-local-contrast-shadow');
+          return;
+        }
+        element.style.setProperty('--collection-local-foreground-color', color);
+        element.style.setProperty(
+          '--collection-local-contrast-shadow',
+          color === '#fff' ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)'
+        );
+      });
+    };
+
+    const scheduleTextColorUpdate = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(updateTextColors);
+    };
+    const scrollContainer = hero.closest('.page-content');
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleTextColorUpdate);
+    resizeObserver?.observe(hero);
+    resizeObserver?.observe(artworkImage);
+    const content = hero.querySelector('.collection-artwork-content');
+    const pageTopnav = hero.querySelector('.collection-artwork-page-topnav');
+    if (content) resizeObserver?.observe(content);
+    if (pageTopnav) resizeObserver?.observe(pageTopnav);
+    const mutationObserver = new MutationObserver(scheduleTextColorUpdate);
+    mutationObserver.observe(hero, { characterData: true, childList: true, subtree: true });
+
+    scrollContainer?.addEventListener('scroll', scheduleTextColorUpdate, { passive: true });
+    window.addEventListener('scroll', scheduleTextColorUpdate, { passive: true });
+    window.addEventListener('resize', scheduleTextColorUpdate);
+    artworkImage.addEventListener('load', scheduleTextColorUpdate);
+    void createArtworkColorSampler(image).then((nextSampler) => {
+      if (!active) return;
+      sampler = nextSampler;
+      scheduleTextColorUpdate();
+    });
+
+    return () => {
+      active = false;
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      scrollContainer?.removeEventListener('scroll', scheduleTextColorUpdate);
+      window.removeEventListener('scroll', scheduleTextColorUpdate);
+      window.removeEventListener('resize', scheduleTextColorUpdate);
+      artworkImage.removeEventListener('load', scheduleTextColorUpdate);
+      hero.querySelectorAll<HTMLElement>(textTargetsSelector).forEach((element) => {
+        element.style.removeProperty('--collection-local-foreground-color');
+        element.style.removeProperty('--collection-local-contrast-shadow');
+      });
+    };
+  }, [hasArtworkHero, image]);
   useEffect(() => {
     if (isAndroid || !hasArtworkHero) return undefined;
 
@@ -276,7 +456,6 @@ const CollectionDetails = ({
       : type === 'artist'
         ? Boolean(favoriteArtistNames?.includes(title.toLocaleLowerCase()))
         : isLoved;
-  const foregroundColor = getContrastingTextColor(dominantColor);
   const toggleCollectionFavorite = () => {
     if (type === 'album' || type === 'artist') {
       onToggleFavoriteCollection?.(

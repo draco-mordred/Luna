@@ -185,8 +185,14 @@
 }
 
 .collection-details-album-info {
-  min-width: 0;
-  padding: 12px 44px 12px 12px;
+    min-width: 0;
+    padding: 12px 44px 12px 12px;
+    background: 
+color-mix(
+    in srgb,
+    rgb(var(--collection-artwork-color, 19, 23, 31)) 100%,
+    transparent
+  )
 }
 
 .collection-details-album-title {
@@ -480,7 +486,8 @@ html[data-android-app='true'] .android-collection-bg::after {
   inset: 0;
   overflow: hidden;
   background: rgb(var(--collection-dominant-color));
-  height: 115%;
+  top: 0;
+  bottom: -90px;
 }
 
 .collection-artwork-atmosphere img {
@@ -571,10 +578,18 @@ html[data-android-app='true'] .android-collection-bg::after {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--collection-foreground-color) 14%, transparent);
+  /* border-bottom: 1px solid
+    color-mix(
+      in srgb,
+      var(--collection-local-foreground-color, var(--collection-foreground-color)) 14%,
+      transparent
+    );
   background: color-mix(in srgb, var(--collection-dominant-color) 24%, transparent);
   -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); */
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
+  transition: color 160ms ease, border-color 160ms ease;
+  top: 130px;
 }
 
 .collection-artwork-page-topnav-actions {
@@ -589,15 +604,22 @@ html[data-android-app='true'] .android-collection-bg::after {
   height: 44px;
   flex: 0 0 44px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--collection-foreground-color) 20%, transparent);
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--collection-local-foreground-color, var(--collection-foreground-color)) 20%,
+      transparent
+    );
   border-radius: 50%;
   background: color-mix(in srgb, var(--collection-dominant-color) 72%, transparent);
   backdrop-filter: blur(14px);
-  color: var(--collection-foreground-color);
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
   cursor: pointer;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
   transition:
     background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
     transform 160ms ease,
     box-shadow 160ms ease;
 }
@@ -741,16 +763,20 @@ html[data-android-app='true'] .android-collection-bg::after {
 .collection-artwork-info .collection-details-type,
 .collection-artwork-info .collection-details-subtitle,
 .collection-artwork-info .collection-details-meta {
-  color: var(--collection-foreground-color);
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
+  text-shadow: 0 1px 3px var(--collection-local-contrast-shadow, rgba(0, 0, 0, 0.65));
+  transition: color 160ms ease;
 }
 
 .collection-artwork-info h1 {
   max-width: 100%;
   margin: 0;
   overflow-wrap: anywhere;
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
   font-size: clamp(2rem, 5vw, 4.8rem);
   line-height: 1.05;
-  text-shadow: 0 2px 20px color-mix(in srgb, var(--collection-dominant-color) 55%, transparent);
+  text-shadow: 0 1px 3px var(--collection-local-contrast-shadow, rgba(0, 0, 0, 0.65));
+  transition: color 160ms ease;
 }
 
 .collection-artwork-info .collection-details-subtitle,
@@ -795,13 +821,20 @@ html[data-android-app='true'] .android-collection-bg::after {
   gap: 4px;
   margin-top: 8px;
   padding: 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--collection-foreground-color) 24%, transparent);
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--collection-local-foreground-color, var(--collection-foreground-color)) 24%,
+      transparent
+    );
   border-radius: 999px;
   background: color-mix(in srgb, var(--collection-dominant-color) 72%, transparent);
-  color: var(--collection-foreground-color);
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
+  text-shadow: 0 1px 3px var(--collection-local-contrast-shadow, rgba(0, 0, 0, 0.65));
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
 }
 
 .collection-artwork-more-info {
@@ -809,7 +842,9 @@ html[data-android-app='true'] .android-collection-bg::after {
   flex-wrap: wrap;
   gap: 4px 14px;
   margin-top: 8px;
-  color: var(--collection-foreground-color);
+  color: var(--collection-local-foreground-color, var(--collection-foreground-color));
+  text-shadow: 0 1px 3px var(--collection-local-contrast-shadow, rgba(0, 0, 0, 0.65));
+  transition: color 160ms ease;
   font-size: 0.78rem;
 }
 

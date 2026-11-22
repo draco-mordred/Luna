@@ -9,6 +9,9 @@
   /* background: var(--bg-secondary); */
   background: transparent;
   color: var(--text-primary);
+  transition:
+    background-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition);
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -23,7 +26,9 @@
 }
 
 .window-titlebar-brand .window-titlebar-back{
-  width: 55px;
+  width: 52px;
+    border-radius: 6px;
+    margin: 2px 4px -2px -10px;
 }
 
 .window-titlebar-back {
@@ -84,6 +89,7 @@
 .window-titlebar-sync-label {
   overflow: hidden;
   color: var(--text-primary);
+  transition: color var(--chrome-theme-transition);
   font-size: 0.7rem;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -129,6 +135,9 @@
   background: transparent;
   color: var(--system-accent);
   cursor: pointer;
+  transition:
+    color var(--chrome-theme-transition),
+    background-color 160ms ease;
 }
 
 .window-titlebar-button:hover {
@@ -155,6 +164,7 @@
 
 .window-titlebar-button .material-symbols-outlined {
   font-size: 1rem;
+  transition: color var(--chrome-theme-transition);
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 }
 
@@ -236,16 +246,19 @@
 }
 
 .window-titlebar.music .window-titlebar-controls .window-titlebar-button:not(.close) {
-  width: 42px;
+     width: 50px;
+    margin: 2px 0px 2px 0px;
 }
 
 .window-titlebar.music .window-titlebar-button.close {
-  width: 46px;
+      width: 50px;
+    margin: 2px 0px 2px 0px;
 }
 
 .window-titlebar.music .window-titlebar-controls .material-symbols-outlined {
   color: var(--system-accent);
   font-size: 1.15rem;
+  transition: color var(--chrome-theme-transition);
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
@@ -288,4 +301,33 @@
   .window-titlebar-sync.running .window-titlebar-sync-icon {
     animation-duration: 3s;
   }
+}
+
+html[data-collection-topbar-theme='true'] .window-titlebar {
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--collection-topbar-color, 19, 23, 31)) 76%,
+    transparent
+  );
+}
+
+html[data-collection-topbar-theme='true'] .window-titlebar,
+html[data-collection-topbar-theme='true'] .window-titlebar-sync-label,
+html[data-collection-topbar-theme='true'] .window-titlebar .window-titlebar-button,
+html[data-collection-topbar-theme='true']
+  .window-titlebar
+  .material-symbols-outlined {
+  color: var(--collection-topbar-foreground-color, #fff);
+}
+
+html[data-collection-topbar-theme='true']
+  .window-titlebar.music
+  .window-titlebar-controls
+  .material-symbols-outlined {
+  color: var(--collection-topbar-foreground-color, #fff);
+}
+
+html[data-collection-topbar-theme='true'] .window-titlebar .window-titlebar-button:hover {
+  background: color-mix(in srgb, var(--collection-topbar-foreground-color, #fff) 16%, transparent);
+  color: var(--collection-topbar-foreground-color, #fff);
 }

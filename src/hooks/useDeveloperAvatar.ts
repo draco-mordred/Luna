@@ -3,20 +3,31 @@ import { DEVELOPER_AVATAR_KEY } from '../constants/developer';
 
 let developerAvatarRequest: Promise<string | null> | null = null;
 
+const fetchResource = async (url: string, init?: RequestInit) => {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (error instanceof TypeError) return null;
+    throw error;
+  }
+};
+
 const fetchAndCacheDeveloperAvatar = () => {
   if (developerAvatarRequest) return developerAvatarRequest;
   developerAvatarRequest = (async () => {
     try {
-      const profileResponse = await fetch('https://api.github.com/users/draco-mordred', {
+      const profileResponse = await fetchResource('https://api.github.com/users/draco-mordred', {
         headers: { Accept: 'application/vnd.github+json' },
       });
+      if (!profileResponse) return null;
       if (!profileResponse.ok) {
         throw new Error(`GitHub profile request failed (${profileResponse.status}).`);
       }
       const profile = (await profileResponse.json()) as { avatar_url?: string };
       if (!profile.avatar_url) throw new Error('The GitHub profile did not provide an avatar.');
 
-      const avatarResponse = await fetch(`${profile.avatar_url}&size=128`);
+      const avatarResponse = await fetchResource(`${profile.avatar_url}&size=128`);
+      if (!avatarResponse) return null;
       if (!avatarResponse.ok) {
         throw new Error(`GitHub avatar request failed (${avatarResponse.status}).`);
       }
@@ -45,15 +56,25 @@ const fetchAndCacheDeveloperAvatar = () => {
 };
 
 export const useDeveloperAvatar = () => {
-  const [avatar, setAvatar] = useState(() => window.localStorage.getItem(DEVELOPER_AVATAR_KEY) ?? '');
+  const [avatar, setAvatar] = useState(
+    () => window.localStorage.getItem(DEVELOPER_AVATAR_KEY) ?? ''
+  );
 
   useEffect(() => {
     let active = true;
-    void fetchAndCacheDeveloperAvatar().then((cachedAvatar) => {
-      if (active && cachedAvatar) setAvatar(cachedAvatar);
-    });
+    const refreshAvatar = () => {
+      if (!navigator.onLine) return;
+      void fetchAndCacheDeveloperAvatar().then((cachedAvatar) => {
+        if (active && cachedAvatar) setAvatar(cachedAvatar);
+      });
+    };
+
+    window.addEventListener('online', refreshAvatar);
+    refreshAvatar();
+
     return () => {
       active = false;
+      window.removeEventListener('online', refreshAvatar);
     };
   }, []);
 

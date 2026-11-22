@@ -16,6 +16,9 @@
   z-index: 100;
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   backdrop-filter: blur(20px) saturate(160%);
+  transition:
+    background-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition);
 }
 
 .navbar-left {
@@ -36,6 +39,7 @@
   line-height: 1.2;
   margin: 0;
   white-space: nowrap;
+  transition: color var(--chrome-theme-transition);
 }
 
 .navbar-back-button {
@@ -49,6 +53,9 @@
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
+  transition:
+    color var(--chrome-theme-transition),
+    background-color 160ms ease;
 }
 
 .navbar-back-button:hover {
@@ -68,8 +75,9 @@ html[data-android-app='true'] .navbar-back-button {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
+  width: max-content;
   min-width: 0;
   max-width: min(60vw, 900px);
   overflow-x: auto;
@@ -85,6 +93,7 @@ html[data-android-app='true'] .navbar-back-button {
 .tab-button {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 8px;
   padding: 10px 16px 8px;
   background: transparent;
@@ -94,9 +103,9 @@ html[data-android-app='true'] .navbar-back-button {
   cursor: pointer;
   border-radius: 8px 8px 0 0;
   transition:
-    background-color 0.25s ease,
-    color 0.25s ease,
-    border-color 0.25s ease;
+    background-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition),
+    border-color var(--chrome-theme-transition);
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 500;
@@ -127,6 +136,7 @@ html[data-android-app='true'] .navbar-back-button {
 
 .tab-icon {
   font-size: 1.2rem;
+  transition: color var(--chrome-theme-transition);
   font-variation-settings:
     'FILL' 0,
     'wght' 400,
@@ -172,7 +182,9 @@ html[data-android-app='true'] .navbar-back-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition);
   position: relative;
 }
 
@@ -203,9 +215,9 @@ html[data-android-app='true'] .navbar-back-button {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
+    background-color var(--chrome-theme-transition),
+    border-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition),
     transform 160ms ease;
 }
 
@@ -460,7 +472,9 @@ html[data-android-app='true'] .android-sidebar-toggle {
   cursor: pointer;
   text-align: left;
   border-radius: 8px;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--chrome-theme-transition),
+    color var(--chrome-theme-transition);
 }
 
 .menu-button:hover {
@@ -651,4 +665,67 @@ html[data-android-app='true'] .android-usb-sync-progress-track > span {
   to {
     transform: rotate(360deg);
   }
+}
+
+html[data-collection-topbar-theme='true'] .top-navbar {
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--collection-topbar-color, 19, 23, 31)) 76%,
+    transparent
+  );
+  color: var(--collection-topbar-foreground-color, #fff);
+}
+
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-title,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-back-button,
+html[data-collection-topbar-theme='true'] .top-navbar .tab-button,
+html[data-collection-topbar-theme='true'] .top-navbar .tab-button .tab-icon,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-button,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-button .material-symbols-outlined,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-add-folder-button {
+  color: var(--collection-topbar-foreground-color, #fff);
+}
+
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-add-folder-button {
+  border-color: color-mix(
+    in srgb,
+    var(--collection-topbar-foreground-color, #fff) 42%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--collection-topbar-foreground-color, #fff) 10%,
+    transparent
+  );
+}
+
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-back-button:hover,
+html[data-collection-topbar-theme='true'] .top-navbar .tab-button:hover,
+html[data-collection-topbar-theme='true'] .top-navbar .tab-button.active,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-button:hover,
+html[data-collection-topbar-theme='true'] .top-navbar .navbar-add-folder-button:hover {
+  color: var(--collection-topbar-foreground-color, #fff);
+}
+
+html[data-collection-topbar-theme='true']
+  .top-navbar
+  .navbar-add-folder-button:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--collection-topbar-foreground-color, #fff) 72%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--collection-topbar-foreground-color, #fff) 20%,
+    transparent
+  );
+}
+
+html[data-collection-topbar-theme='true'] .top-navbar .tab-button.active {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--collection-topbar-foreground-color, #fff) 72%,
+    transparent
+  );
 }

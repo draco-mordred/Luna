@@ -377,8 +377,49 @@ const TopNavbar = ({
     setShowSettingsMenu(false);
   };
 
+  const topNavbarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const navbar = topNavbarRef.current;
+    if (!navbar) return undefined;
+
+    const handleTabsWheel = (event: WheelEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const container = event.target.closest<HTMLElement>('.tabs-container');
+      if (
+        !container ||
+        !navbar.contains(container) ||
+        container.scrollWidth <= container.clientWidth
+      ) {
+        return;
+      }
+
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (delta === 0) return;
+
+      const deltaMultiplier =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? container.clientWidth
+            : 1;
+      const maxScrollLeft = container.scrollWidth - container.clientWidth;
+      const nextScrollLeft = Math.max(
+        0,
+        Math.min(maxScrollLeft, container.scrollLeft + delta * deltaMultiplier)
+      );
+      if (nextScrollLeft === container.scrollLeft) return;
+
+      event.preventDefault();
+      container.scrollLeft = nextScrollLeft;
+    };
+
+    navbar.addEventListener('wheel', handleTabsWheel, { passive: false });
+    return () => navbar.removeEventListener('wheel', handleTabsWheel);
+  }, []);
+
   return (
     <nav
+      ref={topNavbarRef}
       className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${androidNavigationVisible ? ' android-navigation-visible' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}${libraryTabsVisible && isAndroidApp ? ' has-library-search' : ''}`}
     >
       {isAndroidApp && (

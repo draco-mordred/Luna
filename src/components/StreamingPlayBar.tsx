@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Track } from '../services/MusicLibrary';
 import type { PlayerWindowMode } from '../types/electron';
 import { useArtistImage } from '../services/artistImages';
 import { splitArtistCredits } from '../utils/artistCredits';
+import { useArtworkContrastTargets } from '../hooks/useArtworkContrastTargets';
 import AudioOutputSelector from './PlayBar/AudioOutputSelector';
 import './StreamingPlayBar.css';
 
@@ -25,6 +26,7 @@ interface StreamingPlayBarProps {
   onToggleShuffle: () => void;
   repeatMode: 'off' | 'one' | 'all';
   onToggleRepeat: () => void;
+  onStartMusicMix?: (track: Track) => void;
   audioOutputDeviceId: string;
   onAudioOutputDeviceChange: (deviceId: string) => Promise<void>;
 }
@@ -53,6 +55,7 @@ const StreamingPlayBar = ({
   onToggleShuffle,
   repeatMode,
   onToggleRepeat,
+  onStartMusicMix,
   audioOutputDeviceId,
   onAudioOutputDeviceChange,
 }: StreamingPlayBarProps) => {
@@ -67,12 +70,14 @@ const StreamingPlayBar = ({
   const currentTime = playbackPosition.trackId === track.id ? playbackPosition.currentTime : 0;
   const duration = trackDuration.trackId === track.id ? trackDuration.duration : track.duration;
   const [showLyrics, setShowLyrics] = useState(false);
+  const nowPlayingContrastRef = useRef<HTMLElement>(null);
   const primaryArtist = splitArtistCredits(track.artist)[0] ?? '';
   const { imageUrl: artistImageUrl } = useArtistImage(primaryArtist, {
     enabled: playerWindowMode !== 'normal',
     allowDownload: false,
   });
   const providerName = track.streamingProvider === 'jamendo' ? 'Jamendo' : 'Audiomack';
+  useArtworkContrastTargets(nowPlayingContrastRef, artistImageUrl || track.albumArt || null);
   const actualDuration =
     activeAudio && Number.isFinite(activeAudio.duration) && activeAudio.duration > 0
       ? activeAudio.duration
@@ -106,6 +111,7 @@ const StreamingPlayBar = ({
 
   return (
     <section
+      ref={nowPlayingContrastRef}
       className={`streaming-play-bar ${track.streamingProvider || ''} ${playerWindowMode !== 'normal' ? 'player-mode' : ''}`}
       aria-label={`${providerName} playback`}
     >
@@ -137,7 +143,22 @@ const StreamingPlayBar = ({
           </span>
         )}
         <div className='streaming-play-bar-track'>
-          <strong title={track.name}>{track.name}</strong>
+          <div className='streaming-play-bar-track-heading'>
+            <strong title={track.name}>{track.name}</strong>
+            {onStartMusicMix && (
+              <button
+                type='button'
+                className='streaming-play-bar-mix'
+                aria-label='Create a Music Mix from this track'
+                title='Create a Music Mix from this track'
+                onClick={() => onStartMusicMix(track)}
+              >
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  graphic_eq
+                </span>
+              </button>
+            )}
+          </div>
           <span title={track.artist}>{track.artist || providerName}</span>
           <small>{providerName}</small>
         </div>

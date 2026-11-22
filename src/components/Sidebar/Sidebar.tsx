@@ -82,7 +82,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <aside
+      className={`sidebar${isDesktopApp ? ' desktop-app' : ''}${collapsed ? ' collapsed' : ''}`}
+    >
       <div className='sidebar-header'>
         <button
           type='button'
@@ -185,7 +187,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={closeDrawerAfterNavigation}
             >
               <span className='nav-icon'>home</span>
-              {!collapsed && <span className='nav-label'>Home</span>}
+              <span className='nav-label'>Home</span>
             </Link>
           </li>
           <li className='nav-item'>
@@ -195,7 +197,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={closeDrawerAfterNavigation}
             >
               <span className='nav-icon'>library_music</span>
-              {!collapsed && <span className='nav-label'>Library</span>}
+              <span className='nav-label'>Library</span>
             </Link>
           </li>
 
@@ -207,7 +209,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={closeDrawerAfterNavigation}
               >
                 <span className='nav-icon'>explore</span>
-                {!collapsed && <span className='nav-label'>Browse</span>}
+                <span className='nav-label'>Browse</span>
               </Link>
             </li>
           )}
@@ -219,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={closeDrawerAfterNavigation}
             >
               <span className='nav-icon'>queue_music</span>
-              {!collapsed && <span className='nav-label'>Play queue</span>}
+              <span className='nav-label'>Play queue</span>
             </Link>
           </li>
           {isAndroidApp && (
@@ -230,7 +232,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={closeDrawerAfterNavigation}
               >
                 <span className='nav-icon'>info</span>
-                {!collapsed && <span className='nav-label'>About</span>}
+                <span className='nav-label'>About</span>
               </Link>
             </li>
           )}
@@ -243,7 +245,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={closeDrawerAfterNavigation}
               >
                 <span className='nav-icon'>radio</span>
-                {!collapsed && <span className='nav-label'>Radio</span>}
+                <span className='nav-label'>Radio</span>
               </Link>
             </li>
           )}
@@ -256,7 +258,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 title={collapsed ? 'USB Sync' : undefined}
               >
                 <span className='nav-icon'>usb</span>
-                {!collapsed && <span className='nav-label'>USB Sync</span>}
+                <span className='nav-label'>USB Sync</span>
               </Link>
             </li>
           )}
@@ -268,7 +270,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={closeDrawerAfterNavigation}
             >
               <span className='nav-icon'>playlist_add</span>
-              {!collapsed && <span className='nav-label'>Playlists</span>}
+              <span className='nav-label'>Playlists</span>
             </Link>
           </li>
         </ul>
@@ -284,7 +286,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             title={collapsed ? 'Settings' : undefined}
           >
             <span className='nav-icon'>settings</span>
-            {!collapsed && <span className='nav-label'>Settings</span>}
+            <span className='nav-label'>Settings</span>
           </Link>
         </nav>
         <div className='playlists-section'>
@@ -297,10 +299,30 @@ const Sidebar: React.FC<SidebarProps> = ({
             title={collapsed ? `${playlistsExpanded ? 'Hide' : 'Show'} playlists` : undefined}
             onClick={() => setPlaylistsExpanded((expanded) => !expanded)}
           >
-            {!collapsed && <span className='playlists-title-label'>Playlists</span>}
-            <span className='material-symbols-outlined' aria-hidden='true'>
-              {collapsed ? 'queue_music' : playlistsExpanded ? 'expand_less' : 'expand_more'}
-            </span>
+            {isDesktopApp ? (
+              <>
+                <span
+                  className='material-symbols-outlined playlists-title-icon'
+                  aria-hidden='true'
+                >
+                  queue_music
+                </span>
+                <span className='playlists-title-label'>Playlists</span>
+                <span
+                  className='material-symbols-outlined playlists-title-toggle'
+                  aria-hidden='true'
+                >
+                  {playlistsExpanded ? 'expand_less' : 'expand_more'}
+                </span>
+              </>
+            ) : (
+              <>
+                {!collapsed && <span className='playlists-title-label'>Playlists</span>}
+                <span className='material-symbols-outlined' aria-hidden='true'>
+                  {collapsed ? 'queue_music' : playlistsExpanded ? 'expand_less' : 'expand_more'}
+                </span>
+              </>
+            )}
           </button>
           {playlistsExpanded && (
             <ul className='playlists-list' id='sidebar-playlists-list'>
@@ -328,7 +350,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                         coverTrackIds={playlist.coverTrackIds}
                         tracks={playlistTracks}
                       />
-                      {!collapsed && <span className='playlist-name'>{playlist.name}</span>}
+                      {isDesktopApp ? (
+                        <span className='playlist-name'>{playlist.name}</span>
+                      ) : (
+                        !collapsed && <span className='playlist-name'>{playlist.name}</span>
+                      )}
                     </Link>
                     {collapsed && (
                       <span
@@ -351,7 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </li>
                 );
               })}
-              {playlists.length === 0 && !collapsed && (
+              {playlists.length === 0 && (isDesktopApp || !collapsed) && (
                 <li className='playlist-empty-label'>No playlists</li>
               )}
             </ul>
@@ -369,12 +395,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           ) : (
             <span className='material-symbols-outlined' aria-hidden='true'>account_circle</span>
           )}
-          {!collapsed && (
-            <span className='sidebar-developer-copy'>
-              <small>Developer</small>
-              <strong>{DEVELOPER_NAME}</strong>
-            </span>
-          )}
+          <span className='sidebar-developer-copy'>
+            <small>Developer</small>
+            <strong>{DEVELOPER_NAME}</strong>
+          </span>
         </a>
       </div>
 

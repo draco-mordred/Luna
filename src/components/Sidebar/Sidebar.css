@@ -15,7 +15,10 @@
   transition:
     width 300ms cubic-bezier(0.22, 1, 0.36, 1),
     flex-basis 300ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 320ms ease,
+    color 320ms ease,
+    border-color 320ms ease;
   will-change: width, flex-basis, transform;
   top: 0px;
 }
@@ -26,11 +29,11 @@
 }
 
 .sidebar.collapsed .sidebar-header {
-  padding: 25px 4px;
+  padding: 0px 0px 4px 0px;
 }
 
 .sidebar-header {
-  padding: 24px;
+  padding: 0px 2px 5px 12px;
   /* border-bottom: 1px solid var(--border); */
   display: flex;
   justify-content: flex-start;
@@ -43,6 +46,11 @@
 
 .sidebar.collapsed .sidebar-header {
   justify-content: center;
+}
+
+.sidebar.desktop-app .sidebar-header {
+  padding: 0 0 5px 8px;
+  justify-content: flex-start;
 }
 
 .logo {
@@ -64,7 +72,7 @@
 .logo:hover {
   color: var(--system-accent);
   background: var(--hover);
-  border-radius: 50%;
+  border-radius: 10px;
 }
 
 .logo .material-symbols-outlined {
@@ -100,7 +108,7 @@
   position: relative;
   z-index: 4;
   flex: 0 0 auto;
-  margin: 0 12px 8px;
+  margin: 0 12px -15px;
 }
 
 .sidebar-search-input {
@@ -135,6 +143,37 @@
   color: var(--text-primary);
   font: inherit;
   font-size: 0.88rem;
+}
+
+.sidebar.desktop-app .sidebar-search-section {
+  height: 44px;
+}
+
+.sidebar.desktop-app .sidebar-search-input {
+  height: 44px;
+  gap: 12px;
+  padding: 0 11px 0 3px;
+}
+
+.sidebar.desktop-app .sidebar-search-input > .material-symbols-outlined {
+  width: 24px;
+  flex: 0 0 24px;
+  text-align: center;
+}
+
+.sidebar.desktop-app .sidebar-search-button.nav-button {
+  height: 44px;
+  gap: 0;
+  justify-content: flex-start;
+  padding: 10px 0 10px 11px;
+}
+
+.sidebar.desktop-app .sidebar-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  margin-top: 0;
 }
 
 .sidebar-search-input input::placeholder {
@@ -259,6 +298,26 @@
   margin-left: 5px;
 }
 
+.sidebar.desktop-app .nav-button {
+  padding-left: 4px;
+}
+
+.sidebar.desktop-app .nav-icon {
+  flex: 0 0 24px;
+}
+
+.sidebar.desktop-app .nav-list,
+.sidebar.desktop-app .playlists-list {
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar.desktop-app.collapsed .nav-item .nav-button {
+  gap: 0;
+  padding: 10px 0 10px 11px;
+  justify-content: flex-start;
+}
+
 .nav-button:hover {
   background: color-mix(in srgb, var(--system-accent) 12%, transparent);
   color: var(--system-accent);
@@ -301,14 +360,10 @@
     transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.nav-button.collapsed .nav-label {
+.sidebar.collapsed .nav-label {
   opacity: 0;
   max-width: 0;
   transform: translateX(-6px);
-}
-
-.sidebar.collapsed .nav-label {
-  display: none;
 }
 
 .sidebar-footer {
@@ -370,7 +425,14 @@
 .sidebar-developer-copy {
   display: grid;
   min-width: 0;
+  max-width: 180px;
   gap: 3px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    opacity 200ms ease,
+    max-width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sidebar-developer-copy small {
@@ -390,9 +452,57 @@
   overflow: visible;
 }
 
+.sidebar.collapsed .sidebar-developer {
+  gap: 0;
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-developer-copy {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
 .sidebar.collapsed .sidebar-footer-nav .nav-button {
   padding: 8px 0;
   justify-content: center;
+}
+
+.sidebar.desktop-app .sidebar-footer {
+  padding: 12px 12px 16px;
+  transition: none;
+}
+
+.sidebar.desktop-app .sidebar-footer-nav .nav-button {
+  padding: 8px 12px 8px 4px;
+}
+
+.sidebar.desktop-app .sidebar-developer {
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.sidebar.desktop-app .sidebar-developer > img,
+.sidebar.desktop-app .sidebar-developer > .material-symbols-outlined {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.sidebar.desktop-app.collapsed .sidebar-developer {
+  gap: 0;
+}
+
+.sidebar.desktop-app.collapsed .sidebar-developer-copy {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+.sidebar.desktop-app.collapsed .sidebar-footer-nav .nav-button {
+  gap: 0;
+  padding: 8px 0 8px 4px;
+  justify-content: flex-start;
 }
 
 .playlists-section {
@@ -438,6 +548,42 @@
   border-radius: 4px;
 }
 
+.sidebar.desktop-app .playlists-title {
+  height: 36px;
+  min-height: 36px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 0 12px 0 4px;
+  overflow: hidden;
+}
+
+.sidebar.desktop-app .playlists-title-icon {
+  width: 24px;
+  flex: 0 0 24px;
+  text-align: center;
+}
+
+.sidebar.desktop-app .playlists-title-label {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  opacity: 1;
+  text-overflow: clip;
+  white-space: nowrap;
+  transition:
+    opacity 200ms ease,
+    max-width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar.desktop-app .playlists-title-toggle {
+  max-width: 24px;
+  margin-left: auto;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-width 200ms ease, opacity 160ms ease;
+}
+
 .sidebar.collapsed .playlists-title {
   width: 36px;
   height: 36px;
@@ -446,6 +592,26 @@
   padding: 0;
   border-radius: 8px;
   color: var(--text-secondary);
+}
+
+.sidebar.desktop-app.collapsed .playlists-title {
+  width: 100%;
+  align-self: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0 0 0 4px;
+}
+
+.sidebar.desktop-app.collapsed .playlists-title-label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+.sidebar.desktop-app.collapsed .playlists-title-toggle {
+  max-width: 0;
+  opacity: 0;
+  margin-left: 0;
 }
 
 .sidebar.collapsed .playlists-title:hover,
@@ -476,6 +642,10 @@
   justify-content: flex-start;
 }
 
+.sidebar.desktop-app .playlist-item {
+  padding: 8px 0;
+}
+
 .playlist-link {
   display: flex;
   align-items: center;
@@ -486,6 +656,12 @@
   border-radius: 6px;
   color: inherit;
   text-decoration: none;
+}
+
+.sidebar.desktop-app .playlist-link {
+  gap: 12px;
+  padding: 8px 12px 8px 4px;
+  justify-content: flex-start;
 }
 
 .playlist-link:hover,
@@ -512,6 +688,18 @@
   padding: 6px 0;
 }
 
+.sidebar.desktop-app.collapsed .playlist-link {
+  gap: 0;
+  justify-content: flex-start;
+  padding: 2px 0;
+}
+
+.sidebar.desktop-app.collapsed .playlist-link > .playlist-artwork-small {
+  width: 32px;
+  height: 32px;
+  padding: 3px;
+}
+
 .playlist-empty-label {
   padding: 8px 12px;
   color: var(--text-tertiary);
@@ -522,6 +710,20 @@
   padding: 0;
 }
 
+.sidebar.desktop-app.collapsed .playlist-item {
+  padding: 4px 0;
+}
+
+.sidebar.desktop-app .playlist-empty-label {
+  height: 34px;
+  overflow: hidden;
+  padding: 8px 4px;
+  white-space: nowrap;
+}
+
+.sidebar.desktop-app.collapsed .playlist-empty-label {
+  visibility: hidden;
+}
 .playlist-hover-card {
   position: absolute;
   z-index: 20;
@@ -605,6 +807,87 @@
   opacity: 0;
   max-width: 0;
   transform: translateX(-6px);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar {
+  border-right-color: color-mix(
+    in srgb,
+    var(--collection-artwork-foreground-color, #fff) 0%,
+    transparent
+  );
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--collection-artwork-color, 19, 23, 31)) 0%,
+    transparent
+  );
+  color: var(--collection-artwork-foreground-color, #fff);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .nav-button,
+html[data-collection-artwork-theme='true'] .sidebar .playlists-title,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-developer,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-search-input,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-search-input input,
+html[data-collection-artwork-theme='true'] .sidebar .playlist-name,
+html[data-collection-artwork-theme='true'] .sidebar .playlist-empty-label {
+  color: var(--collection-artwork-foreground-color, #fff);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-footer,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-developer {
+  border-color: color-mix(
+    in srgb,
+    var(--collection-artwork-foreground-color, #fff) 20%,
+    transparent
+  );
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-search-input {
+  border-color: color-mix(
+    in srgb,
+    var(--collection-artwork-foreground-color, #fff) 24%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    rgb(var(--collection-artwork-color, 19, 23, 31)) 82%,
+    transparent
+  );
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .nav-button.active,
+html[data-collection-artwork-theme='true'] .sidebar .nav-button:hover,
+html[data-collection-artwork-theme='true'] .sidebar .playlists-title:hover,
+html[data-collection-artwork-theme='true'] .sidebar .playlist-link:hover,
+html[data-collection-artwork-theme='true'] .sidebar .playlist-link.active {
+  border-color: color-mix(
+    in srgb,
+    var(--collection-artwork-foreground-color, #fff) 40%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--collection-artwork-foreground-color, #fff) 12%,
+    transparent
+  );
+  color: var(--collection-artwork-foreground-color, #fff);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .nav-button.active .nav-icon,
+html[data-collection-artwork-theme='true'] .sidebar .nav-button.active .nav-label,
+html[data-collection-artwork-theme='true'] .sidebar .nav-icon,
+html[data-collection-artwork-theme='true'] .sidebar .playlist-icon,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-search-input > .material-symbols-outlined,
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-developer > .material-symbols-outlined {
+  color: var(--collection-artwork-foreground-color, #fff);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-developer-copy small {
+  color: color-mix(in srgb, var(--collection-artwork-foreground-color, #fff) 72%, transparent);
+}
+
+html[data-collection-artwork-theme='true'] .sidebar .sidebar-search-input input::placeholder {
+  color: color-mix(in srgb, var(--collection-artwork-foreground-color, #fff) 56%, transparent);
 }
 
 /* Collapse Toggle */

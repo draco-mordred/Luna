@@ -6,6 +6,7 @@ import AlphaNumericIndex, { buildAlphaNumericIndex } from '../AlphaNumericIndex'
 import { useArtistImage } from '../../services/artistImages';
 import { splitArtistCredits } from '../../utils/artistCredits';
 import { useAndroidAlbumArtwork } from '../../hooks/useAndroidAlbumArtwork';
+import { useArtworkContrastTargets } from '../../hooks/useArtworkContrastTargets';
 import './PlayBar.css';
 import '../../styles/android-app.css';
 import type {
@@ -86,6 +87,7 @@ interface PlayBarProps {
   onCreateArtistPlaylist?: (
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => void;
+  onStartMusicMix?: (track: Track) => void;
   trackIsDesktopSynced?: boolean;
   isDesktopApp: boolean;
   androidPlayBarStyle: AndroidPlayBarStyle;
@@ -524,6 +526,7 @@ const PlayBar: React.FC<PlayBarProps> = ({
   onQueueReorder,
   onShareTrack,
   onCreateArtistPlaylist,
+  onStartMusicMix,
   trackIsDesktopSynced = false,
   isDesktopApp,
   androidPlayBarStyle,
@@ -614,6 +617,15 @@ const PlayBar: React.FC<PlayBarProps> = ({
         playerWindowMode === 'normal' &&
         (nowPlayingLayout === 'full-art' || nowPlayingLayout === 'theatre'))
   );
+  const nowPlayingArtworkUrl =
+    playerWindowMode !== 'normal'
+      ? (visibleArtistBackgroundImage || trackArtworkUrl || null)
+      : visibleArtistBackgroundImage ||
+        ((useCompactAndroidLayout ||
+          (androidApp && (nowPlayingLayout === 'full-art' || nowPlayingLayout === 'theatre')) ||
+          desktopArtworkLayoutEnabled)
+          ? (usePreferredArtworkBackground ? fullArtworkUrl : trackArtworkUrl) ?? null
+          : null);
   const useFloatingDesktopPlayBar = Boolean(
     isDesktopApp && !androidApp && desktopPlayBarStyle === 'floating'
   );
@@ -705,6 +717,10 @@ const PlayBar: React.FC<PlayBarProps> = ({
   };
   const lyricsPlaybackTime = Math.max(0, currentTime - lyricOffsetSteps * 0.1);
   const playBarRef = useRef<HTMLDivElement>(null);
+  useArtworkContrastTargets(
+    playBarRef,
+    nowPlayingArtworkUrl ?? trackArtworkUrl ?? null
+  );
   const dragStartYRef = useRef<number | null>(null);
   const dragStartHeightRef = useRef(COLLAPSED_HEIGHT);
   const currentHeightRef = useRef(COLLAPSED_HEIGHT);
@@ -2183,6 +2199,19 @@ const PlayBar: React.FC<PlayBarProps> = ({
                 )}
                 {track && (
                   <div className='track-title-menu-wrap' ref={trackMenuRef}>
+                    {onStartMusicMix && (
+                      <button
+                        type='button'
+                        className='track-mix-toggle'
+                        aria-label='Create a Music Mix from this track'
+                        title='Create a Music Mix from this track'
+                        onClick={() => onStartMusicMix(track)}
+                      >
+                        <span className='material-symbols-outlined' aria-hidden='true'>
+                          graphic_eq
+                        </span>
+                      </button>
+                    )}
                     <button
                       type='button'
                       className={`track-love-toggle${isLoved ? ' is-loved' : ''}${celebratingFavoriteTrackId === track.id ? ' celebrating' : ''}`}

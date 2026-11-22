@@ -500,3 +500,102 @@
     display: none;
   }
 }
+
+html[data-android-app='true'] .albums-page .page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+html[data-android-app='true'] .albums-page .header-right {
+  width: auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+html[data-android-app='true'] .albums-page .header-left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-android-app='true'] .albums-page .header-left h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-android-app='true'] .albums-page .sort-selector {
+  height: 30px;
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 0 1 auto;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 6px;
+}
+
+html[data-android-app='true'] .albums-page .sort-label {
+  font-size: 0.72rem;
+}
+
+html[data-android-app='true'] .albums-page .sort-select {
+  max-width: 96px;
+  min-width: 0;
+  font-size: 0.76rem;
+}
+
+html[data-android-app='true'] .albums-page .sort-direction {
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  padding: 0;
+}
+
+html[data-android-app='true'] .albums-page .sort-direction .material-symbols-outlined {
+  font-size: 0.9rem;
+}
+
+@media (max-width: 380px) {
+  html[data-android-app='true'] .albums-page .page-header h1 {
+    font-size: 1.25rem;
+  }
+
+  html[data-android-app='true'] .albums-page .sort-label {
+    display: none;
+  }
+
+  html[data-android-app='true'] .albums-page .sort-select {
+    max-width: 60px;
+  }
+
+  html[data-android-app='true'] .albums-page .page-header .shuffle-play-button {
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 0.68rem;
+  }
+
+  html[data-android-app='true']
+    .albums-page
+    .page-header
+    .shuffle-play-button
+    .material-symbols-outlined {
+    font-size: 0.9rem;
+  }
+
+  html[data-android-app='true'] .albums-page .sort-selector {
+    gap: 3px;
+    padding: 2px 4px;
+  }
+
+  html[data-android-app='true'] .albums-page .sort-direction {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+}

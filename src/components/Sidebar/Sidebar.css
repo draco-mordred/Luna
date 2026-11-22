@@ -810,11 +810,11 @@
 }
 
 html[data-collection-artwork-theme='true'] .sidebar {
-  border-right-color: color-mix(
+  /* border-right-color: color-mix(
     in srgb,
     var(--collection-artwork-foreground-color, #fff) 0%,
     transparent
-  );
+  ); */
   background-color: color-mix(
     in srgb,
     rgb(var(--collection-artwork-color, 19, 23, 31)) 0%,

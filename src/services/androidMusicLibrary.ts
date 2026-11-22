@@ -92,8 +92,22 @@ export interface AndroidAppearance {
 
 const androidMusicLibrary = registerPlugin<AndroidMusicLibraryPlugin>('AndroidMusicLibrary');
 
-export const isAndroidApp = (): boolean =>
+const androidPreviewBuildEnabled = process.env.REACT_APP_ANDROID_PREVIEW === '1';
+const androidPreviewEnabled =
+  androidPreviewBuildEnabled ||
+  (typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('android-preview') === '1');
+
+export const isAndroidNativeApp = (): boolean =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+export const isAndroidPreview = (): boolean =>
+  androidPreviewBuildEnabled ||
+  androidPreviewEnabled ||
+  (typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('android-preview') === '1');
+
+export const isAndroidApp = (): boolean => isAndroidNativeApp() || isAndroidPreview();
 
 export const scanAndroidMusicLibrary = async (): Promise<AndroidMusicLibraryResult> => {
   const result = await androidMusicLibrary.scan();

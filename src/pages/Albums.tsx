@@ -11,6 +11,7 @@ import {
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
+import AndroidLibrarySortMenu from '../components/AndroidLibrarySortMenu';
 import './Albums.css';
 
 interface AlbumSummary {
@@ -191,6 +192,12 @@ const AlbumsPage = ({
 }: AlbumsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'artist' | 'year' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const sortOptions = [
+    { value: 'name', label: 'Name' },
+    { value: 'artist', label: 'Artist' },
+    { value: 'year', label: 'Year' },
+    { value: 'tracks', label: 'Track Count' },
+  ] as const;
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const navigate = useNavigate();
   useScrollToLibraryItem();
@@ -284,6 +291,15 @@ const AlbumsPage = ({
                 <span className='material-symbols-outlined'>list</span>
               </button>
             </div>
+            <AndroidLibrarySortMenu
+              options={sortOptions}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              sortDirection={sortDirection}
+              onToggleDirection={() =>
+                setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'))
+              }
+            />
             <div className='sort-selector'>
               <span className='sort-label'>Sort by:</span>
               <select

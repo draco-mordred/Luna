@@ -11,6 +11,7 @@ interface QueueContextMenuProps {
   asListItem?: boolean;
   lockPageScroll?: boolean;
   onSyncTracks?: (tracks: Track[]) => void;
+  showTrigger?: boolean;
 }
 
 const QueueContextMenu = ({
@@ -20,6 +21,7 @@ const QueueContextMenu = ({
   asListItem = false,
   lockPageScroll = false,
   onSyncTracks,
+  showTrigger = false,
 }: QueueContextMenuProps) => {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -66,6 +68,31 @@ const QueueContextMenu = ({
     });
   };
 
+  const handleTriggerClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.dispatchEvent(new Event('luna-close-queue-context-menus'));
+    setPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const trigger = showTrigger ? (
+    <button
+      type='button'
+      className='queue-context-menu-trigger'
+      aria-label='Track queue options'
+      aria-haspopup='menu'
+      aria-expanded={Boolean(position)}
+      onClick={handleTriggerClick}
+    >
+      <span className='material-symbols-outlined' aria-hidden='true'>
+        more_horiz
+      </span>
+    </button>
+  ) : null;
+
   const menu =
     position &&
     createPortal(
@@ -74,6 +101,7 @@ const QueueContextMenu = ({
         className='queue-context-menu'
         role='menu'
         aria-label='Queue options'
+        tabIndex={-1}
         style={{
           position: 'fixed',
           top: position.y,
@@ -81,6 +109,9 @@ const QueueContextMenu = ({
           zIndex: 1000,
         }}
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setPosition(null);
+        }}
       >
         {[
           { label: 'Add to play queue', playNext: false },
@@ -121,11 +152,13 @@ const QueueContextMenu = ({
   return asListItem ? (
     <li onContextMenu={handleContextMenu}>
       {children}
+      {trigger}
       {menu}
     </li>
   ) : (
     <div style={{ display: 'contents' }} onContextMenu={handleContextMenu}>
       {children}
+      {trigger}
       {menu}
     </div>
   );

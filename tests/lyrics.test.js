@@ -4,6 +4,8 @@ const iconv = require('iconv-lite');
 const {
   decodeTextBuffer,
   extractEmbeddedLyrics,
+  combineLyricsValues,
+  parseLyricsText,
   parseSyncedLyrics,
 } = require('../public/lyrics');
 
@@ -33,6 +35,39 @@ test('parses multilingual LRC with multiple timestamps per line', () => {
     { time: 1.25, text: '你好 — مرحبا' },
     { time: 2.5, text: '你好 — مرحبا' },
     { time: 3, text: '안녕하세요' },
+  ]);
+});
+
+test('parses timestamped lyrics into synced cues and clean plain lyrics', () => {
+  const parsed = parseLyricsText(
+    '[ar:Artist]\r\n[00:01.25]First line\n[00:02,50][00:03.00]Repeated line'
+  );
+
+  assert.equal(parsed.lyrics, 'First line\nRepeated line');
+  assert.deepEqual(parsed.syncedLyrics, [
+    { time: 1.25, text: 'First line' },
+    { time: 2.5, text: 'Repeated line' },
+    { time: 3, text: 'Repeated line' },
+  ]);
+});
+
+test('leaves untimed plain lyrics unsynchronized', () => {
+  const parsed = parseLyricsText('First plain line\nSecond plain line');
+
+  assert.equal(parsed.lyrics, 'First plain line\nSecond plain line');
+  assert.deepEqual(parsed.syncedLyrics, []);
+});
+
+test('keeps plain and timestamped lyric sources available together', () => {
+  const parsed = combineLyricsValues([
+    'Plain translation.',
+    '[00:01.00]Original first line\n[00:02.00]Original second line',
+  ]);
+
+  assert.equal(parsed.lyrics, 'Plain translation.');
+  assert.deepEqual(parsed.syncedLyrics, [
+    { time: 1, text: 'Original first line' },
+    { time: 2, text: 'Original second line' },
   ]);
 });
 
@@ -86,6 +121,7 @@ test('tracks are only marked as synced when an embedded lyric field contains tim
   const synced = extractEmbeddedLyrics({
     common: { lyrics: [{ text: '[00:01.00]مرحبا\n[00:02.00]こんにちは' }] },
   });
+  assert.equal(synced.lyrics, 'مرحبا\nこんにちは');
   assert.deepEqual(synced.syncedLyrics, [
     { time: 1, text: 'مرحبا' },
     { time: 2, text: 'こんにちは' },

@@ -17,6 +17,7 @@ interface TopNavbarProps {
   tracks: Track[];
   isDesktopApp: boolean;
   isAndroidApp: boolean;
+  isAndroidPreview: boolean;
   androidLibrarySearchQuery: string;
   onAndroidLibrarySearchQueryChange: (query: string) => void;
   sidebarOpen: boolean;
@@ -66,6 +67,7 @@ const TopNavbar = ({
   tracks,
   isDesktopApp,
   isAndroidApp,
+  isAndroidPreview,
   androidLibrarySearchQuery,
   onAndroidLibrarySearchQueryChange,
   sidebarOpen,
@@ -78,6 +80,7 @@ const TopNavbar = ({
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [isAndroidLibrarySearchVisible, setIsAndroidLibrarySearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [authSession, setAuthSession] = useState<Session | null>(null);
   const [authBusy, setAuthBusy] = useState<Provider | 'signout' | 'finishing' | null>(null);
@@ -88,6 +91,7 @@ const TopNavbar = ({
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const androidLibrarySearchInputRef = useRef<HTMLInputElement>(null);
   const [androidUsbSyncNotice, setAndroidUsbSyncNotice] = useState<AndroidUsbSyncNotice | null>(
     null
   );
@@ -97,6 +101,10 @@ const TopNavbar = ({
   useEffect(() => {
     if (isSearchExpanded) searchInputRef.current?.focus();
   }, [isSearchExpanded]);
+
+  useEffect(() => {
+    if (isAndroidLibrarySearchVisible) androidLibrarySearchInputRef.current?.focus();
+  }, [isAndroidLibrarySearchVisible]);
 
   useEffect(() => {
     if (!isAndroidApp) return undefined;
@@ -302,6 +310,18 @@ const TopNavbar = ({
   const secondaryTabsVisible = libraryTabsVisible || settingsTabsVisible;
   const androidNavigationVisible =
     !isAndroidApp || libraryTabsVisible || settingsTabsVisible || showSyncNotice;
+  useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    const toggleDockSearch = () => {
+      if (libraryTabsVisible) {
+        setIsAndroidLibrarySearchVisible((visible) => !visible);
+      } else {
+        setIsSearchExpanded((expanded) => !expanded);
+      }
+    };
+    window.addEventListener('luna-toggle-top-navbar-search', toggleDockSearch);
+    return () => window.removeEventListener('luna-toggle-top-navbar-search', toggleDockSearch);
+  }, [isAndroidApp, libraryTabsVisible]);
   const syncNoticeLabel =
     androidUsbSyncNotice?.phase === 'completed'
       ? 'Sync complete'
@@ -341,6 +361,13 @@ const TopNavbar = ({
       if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
         setShowAccountMenu(false);
       }
+      if (
+        isAndroidApp &&
+        event.target instanceof Element &&
+        event.target.closest('.android-dock-search')
+      ) {
+        return;
+      }
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchExpanded(false);
       }
@@ -348,7 +375,7 @@ const TopNavbar = ({
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isAndroidApp]);
 
   const handleSearchSubmit = (nextQuery: string) => {
     const trimmedQuery = nextQuery.trim();
@@ -420,7 +447,7 @@ const TopNavbar = ({
   return (
     <nav
       ref={topNavbarRef}
-      className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${androidNavigationVisible ? ' android-navigation-visible' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}${libraryTabsVisible && isAndroidApp ? ' has-library-search' : ''}`}
+      className={`top-navbar${isAndroidApp ? ' android-top-navbar' : ''}${androidNavigationVisible ? ' android-navigation-visible' : ''}${secondaryTabsVisible ? ' has-secondary-tabs' : ''}${showSyncNotice ? ' has-sync-notice' : ''}${libraryTabsVisible && isAndroidApp && isAndroidLibrarySearchVisible ? ' has-library-search' : ''}`}
     >
       {isAndroidApp && (
         <button
@@ -488,12 +515,13 @@ const TopNavbar = ({
             ))}
           </div>
         )}
-        {libraryTabsVisible && isAndroidApp && (
+        {libraryTabsVisible && isAndroidApp && isAndroidLibrarySearchVisible && (
           <label className='android-library-search'>
             <span className='material-symbols-outlined' aria-hidden='true'>
               search
             </span>
             <input
+              ref={androidLibrarySearchInputRef}
               type='search'
               value={androidLibrarySearchQuery}
               placeholder={`Search ${libraryTab?.label.toLocaleLowerCase() ?? 'tracks'}`}
@@ -757,9 +785,13 @@ const TopNavbar = ({
                       }}
                     >
                       <span className='material-symbols-outlined'>
-                        {isAndroidApp ? 'library_music' : 'folder_open'}
+                        {isAndroidApp && !isAndroidPreview ? 'library_music' : 'folder_open'}
                       </span>
-                      <span>{isAndroidApp ? 'Scan Device Library' : 'Add Music Folder'}</span>
+                      <span>
+                        {isAndroidApp && !isAndroidPreview
+                          ? 'Scan Device Library'
+                          : 'Add Music Folder'}
+                      </span>
                     </button>
                   </li>
                   <li className='menu-item'>
@@ -771,7 +803,11 @@ const TopNavbar = ({
                       }}
                     >
                       <span className='material-symbols-outlined'>refresh</span>
-                      <span>{isAndroidApp ? 'Scan Device Library' : 'Rescan Library'}</span>
+                      <span>
+                        {isAndroidApp && !isAndroidPreview
+                          ? 'Scan Device Library'
+                          : 'Rescan Library'}
+                      </span>
                     </button>
                   </li>
                   <li className='menu-item divider'>

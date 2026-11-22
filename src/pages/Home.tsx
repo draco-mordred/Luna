@@ -13,6 +13,7 @@ import { useArtistImage } from '../services/artistImages';
 import { getDominantImageColor } from '../utils/imageColors';
 import { splitArtistCredits } from '../utils/artistCredits';
 import { getLibraryItemPath } from '../utils/libraryNavigation';
+import { createMusicMix } from '../utils/musicMix';
 import { sortCollectionTracks } from '../utils/sortCollectionTracks';
 import './Home.css';
 
@@ -50,7 +51,7 @@ interface ArtistGroup {
 
 interface TopPickGroup {
   key: string;
-  genres: string[];
+  seedTrack: Track;
   tracks: Track[];
 }
 
@@ -353,7 +354,7 @@ const HomePage = ({
   const history = loadRecentMediaHistory();
   const rememberEnabled = rememberRecentMediaEnabled();
   const section = searchParams.get('section') as HomeSection | null;
-  const selectedGenres = searchParams.get('mix')?.split('|') ?? [];
+  const selectedTopPickKey = searchParams.get('mix');
   const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
 
   const albums = useMemo(() => {
@@ -467,40 +468,41 @@ const HomePage = ({
   );
 
   const topPickGroups = useMemo(() => {
-    const genreScores = new Map<string, { name: string; score: number }>();
-    tracks.forEach((track) => {
-      const name = track.genre?.trim();
-      const count = history.playCounts[track.id] ?? 0;
-      if (!name || count <= 0) return;
-      const key = name.toLocaleLowerCase();
-      const current = genreScores.get(key) ?? { name, score: 0 };
-      current.score += count;
-      genreScores.set(key, current);
-    });
-    const rankedGenres = [...genreScores.values()]
-      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-      .slice(0, 50);
-    const groups: TopPickGroup[] = [];
+    const recentOrder = new Map(history.playedTrackIds.map((id, index) => [id, index]));
+    const preferences = {
+      lovedTrackIds: new Set(lovedTrackIds),
+      playCounts: history.playCounts,
+    };
+    const frequentSeeds = tracks
+      .filter((track) => (history.playCounts[track.id] ?? 0) > 0)
+      .sort(
+        (left, right) =>
+          (history.playCounts[right.id] ?? 0) - (history.playCounts[left.id] ?? 0) ||
+          (recentOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+            (recentOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+      );
 
-    for (let index = 0; index < rankedGenres.length && groups.length < 10; index += 5) {
-      const genres = rankedGenres.slice(index, index + 5).map((genre) => genre.name);
-      const genreKeys = new Set(genres.map((genre) => genre.toLocaleLowerCase()));
-      const groupTracks = tracks
-        .filter(
-          (track) =>
-            Boolean(track.genre && genreKeys.has(track.genre.trim().toLocaleLowerCase())) &&
-            (history.playCounts[track.id] ?? 0) > 0
-        )
-        .sort(
-          (left, right) => (history.playCounts[right.id] ?? 0) - (history.playCounts[left.id] ?? 0)
-        )
-        .slice(0, 50);
-      if (groupTracks.length) {
-        groups.push({ key: genres.join('|'), genres, tracks: groupTracks });
-      }
-    }
-    return groups;
-  }, [history.playCounts, tracks]);
+    return frequentSeeds
+      .flatMap((seedTrack) => {
+        const similarTracks = createMusicMix(
+          seedTrack,
+          tracks,
+          new Set([seedTrack.id]),
+          preferences,
+          49,
+          { requireSimilarity: true }
+        );
+        if (similarTracks.length === 0) return [];
+        return [
+          {
+            key: seedTrack.id,
+            seedTrack,
+            tracks: [seedTrack, ...similarTracks].slice(0, 50),
+          },
+        ];
+      })
+      .slice(0, 10);
+  }, [history.playCounts, history.playedTrackIds, lovedTrackIds, tracks]);
 
   const allTopPickTracks = useMemo(() => {
     const uniqueTracks = new Map<string, Track>();
@@ -513,9 +515,7 @@ const HomePage = ({
       )
       .slice(0, 50);
   }, [history.playCounts, topPickGroups]);
-  const selectedTopPickGroup = topPickGroups.find(
-    (group) => group.key === selectedGenres.join('|')
-  );
+  const selectedTopPickGroup = topPickGroups.find((group) => group.key === selectedTopPickKey);
 
   const showSection = (nextSection: HomeSection) =>
     navigate({ pathname: '/', search: `?section=${nextSection}` });
@@ -619,7 +619,7 @@ const HomePage = ({
               <>
                 <section className='home-section'>
                   <div className='home-section-heading'>
-                    <h2>{selectedTopPickGroup.genres.join(' · ')}</h2>
+                    <h2>Inspired by {selectedTopPickGroup.seedTrack.name}</h2>
                   </div>
                   <HomeTrackList
                     tracks={selectedTopPickGroup.tracks}

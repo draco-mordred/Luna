@@ -66,6 +66,11 @@
   color: var(--text-secondary);
 }
 
+.streaming-play-bar .streaming-play-bar-mix.active {
+  border-color: var(--play-button-accent);
+  color: var(--play-button-accent);
+}
+
 .streaming-play-bar-mix .material-symbols-outlined {
   font-size: 1.15rem;
 }

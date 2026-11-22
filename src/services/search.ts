@@ -3,7 +3,7 @@ import { splitArtistCredits } from '../utils/artistCredits';
 
 export interface SearchItem {
   id: string;
-  type: 'track' | 'album' | 'artist' | 'genre';
+  type: 'track' | 'album' | 'artist' | 'composer' | 'genre';
   title: string;
   subtitle: string;
   track?: Track;
@@ -19,16 +19,22 @@ const matchesQuery = (value: string | undefined, query: string) => {
   return value.toLocaleLowerCase().includes(query);
 };
 
-export const buildSearchGroups = (tracks: Track[], query: string): SearchGroup[] => {
+export const buildSearchGroups = (
+  tracks: Track[],
+  query: string,
+  includeComposers = false
+): SearchGroup[] => {
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
   if (!normalizedQuery) {
-    return [
+    const groups: SearchGroup[] = [
       { title: 'Tracks', items: [] },
       { title: 'Albums', items: [] },
       { title: 'Artists', items: [] },
       { title: 'Genres', items: [] },
     ];
+    if (includeComposers) groups.splice(3, 0, { title: 'Composers', items: [] });
+    return groups;
   }
 
   const trackMatches = tracks.filter((track) => (
@@ -83,7 +89,23 @@ export const buildSearchGroups = (tracks: Track[], query: string): SearchGroup[]
     }
   });
 
-  return [
+  const composerMap = new Map<string, SearchItem>();
+  if (includeComposers) {
+    tracks.forEach((track) => {
+      if (!track.composer || !matchesQuery(track.composer, normalizedQuery)) return;
+      const composerKey = track.composer.trim().toLocaleLowerCase();
+      if (!composerKey || composerMap.has(composerKey)) return;
+      composerMap.set(composerKey, {
+        id: composerKey,
+        type: 'composer',
+        title: track.composer.trim(),
+        subtitle: `${track.name} · ${track.artist || 'Unknown artist'}`,
+        track,
+      });
+    });
+  }
+
+  const groups: SearchGroup[] = [
     { title: 'Tracks', items: trackMatches.slice(0, 10).map((track) => ({
       id: track.id,
       type: 'track',
@@ -95,4 +117,8 @@ export const buildSearchGroups = (tracks: Track[], query: string): SearchGroup[]
     { title: 'Artists', items: [...artistMap.values()].slice(0, 10) },
     { title: 'Genres', items: [...genreMap.values()].slice(0, 10) },
   ];
+  if (includeComposers) {
+    groups.splice(3, 0, { title: 'Composers', items: [...composerMap.values()].slice(0, 10) });
+  }
+  return groups;
 };

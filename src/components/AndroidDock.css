@@ -2,156 +2,232 @@
   display: none;
 }
 
-@media (max-width: 1200px) {
-  html[data-android-app='true'] .android-dock {
-    position: fixed;
+.android-dock-search {
+  display: none;
+}
+
+html[data-android-app='true'] {
+  --android-dock-side-inset: max(19.5px, calc((100vw - 720px) / 2));
+  --android-playbar-side-inset: max(22.5px, calc((100vw - 720px) / 2));
+}
+
+html[data-android-app='true'] .android-dock {
+position: fixed;
     z-index: 1100;
-    right: 12px;
+    right: calc(var(--android-dock-side-inset) + 73px + 10px);
     bottom: calc(5px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)) + 3px);
-    left: 12px;
+    left: var(--android-dock-side-inset);
     display: flex;
-    height: 48px;
+    height: 80px;
     align-items: stretch;
     justify-content: space-between;
     gap: 4px;
-    padding: 3px 4px;
+    padding: 8px 20px;
     border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
-    box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 45%, transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(165%);
-    backdrop-filter: blur(20px) saturate(165%);
-  }
+    background: color-mix(in srgb, var(--bg-secondary) 10%, transparent);
+    box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 40%, transparent);
+    backdrop-filter: blur(10px) saturate(130%);
+}
 
-  html[data-android-app='true'] .android-dock button {
-    font: inherit;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
+html[data-android-app='true'] .android-dock button {
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 
-  html[data-android-app='true'] .android-dock-items {
-    display: flex;
+html[data-android-app='true'] .android-dock-items {
+ display: flex;
     min-width: 0;
     flex: 1 1 auto;
     align-items: stretch;
     justify-content: space-around;
-    gap: 2px;
-  }
+    gap: 10px;
+    overflow-x: hidden;
+}
 
-  html[data-android-app='true'] .android-dock-item,
-  html[data-android-app='true'] .android-dock-search,
-  html[data-android-app='true'] .android-dock-collapse,
-  html[data-android-app='true'] .android-dock-compact-toggle {
-    display: flex;
-    min-width: 0;
-    flex: 1 1 0;
+html[data-android-app='true'] .android-dock-item,
+html[data-android-app='true'] .android-dock-compact-toggle {
+display: flex;
+    /* min-width: 0; */
+    flex: 1 1;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
+    gap: 2px;
     border: 0;
-    border-radius: 999px;
+    border-radius: 15px;
     background: transparent;
     color: var(--text-secondary);
     text-decoration: none;
     transition:
-      background-color 180ms ease,
-      color 180ms ease,
-      transform 180ms ease;
-  }
+      background-color 220ms ease,
+      color 220ms ease,
+      transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    margin: 0px 5px;
+}
 
-  html[data-android-app='true'] .android-dock-item > .material-symbols-outlined,
-  html[data-android-app='true'] .android-dock-search > .material-symbols-outlined,
-  html[data-android-app='true'] .android-dock-collapse > .material-symbols-outlined,
-  html[data-android-app='true'] .android-dock-compact-toggle > .material-symbols-outlined {
-    font-size: 1.35rem;
-    line-height: 1;
-    font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 24;
-  }
+html[data-android-app='true'] .android-dock .material-symbols-outlined {
+  font-size: 2.25rem;
+  line-height: 1;
+  font-variation-settings: 'FILL' 1, 'wght' 450, 'GRAD' 0, 'opsz' 24;
+  transition:
+    color 220ms ease,
+    font-variation-settings 220ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
-  html[data-android-app='true'] .android-dock-label {
-    max-width: 100%;
-    overflow: hidden;
-    font-size: 0.62rem;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  html[data-android-app='true'] .android-dock-item.active,
-  html[data-android-app='true'] .android-dock-search.active {
-    background: color-mix(in srgb, var(--system-accent) 15%, transparent);
-    color: var(--system-accent);
-  }
-
-  html[data-android-app='true'] .android-dock-item.active > .material-symbols-outlined,
-  html[data-android-app='true'] .android-dock-search.active > .material-symbols-outlined {
-    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
-  }
-
-  html[data-android-app='true'] .android-dock-collapse {
-    flex: 0 0 30px;
-  }
-
-  html[data-android-app='true'] .android-dock-search {
-    flex: 0 0 42px;
-  }
-
-  html[data-android-app='true'] .android-dock:not(.show-labels) .android-dock-items {
-    align-items: center;
-  }
-
-  html[data-android-app='true'] .android-dock:not(.show-labels) .android-dock-item {
-    height: 40px;
-  }
-
-  html[data-android-app='true'] .android-dock.is-compact {
-    right: 12px;
-    left: 12px;
-    width: auto;
-    padding: 0;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    pointer-events: none;
-  }
-
-  html[data-android-app='true'] .android-dock.is-compact > button {
-    position: absolute;
-    bottom: 0;
-    z-index: 2;
+html[data-android-app='true'] .android-dock-search {
+    position: fixed;
+    z-index: 1101;
+    right: var(--android-dock-side-inset);
+    bottom: calc(5px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)) + 3px);
     display: flex;
-    width: 48px;
-    height: 48px;
-    flex: 0 0 48px;
+    width: 73px;
+    height: 73px;
     align-items: center;
     justify-content: center;
     border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
     border-radius: 50%;
     background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
     box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 45%, transparent);
-    color: var(--text-primary);
-    -webkit-backdrop-filter: blur(20px) saturate(165%);
-    backdrop-filter: blur(20px) saturate(165%);
-    pointer-events: auto;
-  }
-
-  html[data-android-app='true'] .android-dock.is-compact .android-dock-compact-toggle {
-    left: 0;
-  }
-
-  html[data-android-app='true'] .android-dock.is-compact .android-dock-search {
-    right: 0;
-  }
-
-  html[data-android-app='true'] .android-dock.is-compact .android-dock-search.active {
     color: var(--system-accent);
-  }
+    font: inherit;
+    backdrop-filter: blur(20px) saturate(165%);
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease,
+      transform 180ms ease,
+      top 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      bottom 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
-  html[data-android-app='true'] .android-dock-menu {
+html[data-android-app='true'] .android-dock-search > .material-symbols-outlined {
+  font-size: 2.2rem;
+  line-height: 1;
+  font-variation-settings: 'FILL' 1, 'wght' 450, 'GRAD' 0, 'opsz' 24;
+}
+
+html[data-android-app='true'] .android-dock-label {
+  width: 36px;
+  max-width: 36px;
+  overflow: hidden;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-android-app='true'] .android-dock-item.active {
+  color: var(--system-accent);
+}
+
+html[data-android-app='true'] .android-dock-items > .android-dock-item.active {
+  background: transparent;
+  transform: translateY(-1px);
+}
+
+html[data-android-app='true'] .android-dock-item.active > .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+html[data-android-app='true'] .android-dock-search.active {
+  color: var(--system-accent);
+}
+
+html[data-android-app='true'] .android-dock-search:hover {
+  transform: translateY(-2px);
+}
+
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock
+  .android-dock-item,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock
+  .android-dock-compact-toggle,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock
+  .android-dock-label,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock
+  .material-symbols-outlined,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-search
+  .material-symbols-outlined {
+  color: var(--collection-dock-foreground-color, var(--collection-artwork-foreground-color, #fff)) !important;
+}
+
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-item.active,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-item.active
+  .material-symbols-outlined {
+  color: var(--collection-dock-foreground-color, var(--collection-artwork-foreground-color, #fff)) !important;
+}
+
+html[data-android-app='true'][data-collection-artwork-theme='true'] .android-dock-search,
+html[data-android-app='true'][data-collection-artwork-theme='true'] .android-dock-search.active,
+html[data-android-app='true'][data-collection-artwork-theme='true'] .android-dock-search.is-open,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-search
+  .material-symbols-outlined,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-search.active
+  .material-symbols-outlined,
+html[data-android-app='true'][data-collection-artwork-theme='true']
+  .android-dock-search.is-open
+  .material-symbols-outlined {
+  color: var(
+    --collection-dock-search-foreground-color,
+    var(--collection-artwork-foreground-color, #fff)
+  ) !important;
+}
+
+html[data-android-app='true'] .android-dock.is-compact {
+  right: calc(var(--android-dock-side-inset) + 56px);
+  left: var(--android-dock-side-inset);
+  width: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+html[data-android-app='true'] .android-dock.is-compact > button {
+        position: absolute;
+        bottom: 15px;
+        z-index: 2;
+        display: flex;
+        width: 58px;
+        height: 58px;
+        flex: 0 0 58px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+        box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 45%, transparent);
+        color: var(--text-primary);
+        backdrop-filter: blur(20px) saturate(165%);
+        pointer-events: auto;
+        margin: 0px -5px;
+}
+
+html[data-android-app='true'] .android-dock.is-compact .android-dock-compact-toggle {
+  left: 0;
+}
+
+html[data-android-app='true'] .android-dock-menu {
     position: absolute;
     bottom: calc(100% + 10px);
     left: 0;
@@ -169,9 +245,9 @@
     backdrop-filter: blur(22px) saturate(165%);
     pointer-events: auto;
     animation: android-dock-menu-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
+}
 
-  html[data-android-app='true'] .android-dock-menu .android-dock-item {
+html[data-android-app='true'] .android-dock-menu .android-dock-item {
     min-height: 42px;
     flex-direction: row;
     justify-content: flex-start;
@@ -179,14 +255,15 @@
     padding: 0 12px;
     border-radius: 14px;
     font-size: 0.86rem;
-  }
+}
 
-  html[data-android-app='true'] .android-dock-menu .android-dock-label {
-    max-width: none;
-    font-size: 0.82rem;
-  }
+html[data-android-app='true'] .android-dock-menu .android-dock-label {
+  max-width: none;
+  width: auto;
+  font-size: 0.82rem;
+}
 
-  html[data-android-app='true'] .android-dock-menu .android-dock-expand {
+html[data-android-app='true'] .android-dock-menu .android-dock-expand {
     display: grid;
     width: 36px;
     height: 36px;
@@ -196,21 +273,60 @@
     border-radius: 50%;
     background: transparent;
     color: var(--text-secondary);
-  }
+}
 
-  html[data-android-app='true'] .android-dock-menu .android-dock-expand:hover {
-    background: var(--hover);
-    color: var(--system-accent);
-  }
+html[data-android-app='true'] .android-dock-menu .android-dock-expand:hover {
+  background: var(--hover);
+  color: var(--system-accent);
+}
 
-  html[data-android-app='true'] .android-dock-sr-status {
+html[data-android-app='true'] .android-dock-context-menu {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    bottom: calc(100% + 10px);
+    left: 0;
+    z-index: 4;
+    display: flex;
+    min-width: 0;
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 52%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+    backdrop-filter: blur(22px) saturate(165%);
+    pointer-events: auto;
+    animation: android-dock-menu-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+html[data-android-app='true'] .android-dock-context-menu-item {
+    display: flex;
+    min-height: 32px;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    text-align: center;
     white-space: nowrap;
-  }
+}
+
+html[data-android-app='true'] .android-dock-context-menu-item:hover,
+html[data-android-app='true'] .android-dock-context-menu-item:focus-visible {
+  background: var(--hover);
+  color: var(--system-accent);
+}
+
+html[data-android-app='true'] .android-dock-sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 @keyframes android-dock-menu-in {
@@ -231,5 +347,427 @@
   html[data-android-app='true'] .android-dock-menu {
     animation-duration: 0.01ms;
     transition-duration: 0.01ms;
+  }
+}
+
+html[data-android-app='true'] .android-dock,
+html[data-android-app='true'] .android-dock-search {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition:
+    opacity 260ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 380ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    bottom 380ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s;
+}
+
+html[data-android-app='true'][data-now-playing-open='true'] .android-dock,
+html[data-android-app='true'][data-now-playing-open='true'] .android-dock-search {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(42px);
+  pointer-events: none;
+  transition:
+    opacity 240ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 380ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    bottom 380ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 260ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-android-app='true'] .android-dock,
+  html[data-android-app='true'] .android-dock-search {
+    transition-duration: 0.01ms;
+    transition-delay: 0s;
+  }
+}
+
+@media (orientation: landscape), (min-width: 600px) {
+  html[data-android-app='true'] .android-dock {
+    top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 4px);
+    bottom: auto;
+    right: auto;
+    left: 50%;
+    width: min(460px, calc(100vw - 32px));
+    height: 48px;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 50px 4px 8px;
+    transform: translateX(-50%);
+    animation: android-dock-landscape-enter 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  html[data-android-app='true'] .android-dock-items {
+    height: 100%;
+    gap: 2px;
+  }
+
+  html[data-android-app='true'] .android-dock-item {
+    min-width: 0;
+    flex-direction: row;
+    gap: 0;
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 999px;
+  }
+
+  html[data-android-app='true']
+    .android-dock-items
+    > .android-dock-item
+    > .material-symbols-outlined {
+    display: none;
+  }
+
+  html[data-android-app='true'] .android-dock-label {
+    width: auto;
+    max-width: none;
+    overflow: visible;
+    font-size: 0.74rem;
+  }
+
+  html[data-android-app='true'] .android-dock-items > .android-dock-item.active {
+    background: color-mix(in srgb, var(--system-accent) 14%, transparent);
+    transform: none;
+  }
+
+  html[data-android-app='true'] .android-dock-search {
+    position: absolute;
+    z-index: 5;
+    top: 50%;
+    right: 8px;
+    bottom: auto;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-primary);
+    transform: translateY(-50%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  html[data-android-app='true']
+    .android-dock:not(.is-compact)
+    .android-dock-search
+    > .material-symbols-outlined {
+    font-size: 1.2rem;
+  }
+
+  html[data-android-app='true'] .android-dock.is-compact {
+    right: auto;
+    left: var(--android-dock-side-inset);
+    width: 58px;
+    height: 48px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  html[data-android-app='true'] .android-dock.is-compact > .android-dock-compact-toggle {
+    top: 3px;
+    bottom: auto;
+    left: 8px;
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+    margin: 0;
+  }
+
+  html[data-android-app='true'] .android-dock.is-compact .android-dock-search {
+    position: fixed;
+    top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 4px);
+    right: var(--android-dock-side-inset);
+    width: 48px;
+    height: 48px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+    box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 45%, transparent);
+    color: var(--system-accent);
+  }
+
+  html[data-android-app='true'] .android-dock.is-compact > button {
+    bottom: auto;
+  }
+
+  html[data-android-app='true'] .android-dock.is-compact .android-dock-menu,
+  html[data-android-app='true'] .android-dock.is-compact .android-dock-context-menu {
+    top: calc(100% + 10px);
+    bottom: auto;
+    transform-origin: top left;
+  }
+
+  html[data-android-app='true'] .android-dock-search-panel {
+    position: fixed;
+    z-index: 1200;
+    left: 50%;
+    display: flex;
+    width: min(560px, calc(100vw - 32px));
+    flex-direction: column;
+    gap: 8px;
+    transform: translateX(-50%);
+    animation: android-dock-search-in 180ms ease-out both;
+  }
+
+  html[data-android-app='true'] .android-dock-search-input {
+    display: flex;
+    height: 42px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    color: var(--text-secondary);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 32%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(165%);
+    backdrop-filter: blur(20px) saturate(165%);
+  }
+
+  html[data-android-app='true'] .android-dock-search-input > .material-symbols-outlined {
+    flex: 0 0 auto;
+    font-size: 1.2rem;
+  }
+
+  html[data-android-app='true'] .android-dock-search-input input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.84rem;
+  }
+
+  html[data-android-app='true'] .android-dock-search-input input::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  html[data-android-app='true'] .android-dock-search-results {
+    display: flex;
+    max-height: min(46vh, 300px);
+    flex-direction: column;
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 42%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+    backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  html[data-android-app='true'] .android-dock-search-group {
+    padding: 8px 10px 4px;
+  }
+
+  html[data-android-app='true'] .android-dock-search-group + .android-dock-search-group {
+    border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  }
+
+  html[data-android-app='true'] .android-dock-search-group h2 {
+    margin: 0;
+    padding: 2px 8px 5px;
+    color: var(--text-tertiary);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result {
+    display: flex;
+    width: 100%;
+    min-height: 38px;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result:hover,
+  html[data-android-app='true'] .android-dock-search-result:focus-visible {
+    background: var(--hover);
+  }
+
+  html[data-android-app='true'] .android-dock-search-result > .material-symbols-outlined {
+    flex: 0 0 auto;
+    color: var(--system-accent);
+    font-size: 1.05rem;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result-copy strong,
+  html[data-android-app='true'] .android-dock-search-result-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result-copy strong {
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  html[data-android-app='true'] .android-dock-search-result-copy small {
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+  }
+
+  html[data-android-app='true'] .android-dock-search-empty {
+    margin: 0;
+    padding: 14px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+  }
+
+  html[data-android-app='true'][data-now-playing-open='true'] .android-dock-search-panel {
+    display: none;
+  }
+}
+
+@media (orientation: portrait) {
+  html[data-android-app='true'] .android-dock:not(.is-compact) {
+    animation: android-dock-portrait-enter 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+
+@keyframes android-dock-landscape-enter {
+  from {
+    transform: translateY(100vh);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes android-dock-search-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes android-dock-portrait-enter {
+  from {
+    transform: translateY(-100vh);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-android-app='true'] .android-dock,
+  html[data-android-app='true'] .android-dock-search {
+    animation: none;
+    transition-duration: 0.01ms;
+  }
+}
+
+html[data-android-app='true'] .android-dock:not(.is-compact) {
+  right: calc(var(--android-dock-side-inset) + 40px);
+  left: var(--android-dock-side-inset);
+  width: auto;
+  height: 35px;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  transform: none;
+}
+
+html[data-android-app='true'] .android-dock.is-compact {
+  transform: none;
+}
+
+html[data-android-app='true'] .android-dock-items {
+  height: 100%;
+  gap: 2px;
+}
+
+html[data-android-app='true'] .android-dock-item {
+  min-width: 0;
+  flex-direction: row;
+  gap: 0;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+}
+
+html[data-android-app='true'] .android-dock-item > .material-symbols-outlined {
+  display: none;
+}
+
+html[data-android-app='true'] .android-dock-label {
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  font-size: 0.74rem;
+}
+
+html[data-android-app='true'] .android-dock-items > .android-dock-item.active {
+  background: color-mix(in srgb, var(--system-accent) 14%, transparent);
+  transform: none;
+}
+
+html[data-android-app='true'] .android-dock-search {
+  position: fixed;
+  z-index: 1101;
+  top: auto;
+  right: var(--android-dock-side-inset);
+  bottom: calc(5px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)) + 3px);
+  display: flex;
+     width: 35px;
+    height: 35px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-color) 45%, transparent);
+  color: var(--system-accent);
+  font: inherit;
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
+  backdrop-filter: blur(20px) saturate(165%);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-android-app='true'] .android-dock-search > .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+html[data-android-app='true'] .android-dock-search.is-open {
+  color: var(--system-accent);
+  background: color-mix(in srgb, var(--system-accent) 12%, transparent);
+}
+
+@media (orientation: landscape), (min-width: 600px) {
+  html[data-android-app='true'] .android-dock-search {
+    top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 4px);
+    bottom: auto;
+    transform: translateY(0);
+  }
+
+  html[data-android-app='true'] .android-dock-search:hover {
+    transform: translateY(0);
   }
 }

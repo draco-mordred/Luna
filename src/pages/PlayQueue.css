@@ -1,9 +1,9 @@
 .play-queue-page {
-    /* max-width: 1080px; */
-    margin: 0 auto;
-    padding: 24px;
-    color: var(--text-primary);
-    margin: 0px -10px 0px -10px;
+  /* max-width: 1080px; */
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--text-primary);
+  margin: 0px -10px 0px -10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -115,6 +115,32 @@
   border-radius: 10px;
 }
 
+html[data-android-app='true'] .play-queue-item.android-queue-draggable {
+  position: relative;
+  display: flex;
+  align-items: center;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    transform 180ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
+}
+
+html[data-android-app='true'] .play-queue-item.android-queue-draggable.dragging {
+  outline: 1px dashed color-mix(in srgb, var(--text-primary) 38%, transparent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+html[data-android-app='true'] .play-queue-item.android-queue-draggable.drag-over {
+  box-shadow: inset 0 -2px 0 var(--player-accent);
+}
+
 .play-queue-item.active {
   background: var(--accent-muted);
 }
@@ -132,6 +158,58 @@
   color: inherit;
   cursor: pointer;
   text-align: left;
+}
+
+html[data-android-app='true'] .play-queue-item.android-queue-draggable > .play-queue-track {
+  width: auto;
+  flex: 1 1 auto;
+  touch-action: pan-y;
+}
+
+html[data-android-app='true'] .play-queue-drag-handle {
+  display: grid;
+  width: 44px;
+  height: 48px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: none;
+}
+
+html[data-android-app='true'] .play-queue-drag-handle:active {
+  color: var(--text-primary);
+  cursor: grabbing;
+}
+
+html[data-android-app='true'] .play-queue-drag-preview {
+  position: fixed;
+  z-index: 9999;
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding: 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 32%, transparent);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+  opacity: 0.98;
+  pointer-events: none;
+}
+
+html[data-android-app='true'] .play-queue-drag-preview .play-queue-track-copy {
+  overflow: hidden;
+}
+
+html[data-android-app='true'] .play-queue-drag-preview > .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
 }
 
 .play-queue-track:hover {

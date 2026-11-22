@@ -14,6 +14,7 @@
     "build/**/*",
     "public/electron.js",
     "public/preload.js",
+    "src/utils/lyricsParser.js",
     "electron/platformTools.js"
   ],
   "win": {

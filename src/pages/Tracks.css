@@ -406,13 +406,41 @@ html[data-android-app='true'] .tracks-page {
 }
 
 html[data-android-app='true'] .tracks-page .page-header {
-  align-items: flex-start;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   margin-bottom: 20px;
 }
 
 html[data-android-app='true'] .tracks-page .shuffle-play-button {
-  align-self: flex-end;
+  align-self: auto;
+  margin-left: auto;
+}
+
+html[data-android-app='true'] .tracks-page .page-header > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-android-app='true'] .tracks-page .page-header h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-android-app='true'] .tracks-page .sort-button {
+  min-height: 30px;
+  gap: 4px;
+  padding: 5px 6px;
+  font-size: 0.74rem;
+}
+
+html[data-android-app='true'] .tracks-page .sort-button .sort-icon {
+  font-size: 0.9rem;
 }
 
 html[data-android-app='true'] .tracks-page .page-header h1 {
@@ -441,6 +469,11 @@ html[data-android-app='true'] .track-list-virtualized .track-item {
   border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
   border-radius: 0;
   background: transparent;
+}
+
+html[data-android-app='true'] .track-list-virtualized .track-item.search-target {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--system-accent) 18%, var(--bg-secondary));
 }
 
 html[data-android-app='true'] .track-list-virtualized .track-title-cell {

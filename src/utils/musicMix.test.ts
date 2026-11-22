@@ -64,6 +64,42 @@ describe('createMusicMix', () => {
     expect(mix).toEqual([loved, oftenPlayed]);
   });
 
+  it('uses matching composers as a similarity signal', () => {
+    const seed = createTrack({ id: 'seed', composer: 'Composer One' });
+    const composerMatch = createTrack({
+      id: 'composer-match',
+      artist: 'Different Artist',
+      genre: 'Jazz',
+      composer: 'Composer One',
+    });
+    const unrelated = createTrack({
+      id: 'unrelated',
+      artist: 'Another Artist',
+      genre: 'Pop',
+      composer: 'Composer Two',
+    });
+
+    expect(
+      createMusicMix(seed, [unrelated, composerMatch], new Set(), {}, 24, {
+        requireSimilarity: true,
+      })
+    ).toEqual([composerMatch]);
+  });
+
+  it('does not use unrelated tracks when similarity is required', () => {
+    const seed = createTrack({ id: 'seed', genre: undefined });
+    const unrelated = createTrack({
+      id: 'unrelated',
+      artist: 'Another Artist',
+      genre: 'Pop',
+      composer: 'Composer Two',
+    });
+
+    expect(
+      createMusicMix(seed, [unrelated], new Set(), {}, 24, { requireSimilarity: true })
+    ).toEqual([]);
+  });
+
   it('limits the generated mix', () => {
     const seed = createTrack({ id: 'seed', genre: 'Pop' });
     const candidates = Array.from({ length: 5 }, (_, index) =>

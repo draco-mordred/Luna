@@ -13,6 +13,7 @@ import { splitArtistCredits } from '../utils/artistCredits';
 import { compareAlphaNumericFirst } from '../utils/alphaNumericSort';
 import { useArtistImage } from '../services/artistImages';
 import { useAndroidAlbumArtwork } from '../hooks/useAndroidAlbumArtwork';
+import AndroidLibrarySortMenu from '../components/AndroidLibrarySortMenu';
 import './Artists.css';
 
 interface ArtistCardProps {
@@ -131,6 +132,11 @@ const ArtistsPage = ({
 }: ArtistsPageProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'albums' | 'tracks'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const sortOptions = [
+    { value: 'name', label: 'Name' },
+    { value: 'albums', label: 'Albums' },
+    { value: 'tracks', label: 'Tracks' },
+  ] as const;
   const navigate = useNavigate();
   useScrollToLibraryItem();
 
@@ -208,31 +214,42 @@ const ArtistsPage = ({
               Shuffle &amp; Play
             </button>
             {artists.length > 0 && (
-              <div className='sort-selector'>
-                <label className='sort-label' htmlFor='artist-sort'>
-                  Sort by:
-                </label>
-                <select
-                  id='artist-sort'
-                  className='sort-select'
-                  value={sortBy}
-                  onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-                >
-                  <option value='name'>Name</option>
-                  <option value='albums'>Albums</option>
-                  <option value='tracks'>Tracks</option>
-                </select>
-                <button
-                  className='sort-direction'
-                  type='button'
-                  aria-label='Change sort direction'
-                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                >
-                  <span className='material-symbols-outlined'>
-                    {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                  </span>
-                </button>
-              </div>
+              <>
+                <AndroidLibrarySortMenu
+                  options={sortOptions}
+                  sortBy={sortBy}
+                  onSortByChange={setSortBy}
+                  sortDirection={sortDirection}
+                  onToggleDirection={() =>
+                    setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'))
+                  }
+                />
+                <div className='sort-selector'>
+                  <label className='sort-label' htmlFor='artist-sort'>
+                    Sort by:
+                  </label>
+                  <select
+                    id='artist-sort'
+                    className='sort-select'
+                    value={sortBy}
+                    onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                  >
+                    <option value='name'>Name</option>
+                    <option value='albums'>Albums</option>
+                    <option value='tracks'>Tracks</option>
+                  </select>
+                  <button
+                    className='sort-direction'
+                    type='button'
+                    aria-label='Change sort direction'
+                    onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  >
+                    <span className='material-symbols-outlined'>
+                      {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                    </span>
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </header>

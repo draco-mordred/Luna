@@ -13,6 +13,25 @@
   overflow: hidden;
 }
 
+html[data-android-app='true'] .settings-page {
+  width: 133.333333%;
+  height: 133.333333%;
+  flex: 0 0 133.333333%;
+  transform: scale(0.75);
+  transform-origin: top left;
+}
+
+html[data-android-app='true'] .settings-tabs-container {
+  transform: scale(0.75);
+  transform-origin: top left;
+}
+
+html[data-android-app='true']
+  .android-top-navbar.android-navigation-visible
+  .tabs-container.settings-tabs-container {
+  transform: scale(0.75);
+}
+
 .settings-container {
   display: flex;
   flex: 1;

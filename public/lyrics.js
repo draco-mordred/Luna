@@ -1,5 +1,10 @@
 const chardet = require('chardet');
 const iconv = require('iconv-lite');
+const {
+  combineLyricsValues,
+  parseLyricsText,
+  parseSyncedLyrics,
+} = require('../src/utils/lyricsParser');
 
 const decodeTextBuffer = (buffer, fallback = 'utf8') => {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
@@ -46,76 +51,6 @@ const normalizeTextValue = (value) => {
     }
   }
   return '';
-};
-
-const parseTimestampToSeconds = (token) => {
-  if (typeof token !== 'string') return null;
-  const normalized = token.trim().replace(/[,]/g, '.');
-  const parts = normalized.split(':');
-  if (parts.length < 2 || parts.length > 3) return null;
-  const values = parts.map(Number);
-  if (values.some((value) => !Number.isFinite(value))) return null;
-  if (parts.length === 2) return values[0] * 60 + values[1];
-  return values[0] * 3600 + values[1] * 60 + values[2];
-};
-
-const parseSyncedLyrics = (rawText) => {
-  if (typeof rawText !== 'string') return [];
-  const lines = rawText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
-  const cues = [];
-  let cueStart = null;
-  let cueText = [];
-
-  const addCue = (time, text) => {
-    const cleanedText = text.trim();
-    if (Number.isFinite(time) && cleanedText) cues.push({ time, text: cleanedText });
-  };
-
-  const flushBlockCue = () => {
-    if (cueStart !== null && cueText.length > 0) addCue(cueStart, cueText.join('\n'));
-    cueStart = null;
-    cueText = [];
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      flushBlockCue();
-      continue;
-    }
-
-    const timestampMatches = [...line.matchAll(/\[(\d{1,2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\]/g)];
-    if (timestampMatches.length > 0) {
-      flushBlockCue();
-      const lyricText = line.slice(timestampMatches[timestampMatches.length - 1].index + timestampMatches[timestampMatches.length - 1][0].length).trim();
-      for (const match of timestampMatches) {
-        addCue(parseTimestampToSeconds(match[1]), lyricText);
-      }
-      continue;
-    }
-
-    const timeRange = line.match(/^(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})(?:\s+.*)?$/);
-    if (timeRange) {
-      flushBlockCue();
-      cueStart = parseTimestampToSeconds(timeRange[1]);
-      continue;
-    }
-
-    const simpleCue = line.match(/^(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})\s+(.+)$/);
-    if (simpleCue) {
-      flushBlockCue();
-      addCue(parseTimestampToSeconds(simpleCue[1]), simpleCue[2]);
-      continue;
-    }
-
-    if (/^(?:WEBVTT|NOTE\b|\d+)$/.test(line)) continue;
-    if (cueStart !== null) cueText.push(line);
-  }
-  flushBlockCue();
-
-  return cues
-    .filter((cue) => cue.text)
-    .sort((left, right) => left.time - right.time);
 };
 
 const isImageBuffer = (buffer) => (
@@ -167,35 +102,16 @@ const extractEmbeddedLyrics = (metadata) => {
       .flatMap(([format, tags]) => /id3v2/i.test(format) && Array.isArray(tags) ? tags : [])
       .filter((tag) => ['USLT', 'ULT', 'SYLT'].includes(tag.id))
       .flatMap((tag) => extractLyricTextValues(tag.value)),
-  ].filter((value, index, values) => values.indexOf(value) === index);
+  ];
 
-  const parsedLyricValues = lyricValues.map((value) => ({
-    value,
-    cues: parseSyncedLyrics(value),
-  }));
-  const syncedLyrics = parsedLyricValues.flatMap(({ cues }) => cues);
-  const seenCues = new Set();
-  const uniqueSyncedLyrics = syncedLyrics.filter((line) => {
-    const key = `${line.time.toFixed(3)}\0${line.text}`;
-    if (seenCues.has(key)) return false;
-    seenCues.add(key);
-    return true;
-  });
-
-  const plainLyrics = parsedLyricValues
-    .filter(({ cues }) => cues.length === 0)
-    .map(({ value }) => value)
-    .join('\n\n');
-
-  return {
-    lyrics: plainLyrics || uniqueSyncedLyrics.map((line) => line.text).join('\n') || undefined,
-    syncedLyrics: uniqueSyncedLyrics.length > 0 ? uniqueSyncedLyrics : undefined,
-  };
+  return combineLyricsValues(lyricValues);
 };
 
 module.exports = {
   decodeTextBuffer,
   normalizeTextValue,
+  combineLyricsValues,
+  parseLyricsText,
   parseSyncedLyrics,
   extractEmbeddedLyrics,
 };

@@ -111,6 +111,27 @@ npm install
 npm run dev
 ```
 
+### Preview Android layouts in a browser
+
+The primary web app runs in desktop mode at `http://localhost:3000`:
+
+```bash
+npm start
+```
+
+In a second terminal, start the Android interface at `http://localhost:3001`:
+
+```bash
+npm run start:android-preview
+```
+
+This second development server opens the shared app directly in Android mode; it is not an iframe
+or mockup. Both interfaces use the same React components, so Android UI changes can be previewed in
+the browser before building the Android app, without switching the primary web app out of desktop
+mode. In the Android preview, choose **Add Music Folder** to scan and play supported local audio
+files through the browser. The installed Android app continues to use its native media-library scan.
+Folder access requires a browser-supported secure context, such as `localhost`.
+
 ### Build the production app and installers
 
 ```bash

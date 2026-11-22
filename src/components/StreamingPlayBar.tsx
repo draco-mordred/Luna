@@ -26,6 +26,8 @@ interface StreamingPlayBarProps {
   onToggleShuffle: () => void;
   repeatMode: 'off' | 'one' | 'all';
   onToggleRepeat: () => void;
+  isAutoplayEnabled: boolean;
+  onToggleAutoplay: () => void;
   onStartMusicMix?: (track: Track) => void;
   audioOutputDeviceId: string;
   onAudioOutputDeviceChange: (deviceId: string) => Promise<void>;
@@ -55,6 +57,8 @@ const StreamingPlayBar = ({
   onToggleShuffle,
   repeatMode,
   onToggleRepeat,
+  isAutoplayEnabled,
+  onToggleAutoplay,
   onStartMusicMix,
   audioOutputDeviceId,
   onAudioOutputDeviceChange,
@@ -158,6 +162,18 @@ const StreamingPlayBar = ({
                 </span>
               </button>
             )}
+            <button
+              type='button'
+              className={`streaming-play-bar-mix${isAutoplayEnabled ? ' active' : ''}`}
+              aria-label={isAutoplayEnabled ? 'Turn AutoPlay off' : 'Turn AutoPlay on'}
+              aria-pressed={isAutoplayEnabled}
+              title={isAutoplayEnabled ? 'AutoPlay is on' : 'Turn AutoPlay on'}
+              onClick={onToggleAutoplay}
+            >
+              <span className='material-symbols-outlined' aria-hidden='true'>
+                {isAutoplayEnabled ? 'toggle_on' : 'toggle_off'}
+              </span>
+            </button>
           </div>
           <span title={track.artist}>{track.artist || providerName}</span>
           <small>{providerName}</small>

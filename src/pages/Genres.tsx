@@ -18,12 +18,16 @@ const GenresPage = ({ tracks, onPlayTrack, onQueueTracks }: GenresPageProps) => 
   const genres = useMemo(() => {
     const tracksByGenre = new Map<string, { name: string; tracks: Track[] }>();
     tracks.forEach((track) => {
-      const name = track.genre?.trim();
-      if (!name) return;
-      const key = name.toLocaleLowerCase();
-      const genre = tracksByGenre.get(key) ?? { name, tracks: [] };
-      genre.tracks.push(track);
-      tracksByGenre.set(key, genre);
+      const names = track.genre
+        ?.split(/[;,]/)
+        .map((name) => name.trim())
+        .filter(Boolean) ?? [];
+      names.forEach((name) => {
+        const key = name.toLocaleLowerCase();
+        const genre = tracksByGenre.get(key) ?? { name, tracks: [] };
+        genre.tracks.push(track);
+        tracksByGenre.set(key, genre);
+      });
     });
     return [...tracksByGenre.values()]
       .map((genre) => ({ ...genre, tracks: sortCollectionTracks(genre.tracks) }))
@@ -42,7 +46,7 @@ const GenresPage = ({ tracks, onPlayTrack, onQueueTracks }: GenresPageProps) => 
         <div className='genres-grid'>
           {genres.map((genre) => (
             <QueueContextMenu key={genre.name.toLocaleLowerCase()} tracks={genre.tracks} onQueueTracks={onQueueTracks}>
-            <section
+            <div
               id={getLibraryItemHash('genre', genre.name).slice(1)}
               className='genre-card'
               role='link'
@@ -84,7 +88,7 @@ const GenresPage = ({ tracks, onPlayTrack, onQueueTracks }: GenresPageProps) => 
                   <span className='material-symbols-outlined' aria-hidden='true'>play_arrow</span>
                 </button>
               </header>
-            </section>
+            </div>
             </QueueContextMenu>
           ))}
         </div>

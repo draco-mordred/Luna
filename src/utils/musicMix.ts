@@ -18,6 +18,13 @@ const getGenres = (track: Track) =>
       .filter(Boolean)
   );
 
+const getComposers = (track: Track) =>
+  new Set(
+    splitArtistCredits(track.composer ?? '')
+      .map(normalize)
+      .filter(Boolean)
+  );
+
 const hasOverlap = (first: Set<string>, second: Set<string>) =>
   Array.from(first).some((value) => second.has(value));
 
@@ -38,10 +45,12 @@ export const createMusicMix = (
     lovedTrackIds?: ReadonlySet<string>;
     playCounts?: Readonly<Record<string, number>>;
   } = {},
-  limit = 24
+  limit = 24,
+  options: { requireSimilarity?: boolean } = {}
 ): Track[] => {
   const seedArtists = getArtists(seedTrack);
   const seedGenres = getGenres(seedTrack);
+  const seedComposers = getComposers(seedTrack);
   const candidates = Array.from(
     new Map(
       libraryTracks
@@ -57,6 +66,8 @@ export const createMusicMix = (
     .map((track) => {
       const artistMatch = hasOverlap(seedArtists, getArtists(track));
       const genreMatch = hasOverlap(seedGenres, getGenres(track));
+      const composerMatch = hasOverlap(seedComposers, getComposers(track));
+      const hasSimilarityMatch = artistMatch || genreMatch || composerMatch;
       const sameAlbum = Boolean(
         seedTrack.album && normalize(track.album) === normalize(seedTrack.album) && artistMatch
       );
@@ -67,16 +78,19 @@ export const createMusicMix = (
       const score =
         (artistMatch ? 6 : 0) +
         (genreMatch ? 4 : 0) +
+        (composerMatch ? 5 : 0) +
         (sameAlbum ? 2 : 0) +
         (closeReleaseYear ? 1 : 0) +
         (preferences.lovedTrackIds?.has(track.id) ? 2.5 : 0) +
         Math.min(1.5, Math.log2(playCount + 1) * 0.45);
-      return { track, score };
+      return { track, score, hasSimilarityMatch };
     })
-    .filter(({ score }) => score > 0)
+    .filter(({ score, hasSimilarityMatch }) =>
+      options.requireSimilarity ? score > 0 && hasSimilarityMatch : score > 0
+    )
     .sort((first, second) => second.score - first.score);
 
-  if (!scored.length) return shuffle(candidates).slice(0, limit);
+  if (!scored.length) return options.requireSimilarity ? [] : shuffle(candidates).slice(0, limit);
 
   const result: Track[] = [];
   for (let index = 0; index < scored.length;) {

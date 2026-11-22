@@ -596,11 +596,11 @@ html[data-android-app='true'] .page-transition {
 }
 
 html[data-android-app='true'] .indexed-list-layout,
-html[data-android-app='true'] .albums-grid,
-html[data-android-app='true'] .artists-grid,
 html[data-android-app='true'] .home-track-list {
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 2px;
 }
 
 html[data-android-app='true'] .sidebar-header,
@@ -752,6 +752,9 @@ html[data-android-app='true'] .page-content.settings-route-content {
     border-color 150ms ease,
     transform 150ms ease;
     font-size: 15px;
+        position: absolute;
+    top: 30px;
+    right: 20px;
 }
 
 .shuffle-play-button:hover:not(:disabled) {
@@ -767,6 +770,48 @@ html[data-android-app='true'] .page-content.settings-route-content {
 
 .shuffle-play-button .material-symbols-outlined {
   font-size: 1.2rem;
+}
+
+html[data-android-app='true'] .tracks-page .shuffle-play-button,
+html[data-android-app='true'] .albums-page .shuffle-play-button,
+html[data-android-app='true'] .artists-page .shuffle-play-button {
+  position: static;
+  top: auto;
+  right: auto;
+  min-height: 30px;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 0.74rem;
+}
+
+html[data-android-app='true'] .tracks-page .shuffle-play-button .material-symbols-outlined,
+html[data-android-app='true'] .albums-page .shuffle-play-button .material-symbols-outlined,
+html[data-android-app='true'] .artists-page .shuffle-play-button .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+html[data-android-app='true'] .albums-page .sort-selector,
+html[data-android-app='true'] .artists-page .sort-selector {
+  border: 1px solid transparent;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+html[data-android-app='true'] .albums-page .sort-selector:hover,
+html[data-android-app='true'] .albums-page .sort-selector:focus-within,
+html[data-android-app='true'] .artists-page .sort-selector:hover,
+html[data-android-app='true'] .artists-page .sort-selector:focus-within {
+  border-color: var(--system-accent);
+  background: color-mix(in srgb, var(--system-accent) 24%, var(--bg-secondary));
+}
+
+html[data-android-app='true'] .albums-page .sort-direction:hover,
+html[data-android-app='true'] .artists-page .sort-direction:hover {
+  background: transparent;
+  color: var(--text-primary);
 }
 
 .page-transition {
@@ -1236,7 +1281,7 @@ html[data-android-app='true'] .top-navbar.android-top-navbar.android-navigation-
   left: 0;
   display: flex;
   width: 100%;
-  height: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 58px);
+  height: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 45px);
   min-height: 0;
   flex: 0 0 auto;
   justify-content: center;
@@ -1294,11 +1339,11 @@ html[data-android-app='true'] .android-top-navbar.android-navigation-visible .ta
 }
 
 html[data-android-app='true'] .android-top-navbar.android-navigation-visible .tab-button {
-  min-height: 38px;
-  padding: 6px 11px;
+  min-height: 30px;
+  padding: 5px 10px;
   border: 0;
-  border-radius: 999px;
-  font-size: 0.76rem;
+  border-radius: 9px;
+  font-size: 0.575rem;
 }
 
 html[data-android-app='true'] .android-top-navbar.android-navigation-visible .tab-button.active {
@@ -1333,19 +1378,36 @@ html[data-android-app='true']
 html[data-android-app='true']
   .android-top-navbar.android-navigation-visible
   .options-button {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
   color: var(--text-primary);
+}
+
+html[data-android-app='true']
+  .android-top-navbar
+  .options-section
+  .options-button {
+  width: 32px;
+  height: 32px;
+}
+
+html[data-android-app='true']
+  .android-top-navbar
+  .options-section
+  .options-button
+  .material-symbols-outlined {
+  font-size: 1rem;
+  transform: rotate(90deg);
 }
 
 html[data-android-app='true'] .android-library-search {
   position: absolute;
   z-index: 2;
   top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 56px);
-  right: 14px;
-  left: 14px;
+    right: 60px;
+    left: 60px;
   display: flex;
   height: 42px;
   align-items: center;
@@ -1385,7 +1447,7 @@ html[data-android-app='true'] .app-container {
 
 html[data-android-app='true'] .page-content {
   padding-top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 8px);
-  padding-bottom: calc(76px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: calc(101px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
   scrollbar-gutter: auto;
 }
 
@@ -1402,7 +1464,7 @@ html[data-android-app='true']
 }
 
 html[data-android-app='true'] .app.android-dock-compact .page-content {
-  padding-bottom: calc(72px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: calc(97px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 html[data-android-app='true'] .app.android-dock-menu-open .page-content {
@@ -1418,5 +1480,74 @@ html[data-android-app='true'] .app.android-dock-menu-open .page-content {
   html[data-android-app='true'] .android-library-search {
     right: max(42px, env(safe-area-inset-right, 0px));
     left: max(42px, env(safe-area-inset-left, 0px));
+  }
+}
+
+@media (orientation: landscape), (min-width: 600px) {
+  html[data-android-app='true']
+    .top-navbar.android-top-navbar.android-navigation-visible {
+        top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 34px);
+        height: 52px;
+        flex-basis: 52px;
+        background: transparent;
+        backdrop-filter: none;
+        left: 0;
+        right: 30px;
+        width: unset;
+  }
+
+  html[data-android-app='true']
+    .android-top-navbar.android-navigation-visible::before {
+    display: none;
+  }
+
+  html[data-android-app='true']
+    .android-top-navbar.android-navigation-visible .navbar-left {
+    top: 0;
+    height: 52px;
+  }
+
+  html[data-android-app='true']
+    .android-top-navbar.android-navigation-visible .tabs-container {
+    height: 48px;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-color) 20%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(155%);
+    backdrop-filter: blur(20px) saturate(155%);
+  }
+
+  html[data-android-app='true']
+    .android-top-navbar.android-navigation-visible .navbar-right {
+    top: 7px;
+  }
+
+  html[data-android-app='true'] .android-library-search {
+    display: none;
+  }
+
+  html[data-android-app='true'] .page-content {
+    padding-top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 62px);
+  }
+
+  html[data-android-app='true']
+    .main-area:has(
+      .android-top-navbar.android-navigation-visible:not(.has-library-search)
+    )
+    .page-content,
+  html[data-android-app='true']
+    .main-area:has(
+      .android-top-navbar.android-navigation-visible.has-library-search
+    )
+    .page-content {
+    padding-top: calc(var(--anp-safe-top, env(safe-area-inset-top, 0px)) + 116px);
+  }
+}
+
+@media (orientation: portrait) {
+  html[data-android-app='true'] .page-content {
+    padding-bottom: calc(150px + var(--anp-safe-bottom, env(safe-area-inset-bottom, 0px)));
   }
 }

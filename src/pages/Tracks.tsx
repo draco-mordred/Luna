@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Playlist, Track } from '../services/MusicLibrary';
 import TrackQueueContextMenu from '../components/TrackQueueContextMenu';
 import AlphaNumericIndex, {
@@ -31,20 +31,21 @@ interface TrackRowProps {
   track: Track;
   index: number;
   isPlaying: boolean;
+  isSearchTarget: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   queueTracks: Track[];
   style?: CSSProperties;
 }
 
 const TrackRow = memo(
-  ({ track, index, isPlaying, onPlayTrack, queueTracks, style }: TrackRowProps) => {
+  ({ track, index, isPlaying, isSearchTarget, onPlayTrack, queueTracks, style }: TrackRowProps) => {
     const navigate = useNavigate();
     const { elementRef, imageUrl } = useAndroidAlbumArtwork(track);
     return (
       <div
         data-track-id={track.id}
         id={`track-row-${track.id}`}
-        className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}`}
+        className={`track-item ${index % 2 === 0 ? 'track-item-odd' : 'track-item-even'} ${isPlaying ? 'playing' : ''}${isSearchTarget ? ' search-target' : ''}`}
         style={style}
       >
         <span className='track-number' aria-hidden='true'>
@@ -135,6 +136,7 @@ const TrackRow = memo(
 interface VirtualizedTrackRowsProps {
   tracks: Track[];
   selectedTrackId: string | null;
+  searchTargetTrackId: string | null;
   isPlaying: boolean;
   onPlayTrack: (track: Track, queueTracks?: Track[]) => void;
   onVisibleIndexChange: (index: number) => void;
@@ -144,6 +146,7 @@ const VirtualizedTrackRows = memo(
   ({
     tracks,
     selectedTrackId,
+    searchTargetTrackId,
     isPlaying,
     onPlayTrack,
     onVisibleIndexChange,
@@ -210,6 +213,7 @@ const VirtualizedTrackRows = memo(
               track={track}
               index={index}
               isPlaying={selectedTrackId === track.id && isPlaying}
+              isSearchTarget={track.id === searchTargetTrackId}
               onPlayTrack={onPlayTrack}
               queueTracks={tracks}
               style={{
@@ -264,6 +268,8 @@ const TracksPage = ({
   onSyncTrack,
   onAddMusicFolder,
 }: TracksPageProps) => {
+  const [searchParams] = useSearchParams();
+  const requestedTrackId = searchParams.get('track');
   const [sortBy, setSortBy] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -290,6 +296,28 @@ const TracksPage = ({
     () => new Map(sortedTracks.map((track, index) => [track.id, index])),
     [sortedTracks]
   );
+
+  useEffect(() => {
+    if (!requestedTrackId) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const trackIndex = trackIndexById.get(requestedTrackId);
+      const scrollContainer = document.querySelector<HTMLElement>('.page-content');
+      const list = document.getElementById('virtualized-track-list');
+      if (trackIndex === undefined || !scrollContainer || !list) return;
+      const listTop =
+        scrollContainer.scrollTop +
+        list.getBoundingClientRect().top -
+        scrollContainer.getBoundingClientRect().top -
+        scrollContainer.clientTop;
+      const navbarHeight =
+        document.querySelector<HTMLElement>('.top-navbar')?.getBoundingClientRect().height ?? 0;
+      scrollContainer.scrollTo({
+        top: listTop + trackIndex * TRACK_ROW_HEIGHT - navbarHeight,
+        behavior: 'smooth',
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [requestedTrackId, trackIndexById]);
 
   const updateActiveIndex = useCallback(
     (visibleIndex: number) => {
@@ -448,6 +476,7 @@ const TracksPage = ({
               <VirtualizedTrackRows
                 tracks={sortedTracks}
                 selectedTrackId={selectedTrackId}
+                searchTargetTrackId={requestedTrackId}
                 isPlaying={isPlaying}
                 onPlayTrack={onPlayTrack}
                 onVisibleIndexChange={updateActiveIndex}

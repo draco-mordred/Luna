@@ -36,8 +36,6 @@ const compareVersions = (left: string, right: string) => {
 };
 
 interface SettingsPageProps {
-  androidDockShowLabels: boolean;
-  onAndroidDockShowLabelsChange: (show: boolean) => void;
   androidPlayBarStyle: AndroidPlayBarStyle;
   onAndroidPlayBarStyleChange: (style: AndroidPlayBarStyle) => void;
   nowPlayingLayout: NowPlayingLayout;
@@ -81,6 +79,7 @@ interface SettingsPageProps {
   musicFolders: string[];
   trackCount: number;
   isDesktopApp: boolean;
+  isAndroidPreview: boolean;
   alwaysOnTop: boolean;
   onAlwaysOnTopChange: (enabled: boolean) => void;
   isAndroidApp: boolean;
@@ -160,8 +159,6 @@ const SettingsCategory: React.FC<{ title: string; children: React.ReactNode }> =
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
-  androidDockShowLabels,
-  onAndroidDockShowLabelsChange,
   androidPlayBarStyle,
   onAndroidPlayBarStyleChange,
   nowPlayingLayout,
@@ -205,6 +202,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   musicFolders,
   trackCount,
   isDesktopApp,
+  isAndroidPreview,
   alwaysOnTop,
   onAlwaysOnTopChange,
   isAndroidApp,
@@ -381,7 +379,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
           </div>
-          {isDesktopApp && (
+          {isDesktopApp && !isAndroidApp && (
             <div className='setting-item'>
               <div className='setting-info'>
                 <h3>Always on top</h3>
@@ -454,29 +452,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           )}
           </SettingsCategory>
-          {isAndroidApp && (
-            <SettingsCategory title='Android navigation'>
-              <div className='setting-item'>
-                <div className='setting-info'>
-                  <h3>Show dock labels</h3>
-                  <p>Show text labels below the Android dock icons</p>
-                </div>
-                <div className='setting-control'>
-                  <label className='toggle-switch'>
-                    <input
-                      type='checkbox'
-                      checked={androidDockShowLabels}
-                      onChange={(event) =>
-                        onAndroidDockShowLabelsChange(event.currentTarget.checked)
-                      }
-                      aria-label='Show labels in the Android dock'
-                    />
-                    <span className='toggle-slider'></span>
-                  </label>
-                </div>
-              </div>
-            </SettingsCategory>
-          )}
           <SettingsCategory title='Colors and player appearance'>
           <div className='setting-item'>
             <div className='setting-info'>
@@ -526,7 +501,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </select>
             </div>
           </div>
-          {isWindowsDesktopApp && (
+          {isWindowsDesktopApp && !isAndroidApp && (
             <div className='setting-item'>
               <div className='setting-info'>
                 <h3>App background material</h3>
@@ -563,7 +538,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
           )}
-          {isWindowsDesktopApp && (
+          {isWindowsDesktopApp && !isAndroidApp && (
             <div className='setting-item'>
               <div className='setting-info'>
                 <h3>Default audio player</h3>
@@ -683,17 +658,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           <SettingsCategory title='Music library'>
           <div className='setting-item'>
             <div className='setting-info'>
-              <h3>{isAndroidApp ? 'Music Library' : 'Music Folders'}</h3>
+              <h3>{isAndroidApp && !isAndroidPreview ? 'Music Library' : 'Music Folders'}</h3>
               <p>
-                {isDesktopApp
-                  ? `${musicFolders.length} folder(s) • ${trackCount} tracks indexed`
-                  : isAndroidApp
-                    ? `${trackCount} tracks found in the device audio library`
-                    : 'Folder management is available in the desktop app'}
+                {isAndroidPreview
+                  ? `${musicFolders.length} folder(s) • ${trackCount} tracks scanned`
+                  : isDesktopApp
+                    ? `${musicFolders.length} folder(s) • ${trackCount} tracks indexed`
+                    : isAndroidApp
+                      ? `${trackCount} tracks found in the device audio library`
+                      : 'Folder management is available in the desktop app'}
               </p>
             </div>
             <div className='setting-control'>
-              {isDesktopApp && (
+              {(isDesktopApp || isAndroidPreview) && (
                 <button type='button' className='manage-button' onClick={onAddMusicFolder}>
                   Add Folder
                 </button>
@@ -708,7 +685,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     folder
                   </span>
                   <span>{folder}</span>
-                  {isDesktopApp && (
+                  {(isDesktopApp || isAndroidPreview) && (
                     <button
                       className='remove-music-folder'
                       type='button'
@@ -728,56 +705,60 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className='setting-info'>
               <h3>Rescan Library</h3>
               <p>
-                {isAndroidApp
-                  ? 'Find audio files currently available in the device media library'
-                  : 'Search the saved folders for new, changed, or missing tracks'}
+                {isAndroidPreview
+                  ? 'Scan the local music folders selected in this browser'
+                  : isAndroidApp
+                    ? 'Find audio files currently available in the device media library'
+                    : 'Search the saved folders for new, changed, or missing tracks'}
               </p>
             </div>
             <div className='setting-control'>
               {(isDesktopApp || isAndroidApp) && (
                 <button type='button' className='manage-button' onClick={onRescanMusicLibrary}>
-                  {isAndroidApp ? 'Scan device' : 'Rescan'}
+                  {isAndroidApp && !isAndroidPreview ? 'Scan device' : 'Rescan'}
                 </button>
               )}
             </div>
           </div>
           </SettingsCategory>
-          <SettingsCategory title='Sidebar sections'>
-          <div className='setting-item'>
-            <div className='setting-info'>
-              <h3>Browse section</h3>
-              <p>Show Browse in the main sidebar</p>
-            </div>
-            <div className='setting-control'>
-              <label className='toggle-switch'>
-                <input
-                  type='checkbox'
-                  aria-label='Show Browse section in sidebar'
-                  checked={showBrowseSection}
-                  onChange={(event) => onShowBrowseSectionChange(event.currentTarget.checked)}
-                />
-                <span className='toggle-slider'></span>
-              </label>
-            </div>
-          </div>
-          <div className='setting-item'>
-            <div className='setting-info'>
-              <h3>Radio section</h3>
-              <p>Show Radio in the main sidebar</p>
-            </div>
-            <div className='setting-control'>
-              <label className='toggle-switch'>
-                <input
-                  type='checkbox'
-                  aria-label='Show Radio section in sidebar'
-                  checked={showRadioSection}
-                  onChange={(event) => onShowRadioSectionChange(event.currentTarget.checked)}
-                />
-                <span className='toggle-slider'></span>
-              </label>
-            </div>
-          </div>
-          </SettingsCategory>
+          {!isAndroidApp && (
+            <SettingsCategory title='Sidebar sections'>
+              <div className='setting-item'>
+                <div className='setting-info'>
+                  <h3>Browse section</h3>
+                  <p>Show Browse in the main sidebar</p>
+                </div>
+                <div className='setting-control'>
+                  <label className='toggle-switch'>
+                    <input
+                      type='checkbox'
+                      aria-label='Show Browse section in sidebar'
+                      checked={showBrowseSection}
+                      onChange={(event) => onShowBrowseSectionChange(event.currentTarget.checked)}
+                    />
+                    <span className='toggle-slider'></span>
+                  </label>
+                </div>
+              </div>
+              <div className='setting-item'>
+                <div className='setting-info'>
+                  <h3>Radio section</h3>
+                  <p>Show Radio in the main sidebar</p>
+                </div>
+                <div className='setting-control'>
+                  <label className='toggle-switch'>
+                    <input
+                      type='checkbox'
+                      aria-label='Show Radio section in sidebar'
+                      checked={showRadioSection}
+                      onChange={(event) => onShowRadioSectionChange(event.currentTarget.checked)}
+                    />
+                    <span className='toggle-slider'></span>
+                  </label>
+                </div>
+              </div>
+            </SettingsCategory>
+          )}
         </div>
       ),
     },

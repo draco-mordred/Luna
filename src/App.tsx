@@ -29,7 +29,8 @@ import {
 import {
   getAndroidAppearance,
   getAndroidDeviceInfo,
-  isAndroidApp as detectAndroidApp,
+  isAndroidNativeApp,
+  isAndroidPreview,
   clearAndroidNowPlaying,
   listenForAndroidMediaControls,
   loadAndroidMusicLibraryCache,
@@ -73,6 +74,14 @@ import { getLibraryItemPath } from './utils/libraryNavigation';
 import { getDominantImageColor } from './utils/imageColors';
 import { splitArtistCredits } from './utils/artistCredits';
 import { createMusicMix } from './utils/musicMix';
+import {
+  BROWSER_MUSIC_METADATA_VERSION,
+  getBrowserMusicFilePath,
+  loadBrowserMusicLibraryCache,
+  releaseBrowserMusicTracks,
+  saveBrowserMusicLibraryCache,
+  scanBrowserMusicFiles,
+} from './services/browserMusicLibrary';
 import packageJson from '../package.json';
 
 const Tracks = lazy(() => import('./pages/Tracks'));
@@ -321,11 +330,25 @@ const getPlayButtonAccent = (accent: string, theme: 'light' | 'dark'): number[] 
 const App = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const isAndroidApp = detectAndroidApp();
+  const isAndroidNative = isAndroidNativeApp();
+  const isAndroidPreviewMode = isAndroidPreview();
+  const isAndroidApp = isAndroidNative || isAndroidPreviewMode;
+  useEffect(() => {
+    if (!isAndroidPreviewMode || new URLSearchParams(location.search).has('android-preview'))
+      return;
+    const search = new URLSearchParams(location.search);
+    search.set('android-preview', '1');
+    navigate(
+      { pathname: location.pathname, search: `?${search.toString()}`, hash: location.hash },
+      { replace: true }
+    );
+  }, [isAndroidPreviewMode, location.hash, location.pathname, location.search, navigate]);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [androidAppearance, setAndroidAppearance] = useState<AndroidAppearance | null>(null);
   const [androidDeviceInfo, setAndroidDeviceInfo] = useState<AndroidDeviceInfo | null>(null);
-  const [androidAppearanceLoaded, setAndroidAppearanceLoaded] = useState(!isAndroidApp);
+  const [androidAppearanceLoaded, setAndroidAppearanceLoaded] = useState(
+    !isAndroidApp || isAndroidPreviewMode
+  );
   const [androidAppearanceError, setAndroidAppearanceError] = useState<string | null>(null);
   const [androidMaterialYouEnabled, setAndroidMaterialYouEnabled] = useState(
     () => isAndroidApp && window.localStorage.getItem('luna-android-material-you') !== 'false'
@@ -342,11 +365,9 @@ const App = () => {
     () => isAndroidApp && window.localStorage.getItem('luna-android-dock-compact') === 'true'
   );
   const [androidDockMenuOpen, setAndroidDockMenuOpen] = useState(false);
-  const [androidDockShowLabels, setAndroidDockShowLabels] = useState(
-    () => window.localStorage.getItem('luna-android-dock-labels') !== 'false'
+  const [androidPlayBarStyle, setAndroidPlayBarStyle] = useState<AndroidPlayBarStyle>(
+    getInitialAndroidPlayBarStyle
   );
-  const [androidPlayBarStyle, setAndroidPlayBarStyle] =
-    useState<AndroidPlayBarStyle>(getInitialAndroidPlayBarStyle);
   const [desktopPlayBarStyle, setDesktopPlayBarStyle] = useState<DesktopPlayBarStyle>(() =>
     isAndroidApp ? 'standard' : getInitialDesktopPlayBarStyle()
   );
@@ -369,7 +390,9 @@ const App = () => {
     window.localStorage.setItem('luna-audio-output-device', audioOutputDeviceId);
   }, [audioOutputDeviceId]);
   const [androidLibrarySearchQuery, setAndroidLibrarySearchQuery] = useState('');
-  const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(isAndroidApp);
+  const [androidStartupSplashVisible, setAndroidStartupSplashVisible] = useState(
+    isAndroidApp && !isAndroidPreviewMode
+  );
   const [windowMaterial, setWindowMaterial] = useState<WindowMaterial>('default');
   const [supportsWindowMaterial, setSupportsWindowMaterial] = useState(false);
   const [windowMaterialAppliedAtLaunch, setWindowMaterialAppliedAtLaunch] =
@@ -431,14 +454,16 @@ const App = () => {
     const query = isAndroidApp ? androidLibrarySearchQuery.trim().toLocaleLowerCase() : '';
     if (!query) return libraryTracks;
     return libraryTracks.filter((track) =>
-      [track.name, track.artist, track.album, track.genre, track.composer]
-        .some((value) => value?.toLocaleLowerCase().includes(query))
+      [track.name, track.artist, track.album, track.genre, track.composer].some((value) =>
+        value?.toLocaleLowerCase().includes(query)
+      )
     );
   }, [androidLibrarySearchQuery, isAndroidApp, libraryTracks]);
   const libraryTracksRef = useRef(libraryTracks);
   useLayoutEffect(() => {
     libraryTracksRef.current = libraryTracks;
   }, [libraryTracks]);
+  useEffect(() => () => releaseBrowserMusicTracks(libraryTracksRef.current), []);
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
     try {
       const savedPlaylists = window.localStorage.getItem('luna-playlists');
@@ -451,9 +476,11 @@ const App = () => {
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [trackMetadataDialog, setTrackMetadataDialog] = useState<Track | null>(null);
   const [musicFolders, setMusicFolders] = useState<string[]>([]);
-  const [isLibraryLoading, setIsLibraryLoading] = useState(Boolean(window.electronAPI));
+  const [isLibraryLoading, setIsLibraryLoading] = useState(
+    Boolean(window.electronAPI) || isAndroidPreviewMode
+  );
   const [initialLibraryLoaded, setInitialLibraryLoaded] = useState(
-    !window.electronAPI && !isAndroidApp
+    !window.electronAPI && (!isAndroidApp || isAndroidPreviewMode)
   );
   const [libraryReconciled, setLibraryReconciled] = useState(!window.electronAPI);
   const [libraryScanProgress, setLibraryScanProgress] = useState<MusicLibraryScanProgress | null>(
@@ -471,6 +498,13 @@ const App = () => {
   const [playbackSeekRevision, setPlaybackSeekRevision] = useState(0);
   const [, setRecentMediaRevision] = useState(0);
   const [rememberRecentMedia, setRememberRecentMedia] = useState(rememberRecentMediaEnabled);
+  const [recentPlayCounts, setRecentPlayCounts] = useState(() =>
+    rememberRecentMedia ? loadRecentMediaHistory().playCounts : {}
+  );
+  const handleRememberRecentMediaChange = (enabled: boolean) => {
+    setRememberRecentMedia(enabled);
+    setRecentPlayCounts(enabled ? loadRecentMediaHistory().playCounts : {});
+  };
   const [androidAmoledDarkMode, setAndroidAmoledDarkMode] = useState(
     () => window.localStorage.getItem('luna-amoled-dark-mode') === 'true'
   );
@@ -490,7 +524,11 @@ const App = () => {
   });
   const [playQueue, setPlayQueue] = useState<Track[]>([]);
   const [playQueueIndex, setPlayQueueIndex] = useState(0);
+  const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(
+    () => window.localStorage.getItem('luna-autoplay-enabled') === 'true'
+  );
   const playQueueBaseRef = useRef<Track[]>([]);
+  const autoplayPlayedTrackIdsRef = useRef<Set<string>>(new Set());
   const [visualizerAnalyser, setVisualizerAnalyser] = useState<AnalyserNode | null>(null);
   const [lovedTrackIds, setLovedTrackIds] = useState<string[]>(getInitialLovedTrackIds);
   const [favoriteAlbumKeys, setFavoriteAlbumKeys] = useState<string[]>(() =>
@@ -502,6 +540,8 @@ const App = () => {
   const audioARef = useRef<HTMLAudioElement>(null);
   const audioBRef = useRef<HTMLAudioElement>(null);
   const audiomackAudioRef = useRef<HTMLAudioElement>(null);
+  const previewFolderInputRef = useRef<HTMLInputElement>(null);
+  const previewFilesRef = useRef<File[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const audioCompressorRef = useRef<DynamicsCompressorNode | null>(null);
@@ -539,6 +579,10 @@ const App = () => {
   }, [rememberRecentMedia]);
 
   useEffect(() => {
+    window.localStorage.setItem('luna-autoplay-enabled', String(isAutoplayEnabled));
+  }, [isAutoplayEnabled]);
+
+  useEffect(() => {
     window.localStorage.setItem('luna-amoled-dark-mode', String(androidAmoledDarkMode));
   }, [androidAmoledDarkMode]);
 
@@ -555,7 +599,14 @@ const App = () => {
   }, [favoriteArtistNames]);
 
   useEffect(() => {
-    if (!initialLibraryLoaded || !rememberRecentMedia || recentQueueRestoredRef.current) return;
+    if (
+      isAndroidPreviewMode ||
+      !initialLibraryLoaded ||
+      !rememberRecentMedia ||
+      recentQueueRestoredRef.current
+    ) {
+      return;
+    }
     recentQueueRestoredRef.current = true;
     const savedQueue = loadRecentMediaHistory();
     const tracksByPath = new Map(libraryTracks.map((track) => [track.path, track]));
@@ -567,11 +618,14 @@ const App = () => {
     setPlayQueue(restoredQueue);
     setPlayQueueIndex(restoredIndex);
     playQueueBaseRef.current = restoredQueue;
-  }, [initialLibraryLoaded, libraryTracks, rememberRecentMedia]);
+    autoplayPlayedTrackIdsRef.current = new Set(restoredQueue.map((track) => track.id));
+  }, [initialLibraryLoaded, isAndroidPreviewMode, libraryTracks, rememberRecentMedia]);
 
   useEffect(() => {
-    if (rememberRecentMedia && playQueue.length) saveRecentQueue(playQueue, playQueueIndex);
-  }, [playQueue, playQueueIndex, rememberRecentMedia]);
+    if (!isAndroidPreviewMode && rememberRecentMedia && playQueue.length) {
+      saveRecentQueue(playQueue, playQueueIndex);
+    }
+  }, [isAndroidPreviewMode, playQueue, playQueueIndex, rememberRecentMedia]);
 
   useEffect(() => {
     if (!rememberRecentMedia) return;
@@ -612,7 +666,7 @@ const App = () => {
   }, [isAndroidApp, location.pathname, navigate]);
 
   useEffect(() => {
-    if (!isAndroidApp) return;
+    if (!isAndroidNative) return;
     if (!currentTrack || !androidBackgroundPlaybackEnabled) {
       void clearAndroidNowPlaying().catch((error: unknown) => {
         console.error('Could not clear the Android Now Playing notification:', error);
@@ -652,7 +706,7 @@ const App = () => {
     androidBackgroundPlaybackEnabled,
     androidLockScreenControlsEnabled,
     currentTrack,
-    isAndroidApp,
+    isAndroidNative,
     isShuffled,
     isPlaying,
     playbackSeekRevision,
@@ -668,7 +722,7 @@ const App = () => {
     []
   );
   useEffect(() => {
-    if (!isAndroidApp) return;
+    if (!isAndroidNative) return;
 
     let active = true;
     getAndroidAppearance()
@@ -694,10 +748,10 @@ const App = () => {
     return () => {
       active = false;
     };
-  }, [isAndroidApp]);
+  }, [isAndroidNative]);
 
   useEffect(() => {
-    if (!isAndroidApp) return;
+    if (!isAndroidNative) return;
     let active = true;
     getAndroidDeviceInfo()
       .then((deviceInfo) => {
@@ -709,7 +763,7 @@ const App = () => {
     return () => {
       active = false;
     };
-  }, [isAndroidApp]);
+  }, [isAndroidNative]);
 
   useEffect(() => {
     if (
@@ -773,64 +827,67 @@ const App = () => {
     [showPlaybackNotice]
   );
 
-  const prepareVisualizerAudio = useCallback((audio: HTMLAudioElement) => {
-    try {
-      let audioContext = audioContextRef.current;
-      if (!audioContext) {
-        audioContext = new window.AudioContext();
-        audioContextRef.current = audioContext;
-      }
+  const prepareVisualizerAudio = useCallback(
+    (audio: HTMLAudioElement) => {
+      try {
+        let audioContext = audioContextRef.current;
+        if (!audioContext) {
+          audioContext = new window.AudioContext();
+          audioContextRef.current = audioContext;
+        }
 
-      let analyser = audioAnalyserRef.current;
-      if (!analyser) {
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.82;
-        audioAnalyserRef.current = analyser;
-        setVisualizerAnalyser(analyser);
-      }
-      let compressor = audioCompressorRef.current;
-      if (!compressor) {
-        compressor = audioContext.createDynamicsCompressor();
-        compressor.threshold.value = volumeNormalization ? -18 : 0;
-        compressor.knee.value = volumeNormalization ? 12 : 0;
-        compressor.ratio.value = volumeNormalization ? 3 : 1;
-        compressor.attack.value = 0.003;
-        compressor.release.value = 0.25;
-        compressor.connect(analyser);
-        analyser.connect(audioContext.destination);
-        audioCompressorRef.current = compressor;
-      }
+        let analyser = audioAnalyserRef.current;
+        if (!analyser) {
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.82;
+          audioAnalyserRef.current = analyser;
+          setVisualizerAnalyser(analyser);
+        }
+        let compressor = audioCompressorRef.current;
+        if (!compressor) {
+          compressor = audioContext.createDynamicsCompressor();
+          compressor.threshold.value = volumeNormalization ? -18 : 0;
+          compressor.knee.value = volumeNormalization ? 12 : 0;
+          compressor.ratio.value = volumeNormalization ? 3 : 1;
+          compressor.attack.value = 0.003;
+          compressor.release.value = 0.25;
+          compressor.connect(analyser);
+          analyser.connect(audioContext.destination);
+          audioCompressorRef.current = compressor;
+        }
 
-      if (!audioSourceNodesRef.current.has(audio)) {
-        const source = audioContext.createMediaElementSource(audio);
-        source.connect(compressor);
-        audioSourceNodesRef.current.set(audio, source);
-      }
+        if (!audioSourceNodesRef.current.has(audio)) {
+          const source = audioContext.createMediaElementSource(audio);
+          source.connect(compressor);
+          audioSourceNodesRef.current.set(audio, source);
+        }
 
-      if (audioOutputDeviceId !== 'default') {
-        void setAudioContextOutputDevice(audioContext, audioOutputDeviceId).catch(
-          (error: unknown) => {
-            console.error('Could not restore the selected audio output:', error);
-            setLibraryError(
-              error instanceof Error
-                ? `Could not restore the selected audio output: ${error.message}`
-                : 'Could not restore the selected audio output.'
-            );
-          }
-        );
-      }
+        if (audioOutputDeviceId !== 'default') {
+          void setAudioContextOutputDevice(audioContext, audioOutputDeviceId).catch(
+            (error: unknown) => {
+              console.error('Could not restore the selected audio output:', error);
+              setLibraryError(
+                error instanceof Error
+                  ? `Could not restore the selected audio output: ${error.message}`
+                  : 'Could not restore the selected audio output.'
+              );
+            }
+          );
+        }
 
-      if (audioContext.state === 'suspended') {
-        void audioContext.resume().catch((error: unknown) => {
-          console.error('Could not resume the audio visualizer context:', error);
-        });
+        if (audioContext.state === 'suspended') {
+          void audioContext.resume().catch((error: unknown) => {
+            console.error('Could not resume the audio visualizer context:', error);
+          });
+        }
+      } catch (error) {
+        console.error('Could not initialize audio visualization:', error);
+        setLibraryError('Could not initialize the audio visualizer.');
       }
-    } catch (error) {
-      console.error('Could not initialize audio visualization:', error);
-      setLibraryError('Could not initialize the audio visualizer.');
-    }
-  }, [audioOutputDeviceId, volumeNormalization]);
+    },
+    [audioOutputDeviceId, volumeNormalization]
+  );
 
   useEffect(
     () => () => {
@@ -1040,6 +1097,7 @@ const App = () => {
   }, [showPlaybackNotice]);
 
   useEffect(() => {
+    if (isAndroidPreviewMode) return;
     if (initialLoadStarted.current || (!window.electronAPI && !isAndroidApp)) return;
     initialLoadStarted.current = true;
     setIsLibraryLoading(true);
@@ -1156,7 +1214,7 @@ const App = () => {
         setLibraryReconciled(true);
       })
       .finally(() => setIsLibraryLoading(false));
-  }, [applyLibraryResponse, isAndroidApp]);
+  }, [applyLibraryResponse, isAndroidApp, isAndroidPreviewMode]);
 
   useEffect(() => {
     if (!settingsLoaded || !initialLibraryLoaded || !lastPlayedTrackPath) return;
@@ -1289,14 +1347,8 @@ const App = () => {
   useEffect(() => {
     if (!isAndroidApp) return;
     window.localStorage.setItem('luna-android-dock-compact', String(androidDockCompact));
-    window.localStorage.setItem('luna-android-dock-labels', String(androidDockShowLabels));
     window.localStorage.setItem('luna-android-playbar-style', androidPlayBarStyle);
-  }, [
-    androidDockCompact,
-    androidDockShowLabels,
-    androidPlayBarStyle,
-    isAndroidApp,
-  ]);
+  }, [androidDockCompact, androidPlayBarStyle, isAndroidApp]);
 
   useEffect(() => {
     setAndroidLibrarySearchQuery('');
@@ -1361,9 +1413,183 @@ const App = () => {
     });
   }, [volume]);
 
+  const scanBrowserPreviewLibrary = useCallback(
+    async (files: File[]) => {
+      setIsLibraryLoading(true);
+      setLibraryError(null);
+      const scanId = `browser-${Date.now()}`;
+      activeLibraryScanIdRef.current = scanId;
+      try {
+        const result = await scanBrowserMusicFiles(
+          files,
+          libraryTracksRef.current,
+          (scanned, total) => {
+            if (activeLibraryScanIdRef.current !== scanId) return;
+            setLibraryScanProgress({
+              scanId,
+              phase: 'reading',
+              folders: [],
+              tracks: [],
+              scanned,
+              total,
+            });
+          }
+        );
+        const retainedSources = new Set(
+          result.tracks.map((track) => track.src).filter((source): source is string => !!source)
+        );
+        const obsoleteTracks = libraryTracksRef.current.filter(
+          (track) => !track.src || !retainedSources.has(track.src)
+        );
+        const obsoleteSources = new Set(
+          obsoleteTracks.map((track) => track.src).filter((source): source is string => !!source)
+        );
+        if (currentTrack?.src && obsoleteSources.has(currentTrack.src)) {
+          if (activeAudioRef.current) {
+            activeAudioRef.current.pause();
+            activeAudioRef.current.removeAttribute('src');
+            activeAudioRef.current.load();
+            activeAudioRef.current = null;
+          }
+          setIsPlaying(false);
+        }
+        const preloadedTrack = preloadedTrackRef.current;
+        if (preloadedTrack && obsoleteTracks.some((track) => track.id === preloadedTrack.trackId)) {
+          preloadedTrack.audio.pause();
+          preloadedTrack.audio.removeAttribute('src');
+          preloadedTrack.audio.load();
+          preloadedTrackRef.current = null;
+        }
+        releaseBrowserMusicTracks(obsoleteTracks);
+        applyLibraryResponse(result);
+        setLibraryReconciled(true);
+        try {
+          await saveBrowserMusicLibraryCache(result, files);
+        } catch (error: unknown) {
+          console.error('Could not persist the browser preview music library:', error);
+          setLibraryError(
+            'The library was scanned, but Luna could not save it for the next browser session.'
+          );
+        }
+        if (!result.tracks.length && !result.errors.length) {
+          setLibraryError('No supported audio files were found in the selected folder.');
+        }
+        return result;
+      } catch (error: unknown) {
+        console.error('Could not scan music files in the browser preview:', error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Could not scan music files in the browser preview.';
+        setLibraryError(message);
+        return { folders: [], tracks: [], errors: [message] };
+      } finally {
+        activeLibraryScanIdRef.current = null;
+        setLibraryScanProgress(null);
+        setIsLibraryLoading(false);
+      }
+    },
+    [applyLibraryResponse, currentTrack]
+  );
+
+  useEffect(() => {
+    if (!isAndroidPreviewMode) return undefined;
+    let active = true;
+    void loadBrowserMusicLibraryCache()
+      .then((cachedLibrary) => {
+        if (!active) {
+          if (cachedLibrary) releaseBrowserMusicTracks(cachedLibrary.tracks);
+          return;
+        }
+        if (cachedLibrary) {
+          previewFilesRef.current = cachedLibrary.files;
+          applyLibraryResponse(cachedLibrary);
+          if (
+            cachedLibrary.tracks.some(
+              (track) => track.metadataVersion !== BROWSER_MUSIC_METADATA_VERSION
+            )
+          ) {
+            void scanBrowserMusicFiles(cachedLibrary.files, cachedLibrary.tracks)
+              .then(async (refreshedLibrary) => {
+                if (!active) {
+                  releaseBrowserMusicTracks(refreshedLibrary.tracks);
+                  return;
+                }
+                const refreshedByPath = new Map(
+                  refreshedLibrary.tracks.map((track) => [track.path, track])
+                );
+                const updatedTracks = cachedLibrary.tracks.map(
+                  (track) => refreshedByPath.get(track.path) ?? track
+                );
+                const retainedSources = new Set(
+                  updatedTracks
+                    .map((track) => track.src)
+                    .filter((source): source is string => Boolean(source))
+                );
+                releaseBrowserMusicTracks(
+                  cachedLibrary.tracks.filter(
+                    (track) => !track.src || !retainedSources.has(track.src)
+                  )
+                );
+                const updatedLibrary = {
+                  folders: cachedLibrary.folders,
+                  tracks: updatedTracks,
+                  errors: refreshedLibrary.errors,
+                };
+                applyLibraryResponse(updatedLibrary);
+                try {
+                  await saveBrowserMusicLibraryCache(updatedLibrary, cachedLibrary.files);
+                } catch (error: unknown) {
+                  console.error('Could not save refreshed browser preview metadata:', error);
+                  setLibraryError(
+                    'Track metadata was refreshed, but Luna could not update the saved browser library.'
+                  );
+                }
+              })
+              .catch((error: unknown) => {
+                console.error('Could not refresh metadata for the saved browser library:', error);
+                if (active) {
+                  setLibraryError(
+                    'Luna could not refresh metadata for the saved browser library.'
+                  );
+                }
+              });
+          }
+        }
+        setLibraryReconciled(true);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not restore the browser preview music library:', error);
+        if (active) {
+          setLibraryError(
+            error instanceof Error
+              ? `Could not restore the saved browser preview library: ${error.message}`
+              : 'Could not restore the saved browser preview library.'
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setInitialLibraryLoaded(true);
+          setIsLibraryLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [applyLibraryResponse, isAndroidPreviewMode]);
+
   const handleRescanMusicLibrary = useCallback(
     async (background = false) => {
-      if (isAndroidApp) {
+      if (isAndroidPreviewMode) {
+        if (!previewFilesRef.current.length) {
+          const message = 'Select a music folder before scanning the browser preview library.';
+          setLibraryError(message);
+          return { folders: [], tracks: [], errors: [message] };
+        }
+        return scanBrowserPreviewLibrary(previewFilesRef.current);
+      }
+      if (isAndroidNative) {
         try {
           if (!background) setIsLibraryLoading(true);
           setLibraryError(null);
@@ -1416,19 +1642,41 @@ const App = () => {
         setIsLibraryLoading(false);
       }
     },
-    [applyLibraryResponse, isAndroidApp]
+    [applyLibraryResponse, isAndroidNative, isAndroidPreviewMode, scanBrowserPreviewLibrary]
   );
 
   useEffect(() => {
-    if (!isAndroidApp || !initialLibraryLoaded) return undefined;
+    if (!isAndroidNative || !initialLibraryLoaded) return undefined;
     const timeoutId = window.setTimeout(() => {
       void handleRescanMusicLibrary(true);
     }, 60_000);
     return () => window.clearTimeout(timeoutId);
-  }, [handleRescanMusicLibrary, initialLibraryLoaded, isAndroidApp]);
+  }, [handleRescanMusicLibrary, initialLibraryLoaded, isAndroidNative]);
+
+  const handleBrowserPreviewFolderFiles = useCallback(
+    (files: File[]) => {
+      const mergedFiles = new Map(
+        previewFilesRef.current.map((file) => [getBrowserMusicFilePath(file), file])
+      );
+      files.forEach((file) => mergedFiles.set(getBrowserMusicFilePath(file), file));
+      previewFilesRef.current = [...mergedFiles.values()];
+      void scanBrowserPreviewLibrary(previewFilesRef.current);
+    },
+    [scanBrowserPreviewLibrary]
+  );
 
   const handleSelectMusicFolders = useCallback(async () => {
-    if (isAndroidApp) return handleRescanMusicLibrary();
+    if (isAndroidPreviewMode) {
+      const input = previewFolderInputRef.current;
+      if (!input) {
+        setLibraryError('The browser folder picker is unavailable.');
+        return null;
+      }
+      input.setAttribute('webkitdirectory', '');
+      input.click();
+      return null;
+    }
+    if (isAndroidNative) return handleRescanMusicLibrary();
     if (!window.electronAPI) {
       setLibraryError('Folder selection is available in the Luna desktop app.');
       return null;
@@ -1451,10 +1699,91 @@ const App = () => {
     } finally {
       setIsLibraryLoading(false);
     }
-  }, [applyLibraryResponse, handleRescanMusicLibrary, isAndroidApp]);
+  }, [applyLibraryResponse, handleRescanMusicLibrary, isAndroidNative, isAndroidPreviewMode]);
 
   const handleRemoveMusicFolder = useCallback(
     async (folder: string) => {
+      if (isAndroidPreviewMode) {
+        setLibraryError(null);
+        const folderPrefix = `${folder}/`;
+        const isInFolder = (path: string) => path === folder || path.startsWith(folderPrefix);
+        const remainingFiles = previewFilesRef.current.filter(
+          (file) => !isInFolder(getBrowserMusicFilePath(file))
+        );
+        const removedTracks = libraryTracksRef.current.filter((track) => isInFolder(track.path));
+        const remainingTracks = libraryTracksRef.current.filter((track) => !isInFolder(track.path));
+        const remainingTrackIds = new Set(remainingTracks.map((track) => track.id));
+        const preloadedTrack = preloadedTrackRef.current;
+        if (preloadedTrack && removedTracks.some((track) => track.id === preloadedTrack.trackId)) {
+          preloadedTrack.audio.pause();
+          preloadedTrack.audio.removeAttribute('src');
+          preloadedTrack.audio.load();
+          preloadedTrackRef.current = null;
+        }
+        const removedBeforeCurrent = playQueue
+          .slice(0, playQueueIndex)
+          .filter((track) => isInFolder(track.path)).length;
+        previewFilesRef.current = remainingFiles;
+        setLibraryTracks(remainingTracks);
+        setMusicFolders(musicFolders.filter((item) => item !== folder));
+        setPlayQueue((queue) => queue.filter((track) => !isInFolder(track.path)));
+        playQueueBaseRef.current = playQueueBaseRef.current.filter(
+          (track) => !isInFolder(track.path)
+        );
+        if (removedBeforeCurrent > 0) {
+          setPlayQueueIndex((index) => Math.max(0, index - removedBeforeCurrent));
+        }
+        if (currentTrack && isInFolder(currentTrack.path)) {
+          crossfadeRequestIdRef.current += 1;
+          if (crossfadeFrameRef.current !== null) {
+            window.cancelAnimationFrame(crossfadeFrameRef.current);
+            crossfadeFrameRef.current = null;
+          }
+          if (crossfadeOutgoingRef.current) {
+            crossfadeOutgoingRef.current.pause();
+            crossfadeOutgoingRef.current.removeAttribute('src');
+            crossfadeOutgoingRef.current.load();
+            crossfadeOutgoingRef.current = null;
+          }
+          crossfadeStartedRef.current = false;
+          setCurrentTrack(null);
+          setLastPlayedTrackPath(null);
+          setIsPlaying(false);
+          if (activeAudioRef.current) {
+            activeAudioRef.current.pause();
+            activeAudioRef.current.removeAttribute('src');
+            activeAudioRef.current.load();
+          }
+        }
+        releaseBrowserMusicTracks(removedTracks);
+        const updatedPlaylists = playlists.map((playlist) => ({
+          ...playlist,
+          trackIds: playlist.trackIds.filter((trackId) => remainingTrackIds.has(trackId)),
+          coverTrackIds: playlist.coverTrackIds?.filter((trackId) =>
+            remainingTrackIds.has(trackId)
+          ),
+        }));
+        setPlaylists(updatedPlaylists);
+        try {
+          window.localStorage.setItem('luna-playlists', JSON.stringify(updatedPlaylists));
+        } catch (error) {
+          console.error('Could not save playlists after removing a preview folder:', error);
+          setLibraryError('The folder was removed, but Luna could not save the updated playlists.');
+        }
+        try {
+          await saveBrowserMusicLibraryCache(
+            { folders: musicFolders.filter((item) => item !== folder), tracks: remainingTracks },
+            remainingFiles
+          );
+        } catch (error: unknown) {
+          console.error('Could not persist the browser preview library after removing a folder:', error);
+          setLibraryError(
+            'The folder was removed for this session, but Luna could not save the updated library.'
+          );
+        }
+        setLibraryReconciled(true);
+        return;
+      }
       if (!window.electronAPI) return;
       try {
         setIsLibraryLoading(true);
@@ -1471,7 +1800,15 @@ const App = () => {
         setIsLibraryLoading(false);
       }
     },
-    [applyLibraryResponse]
+    [
+      applyLibraryResponse,
+      currentTrack,
+      isAndroidPreviewMode,
+      musicFolders,
+      playQueue,
+      playQueueIndex,
+      playlists,
+    ]
   );
 
   const handleAutoDownloadArtistImagesChange = useCallback((enabled: boolean) => {
@@ -1642,6 +1979,7 @@ const App = () => {
         if (didPlay) {
           if (rememberRecentMedia) {
             recordPlayedTrack(track, queue, queueIndex);
+            setRecentPlayCounts(loadRecentMediaHistory().playCounts);
             setRecentMediaRevision((revision) => revision + 1);
           }
           const nextTrack =
@@ -1678,8 +2016,25 @@ const App = () => {
   const playTrack = useCallback(
     async (track: Track, sourceTracks: Track[] = libraryTracks) => {
       const sourceIndex = sourceTracks.findIndex((item) => item.id === track.id);
-      const orderedTracks =
+      const sourceQueue =
         sourceIndex >= 0 ? sourceTracks.slice(sourceIndex) : [track, ...sourceTracks];
+      const autoplayMix = isAutoplayEnabled
+        ? createMusicMix(
+            track,
+            libraryTracks,
+            new Set([track.id]),
+            {
+              lovedTrackIds: new Set(lovedTrackIds),
+              playCounts: rememberRecentMedia ? loadRecentMediaHistory().playCounts : {},
+            },
+            24,
+            { requireSimilarity: true }
+          )
+        : [];
+      const orderedTracks = isAutoplayEnabled ? [track, ...autoplayMix] : sourceQueue;
+      autoplayPlayedTrackIdsRef.current = new Set(
+        isAutoplayEnabled ? orderedTracks.map((queuedTrack) => queuedTrack.id) : []
+      );
       playQueueBaseRef.current = orderedTracks;
       const nextQueue =
         orderedTracks.length > 1 && isShuffled
@@ -1688,7 +2043,14 @@ const App = () => {
       setPlayQueue(nextQueue);
       await playQueueFrom(nextQueue, 0);
     },
-    [isShuffled, libraryTracks, playQueueFrom]
+    [
+      isAutoplayEnabled,
+      isShuffled,
+      libraryTracks,
+      lovedTrackIds,
+      playQueueFrom,
+      rememberRecentMedia,
+    ]
   );
 
   const playTrackRef = useRef(playTrack);
@@ -1745,11 +2107,14 @@ const App = () => {
     (tracks: Track[]) => {
       if (tracks.length === 0) return;
       const shuffledTracks = shuffleTracks(tracks);
+      autoplayPlayedTrackIdsRef.current = new Set(
+        isAutoplayEnabled ? shuffledTracks.map((track) => track.id) : []
+      );
       playQueueBaseRef.current = shuffledTracks;
       setPlayQueue(shuffledTracks);
       void playQueueFrom(shuffledTracks, 0);
     },
-    [playQueueFrom]
+    [isAutoplayEnabled, playQueueFrom]
   );
 
   const playQueueAt = useCallback(
@@ -1761,19 +2126,120 @@ const App = () => {
     [playQueue, playQueueFrom]
   );
 
+  const buildAutoplayMix = useCallback(
+    (seedTrack: Track, excludedTrackIds: ReadonlySet<string>) => {
+      const preferences = {
+        lovedTrackIds: new Set(lovedTrackIds),
+        playCounts: rememberRecentMedia ? loadRecentMediaHistory().playCounts : {},
+      };
+      const recommendations = createMusicMix(
+        seedTrack,
+        libraryTracks,
+        excludedTrackIds,
+        preferences,
+        24,
+        {
+          requireSimilarity: true,
+        }
+      );
+      if (recommendations.length > 0) return recommendations;
+      return createMusicMix(seedTrack, libraryTracks, new Set([seedTrack.id]), preferences, 24, {
+        requireSimilarity: true,
+      });
+    },
+    [libraryTracks, lovedTrackIds, rememberRecentMedia]
+  );
+
+  const appendAutoplayMix = useCallback(
+    (queue: Track[], seedTrack: Track, shouldPlay: boolean) => {
+      const recommendations = buildAutoplayMix(seedTrack, autoplayPlayedTrackIdsRef.current);
+      if (recommendations.length === 0) {
+        setIsAutoplayEnabled(false);
+        setIsPlaying(false);
+        showPlaybackNotice('AutoPlay stopped because no similar local tracks are available.');
+        return false;
+      }
+
+      const nextQueue = [...queue, ...recommendations];
+      const playedTrackIds = new Set(autoplayPlayedTrackIdsRef.current);
+      playedTrackIds.add(seedTrack.id);
+      recommendations.forEach((track) => playedTrackIds.add(track.id));
+      autoplayPlayedTrackIdsRef.current = playedTrackIds;
+      playQueueBaseRef.current = nextQueue;
+      setPlayQueue(nextQueue);
+      void playQueueFrom(nextQueue, queue.length, shouldPlay);
+      return true;
+    },
+    [buildAutoplayMix, playQueueFrom, showPlaybackNotice]
+  );
+
+  const handleToggleAutoplay = useCallback(() => {
+    if (isAutoplayEnabled) {
+      setIsAutoplayEnabled(false);
+      showPlaybackNotice('AutoPlay is off. Tracks already in the queue will still play.');
+      return;
+    }
+
+    if (!currentTrack) {
+      showPlaybackNotice('Play a track before turning on AutoPlay.');
+      return;
+    }
+
+    const currentIndex = playQueue.findIndex((queuedTrack) => queuedTrack.id === currentTrack.id);
+    const queueIndex =
+      currentIndex >= 0 ? currentIndex : Math.max(0, Math.min(playQueueIndex, playQueue.length));
+    const currentQueue =
+      currentIndex >= 0
+        ? playQueue.slice(0, currentIndex + 1)
+        : [...playQueue.slice(0, queueIndex), currentTrack];
+    const playedTrackIds = new Set(currentQueue.map((queuedTrack) => queuedTrack.id));
+    const recommendations = buildAutoplayMix(currentTrack, playedTrackIds);
+    if (recommendations.length === 0) {
+      showPlaybackNotice('There are no similar local tracks for AutoPlay.');
+      return;
+    }
+
+    const nextQueue = [...currentQueue, ...recommendations];
+    recommendations.forEach((track) => playedTrackIds.add(track.id));
+    autoplayPlayedTrackIdsRef.current = playedTrackIds;
+    playQueueBaseRef.current = nextQueue;
+    setPlayQueue(nextQueue);
+    setPlayQueueIndex(currentQueue.length - 1);
+    setIsAutoplayEnabled(true);
+    showPlaybackNotice(`AutoPlay added ${recommendations.length} similar tracks to the queue.`);
+  }, [
+    buildAutoplayMix,
+    currentTrack,
+    isAutoplayEnabled,
+    playQueue,
+    playQueueIndex,
+    showPlaybackNotice,
+  ]);
+
   const playRelativeTrack = useCallback(
     (offset: number) => {
       if (playQueue.length === 0) return;
       const nextIndex = playQueueIndex + offset;
       if (nextIndex >= 0 && nextIndex < playQueue.length) {
         playQueueAt(nextIndex, isPlaying);
+      } else if (offset > 0 && isAutoplayEnabled && currentTrack) {
+        appendAutoplayMix(playQueue, currentTrack, isPlaying);
       } else if (offset > 0 && repeatMode === 'all') {
         playQueueAt(0, isPlaying);
       } else if (offset < 0 && repeatMode === 'all') {
         playQueueAt(playQueue.length - 1, isPlaying);
       }
     },
-    [isPlaying, playQueue.length, playQueueAt, playQueueIndex, repeatMode]
+    [
+      appendAutoplayMix,
+      currentTrack,
+      isAutoplayEnabled,
+      isPlaying,
+      playQueue,
+      playQueueAt,
+      playQueueIndex,
+      repeatMode,
+    ]
   );
 
   const handleQueueTracks = useCallback(
@@ -1791,13 +2257,16 @@ const App = () => {
           : nextBase.length;
       nextBase.splice(Math.max(0, Math.min(baseInsertionIndex, nextBase.length)), 0, ...tracks);
       playQueueBaseRef.current = nextBase;
+      if (isAutoplayEnabled) {
+        tracks.forEach((track) => autoplayPlayedTrackIdsRef.current.add(track.id));
+      }
       setPlayQueue((currentQueue) => {
         const nextQueue = [...currentQueue];
         nextQueue.splice(Math.min(insertionIndex, nextQueue.length), 0, ...tracks);
         return nextQueue;
       });
     },
-    [playQueue, playQueueIndex]
+    [isAutoplayEnabled, playQueue, playQueueIndex]
   );
 
   const handleStartMusicMix = useCallback(
@@ -1805,9 +2274,7 @@ const App = () => {
       const currentQueueTrack = playQueue[playQueueIndex];
       const isCurrentQueueTrack = currentQueueTrack?.id === seedTrack.id;
       const excludedTrackIds = new Set(
-        isCurrentQueueTrack
-          ? playQueue.slice(playQueueIndex + 1).map((track) => track.id)
-          : []
+        isCurrentQueueTrack ? playQueue.slice(playQueueIndex + 1).map((track) => track.id) : []
       );
       const recentPlayCounts = rememberRecentMedia ? loadRecentMediaHistory().playCounts : {};
       const mix = createMusicMix(seedTrack, libraryTracks, excludedTrackIds, {
@@ -1826,12 +2293,16 @@ const App = () => {
       }
 
       playQueueBaseRef.current = mix;
+      autoplayPlayedTrackIdsRef.current = new Set(
+        isAutoplayEnabled ? mix.map((track) => track.id) : []
+      );
       setPlayQueue(mix);
       void playQueueFrom(mix, 0);
       showPlaybackNotice(`Starting a Music Mix with ${mix.length} local tracks.`);
     },
     [
       handleQueueTracks,
+      isAutoplayEnabled,
       libraryTracks,
       lovedTrackIds,
       playQueue,
@@ -2035,6 +2506,7 @@ const App = () => {
       setLibraryError(null);
       if (rememberRecentMedia) {
         recordPlayedTrack(nextTrack, playQueue, nextQueueIndex);
+        setRecentPlayCounts(loadRecentMediaHistory().playCounts);
         setRecentMediaRevision((revision) => revision + 1);
       }
 
@@ -2124,6 +2596,8 @@ const App = () => {
       }
       if (playQueueIndex + 1 < playQueue.length) {
         playQueueAt(playQueueIndex + 1, true);
+      } else if (isAutoplayEnabled && currentTrack) {
+        appendAutoplayMix(playQueue, currentTrack, true);
       } else if (repeatMode === 'all' && playQueue.length > 0) {
         playQueueAt(0, true);
       } else {
@@ -2132,6 +2606,8 @@ const App = () => {
     },
     [
       currentTrack,
+      appendAutoplayMix,
+      isAutoplayEnabled,
       isLocalTrackAvailable,
       notifyUnavailableTrack,
       playAudioTrack,
@@ -2175,6 +2651,8 @@ const App = () => {
         const nextIndex = (currentIndex >= 0 ? currentIndex : playQueueIndex) + 1;
         if (nextIndex < playQueue.length) {
           await playQueueFrom(playQueue, nextIndex);
+        } else if (isAutoplayEnabled) {
+          appendAutoplayMix(playQueue, failedTrack, true);
         } else if (repeatMode === 'all' && playQueue.length > 0) {
           await playQueueFrom(playQueue, 0);
         }
@@ -2193,7 +2671,9 @@ const App = () => {
       );
     },
     [
+      appendAutoplayMix,
       currentTrack,
+      isAutoplayEnabled,
       isLocalTrackAvailable,
       notifyUnavailableTrack,
       playQueue,
@@ -2229,7 +2709,7 @@ const App = () => {
   }, [repeatMode]);
 
   useEffect(() => {
-    if (!isAndroidApp) return undefined;
+    if (!isAndroidNative) return undefined;
     let active = true;
     let removeListener: (() => Promise<void>) | undefined;
     listenForAndroidMediaControls((event) => {
@@ -2271,7 +2751,7 @@ const App = () => {
     handleSeek,
     handleToggleRepeat,
     handleToggleShuffle,
-    isAndroidApp,
+    isAndroidNative,
     isPlaying,
   ]);
 
@@ -2337,7 +2817,9 @@ const App = () => {
     track: { id: string; name: string; artist: string; album: string; path?: string } | null
   ) => {
     if (!track || !track.path) return;
-    setLibraryTracks((tracks) => tracks.filter((item) => item.path !== track.path));
+    const libraryTrack = libraryTracksRef.current.find((item) => item.path === track.path);
+    const remainingTracks = libraryTracksRef.current.filter((item) => item.path !== track.path);
+    setLibraryTracks(remainingTracks);
     const removedBeforeCurrent = playQueue
       .slice(0, playQueueIndex)
       .filter((item) => item.path === track.path).length;
@@ -2355,6 +2837,24 @@ const App = () => {
         activeAudioRef.current.pause();
         activeAudioRef.current.src = '';
       }
+    }
+    if (isAndroidPreviewMode) {
+      previewFilesRef.current = previewFilesRef.current.filter(
+        (file) => getBrowserMusicFilePath(file) !== track.path
+      );
+      if (libraryTrack) releaseBrowserMusicTracks([libraryTrack]);
+      void saveBrowserMusicLibraryCache(
+        { tracks: remainingTracks, folders: musicFolders },
+        previewFilesRef.current
+      ).catch((error: unknown) => {
+        console.error(
+          'Could not persist the browser preview library after deleting a track:',
+          error
+        );
+        setLibraryError(
+          'The track was removed for this session, but Luna could not save the updated library.'
+        );
+      });
     }
   };
 
@@ -2408,7 +2908,13 @@ const App = () => {
       } else {
         const updatedTracks = libraryTracks.filter((item) => item.path !== track.path);
         setLibraryTracks(updatedTracks);
-        if (isAndroidApp) {
+        if (isAndroidPreviewMode) {
+          previewFilesRef.current = previewFilesRef.current.filter(
+            (file) => getBrowserMusicFilePath(file) !== track.path
+          );
+          releaseBrowserMusicTracks([track]);
+        }
+        if (isAndroidNative) {
           await saveAndroidMusicLibraryCache({ tracks: updatedTracks, folders: musicFolders });
         }
       }
@@ -2476,9 +2982,7 @@ const App = () => {
   );
 
   const handleCreateArtistPlaylist = useCallback(
-    (
-      track: { id: string; name: string; artist: string; album: string; path?: string } | null
-    ) => {
+    (track: { id: string; name: string; artist: string; album: string; path?: string } | null) => {
       if (!track) return;
       const fullTrack = libraryTracks.find((libraryTrack) => libraryTrack.id === track.id);
       if (!fullTrack) return;
@@ -2569,21 +3073,19 @@ const App = () => {
   const handleAddTracksToPlaylist = useCallback(
     (playlistId: string, tracks: Track[]) => {
       let addedCount = 0;
-      const updatedPlaylists = playlists.map((playlist) =>
-        {
-          if (playlist.id !== playlistId) return playlist;
-          const trackIds = new Set(playlist.trackIds);
-          const addedTrackIds = tracks
-            .map((track) => track.id)
-            .filter((id) => {
-              if (trackIds.has(id)) return false;
-              trackIds.add(id);
-              addedCount += 1;
-              return true;
-            });
-          return { ...playlist, trackIds: [...playlist.trackIds, ...addedTrackIds] };
-        }
-      );
+      const updatedPlaylists = playlists.map((playlist) => {
+        if (playlist.id !== playlistId) return playlist;
+        const trackIds = new Set(playlist.trackIds);
+        const addedTrackIds = tracks
+          .map((track) => track.id)
+          .filter((id) => {
+            if (trackIds.has(id)) return false;
+            trackIds.add(id);
+            addedCount += 1;
+            return true;
+          });
+        return { ...playlist, trackIds: [...playlist.trackIds, ...addedTrackIds] };
+      });
 
       persistPlaylists(updatedPlaylists);
       const playlistName =
@@ -2638,6 +3140,8 @@ const App = () => {
     activeAudioRef.current = null;
     preloadedTrackRef.current = null;
     playQueueBaseRef.current = [];
+    autoplayPlayedTrackIdsRef.current = new Set();
+    setIsAutoplayEnabled(false);
     setPlayQueue([]);
     setPlayQueueIndex(0);
     setCurrentTrack(null);
@@ -2857,10 +3361,7 @@ const App = () => {
     const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
     const root = document.documentElement;
     root.setAttribute('data-android-app', String(isAndroidApp));
-    root.setAttribute(
-      'data-native-titlebar',
-      String(window.electronAPI?.platform === 'win32')
-    );
+    root.setAttribute('data-native-titlebar', String(window.electronAPI?.platform === 'win32'));
     root.setAttribute(
       'data-amoled',
       String(isAndroidApp && androidAmoledDarkMode && resolvedTheme === 'dark')
@@ -2900,8 +3401,7 @@ const App = () => {
     root.style.setProperty('--system-accent', appliedSystemAccent);
     root.style.setProperty('--system-accent-rgb', systemRgb.join(', '));
 
-    const playerAccent =
-      currentTrack?.albumArt ? (trackAccentColor ?? activeAccent) : activeAccent;
+    const playerAccent = currentTrack?.albumArt ? (trackAccentColor ?? activeAccent) : activeAccent;
     const playerRgbString = colorToRgbString(playerAccent);
     const [playerRed, playerGreen, playerBlue] = playerRgbString
       .split(',')
@@ -3004,7 +3504,7 @@ const App = () => {
       root.style.setProperty('--bg-secondary', '#000000');
       root.style.setProperty('--bg-tertiary', '#050505');
     }
-    if (isAndroidApp) {
+    if (isAndroidNative) {
       void setAndroidStatusBarStyle(resolvedTheme === 'light').catch((error: unknown) => {
         console.error('Could not update the Android status bar:', error);
       });
@@ -3015,6 +3515,7 @@ const App = () => {
     androidMaterialYouEnabled,
     useSystemAccentColor,
     isAndroidApp,
+    isAndroidNative,
     androidAmoledDarkMode,
     iconStyle,
     desktopPlayBarStyle,
@@ -3119,7 +3620,10 @@ const App = () => {
 
     let dx = deltaX;
     // Rubber-band resistance at the first and last tabs
-    if ((currentIndex === 0 && dx > 0) || (currentIndex === ANDROID_LIBRARY_ROUTES.length - 1 && dx < 0)) {
+    if (
+      (currentIndex === 0 && dx > 0) ||
+      (currentIndex === ANDROID_LIBRARY_ROUTES.length - 1 && dx < 0)
+    ) {
       dx *= 0.32;
     }
 
@@ -3229,6 +3733,7 @@ const App = () => {
             tracks={libraryTracks}
             isDesktopApp={Boolean(window.electronAPI)}
             isAndroidApp={isAndroidApp}
+            isAndroidPreview={isAndroidPreviewMode}
             androidLibrarySearchQuery={androidLibrarySearchQuery}
             onAndroidLibrarySearchQueryChange={setAndroidLibrarySearchQuery}
             sidebarOpen={!sidebarCollapsed}
@@ -3250,7 +3755,11 @@ const App = () => {
               key={location.pathname}
               ref={pageTransitionRef}
               className='page-transition'
-              style={librarySwipeEnter ? { animationDuration: `${librarySwipeEnter.duration}ms` } : undefined}
+              style={
+                librarySwipeEnter
+                  ? { animationDuration: `${librarySwipeEnter.duration}ms` }
+                  : undefined
+              }
             >
               <Suspense
                 fallback={
@@ -3274,13 +3783,23 @@ const App = () => {
                           onPlayTrack={playTrack}
                           onQueueTracks={handleQueueTracks}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                           onToggleLove={(track) => handleToggleLove(track)}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
-                          onShufflePlay={rememberRecentMedia ? shufflePlayTracks : () => {
-                            setLibraryError('Enable Remember recent media in Settings to shuffle recent tracks.');
-                          }}
+                          onShufflePlay={
+                            rememberRecentMedia
+                              ? shufflePlayTracks
+                              : () => {
+                                  setLibraryError(
+                                    'Enable Remember recent media in Settings to shuffle recent tracks.'
+                                  );
+                                }
+                          }
                         />
                       }
                     />
@@ -3314,8 +3833,10 @@ const App = () => {
                           queue={playQueue}
                           currentIndex={playQueueIndex}
                           isPlaying={isPlaying}
+                          isAndroidApp={isAndroidApp}
                           playlists={playlists}
                           onSelectTrack={playQueueAt}
+                          onReorderTracks={handleQueueReorder}
                           onClearQueue={handleClearPlayQueue}
                           onAddTracksToPlaylist={handleAddTracksToPlaylist}
                           onSaveAsNewPlaylist={handleSaveQueueAsNewPlaylist}
@@ -3333,7 +3854,11 @@ const App = () => {
                           favoriteAlbumKeys={favoriteAlbumKeys}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                           onSyncTracks={handleSyncTracks}
                         />
@@ -3353,7 +3878,11 @@ const App = () => {
                           favoriteArtistNames={favoriteArtistNames}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                         />
                       }
@@ -3370,7 +3899,11 @@ const App = () => {
                           favoriteArtistNames={favoriteArtistNames}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                           onSyncTracks={handleSyncTracks}
                         />
@@ -3389,8 +3922,14 @@ const App = () => {
                           favoriteAlbumKeys={favoriteAlbumKeys}
                           favoriteArtistNames={favoriteArtistNames}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
+                          playCounts={recentPlayCounts}
+                          playHistoryEnabled={rememberRecentMedia}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                         />
                       }
@@ -3496,7 +4035,11 @@ const App = () => {
                           favoriteArtistNames={favoriteArtistNames}
                           onToggleFavoriteCollection={handleToggleFavoriteCollection}
                           onAddToPlaylist={(collectionTracks, label) =>
-                            setPlaylistDialog({ type: 'add-tracks', tracks: collectionTracks, label })
+                            setPlaylistDialog({
+                              type: 'add-tracks',
+                              tracks: collectionTracks,
+                              label,
+                            })
                           }
                         />
                       }
@@ -3505,8 +4048,6 @@ const App = () => {
                       path='/settings'
                       element={
                         <Settings
-                          androidDockShowLabels={androidDockShowLabels}
-                          onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
                           androidPlayBarStyle={androidPlayBarStyle}
                           onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
                           nowPlayingLayout={nowPlayingLayout}
@@ -3557,6 +4098,7 @@ const App = () => {
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
                           isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidPreview={isAndroidPreviewMode}
                           alwaysOnTop={alwaysOnTop}
                           onAlwaysOnTopChange={handleAlwaysOnTopChange}
                           isAndroidApp={isAndroidApp}
@@ -3575,7 +4117,7 @@ const App = () => {
                           androidAmoledDarkMode={androidAmoledDarkMode}
                           onAndroidAmoledDarkModeChange={setAndroidAmoledDarkMode}
                           rememberRecentMedia={rememberRecentMedia}
-                          onRememberRecentMediaChange={setRememberRecentMedia}
+                          onRememberRecentMediaChange={handleRememberRecentMediaChange}
                           onAddMusicFolder={() => {
                             void handleSelectMusicFolders();
                           }}
@@ -3599,8 +4141,6 @@ const App = () => {
                       path='/settings/*'
                       element={
                         <Settings
-                          androidDockShowLabels={androidDockShowLabels}
-                          onAndroidDockShowLabelsChange={setAndroidDockShowLabels}
                           androidPlayBarStyle={androidPlayBarStyle}
                           onAndroidPlayBarStyleChange={setAndroidPlayBarStyle}
                           nowPlayingLayout={nowPlayingLayout}
@@ -3654,6 +4194,7 @@ const App = () => {
                           musicFolders={musicFolders}
                           trackCount={libraryTracks.length}
                           isDesktopApp={Boolean(window.electronAPI)}
+                          isAndroidPreview={isAndroidPreviewMode}
                           alwaysOnTop={alwaysOnTop}
                           onAlwaysOnTopChange={handleAlwaysOnTopChange}
                           isAndroidApp={isAndroidApp}
@@ -3672,7 +4213,7 @@ const App = () => {
                           androidAmoledDarkMode={androidAmoledDarkMode}
                           onAndroidAmoledDarkModeChange={setAndroidAmoledDarkMode}
                           rememberRecentMedia={rememberRecentMedia}
-                          onRememberRecentMediaChange={setRememberRecentMedia}
+                          onRememberRecentMediaChange={handleRememberRecentMediaChange}
                           onAddMusicFolder={() => {
                             void handleSelectMusicFolders();
                           }}
@@ -3707,9 +4248,10 @@ const App = () => {
       {isAndroidApp && (
         <AndroidDock
           compact={androidDockCompact}
-          showLabels={androidDockShowLabels}
           menuOpen={androidDockMenuOpen}
           playBarStyle={androidPlayBarStyle}
+          tracks={libraryTracks}
+          onClearLibrarySearchQuery={() => setAndroidLibrarySearchQuery('')}
           onCompactChange={(compact) => {
             setAndroidDockCompact(compact);
             if (!compact) setAndroidDockMenuOpen(false);
@@ -3719,6 +4261,21 @@ const App = () => {
       )}
 
       {/* PlayBar */}
+      {isAndroidPreviewMode && (
+        <input
+          ref={previewFolderInputRef}
+          type='file'
+          accept='.mp3,.m4a,.wav,.flac,.ogg,.oga,.aac,.mp4,.m4b,.m4p,.mpg,.mp2,.mpe,.mpeg,.wma,.wmv,.asf,.aif,.aiff,.aifc'
+          multiple
+          aria-label='Select a local music folder'
+          hidden
+          onChange={(event) => {
+            const files = Array.from(event.currentTarget.files ?? []);
+            event.currentTarget.value = '';
+            handleBrowserPreviewFolderFiles(files);
+          }}
+        />
+      )}
       <audio
         ref={audioARef}
         onTimeUpdate={(event) => handleAudioTimeUpdate(event.currentTarget)}
@@ -3821,6 +4378,8 @@ const App = () => {
           onToggleShuffle={handleToggleShuffle}
           repeatMode={repeatMode}
           onToggleRepeat={handleToggleRepeat}
+          isAutoplayEnabled={isAutoplayEnabled}
+          onToggleAutoplay={handleToggleAutoplay}
           onStartMusicMix={handleStartMusicMix}
           audioOutputDeviceId={audioOutputDeviceId}
           onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
@@ -3849,6 +4408,8 @@ const App = () => {
           onToggleShuffle={handleToggleShuffle}
           repeatMode={repeatMode}
           onToggleRepeat={handleToggleRepeat}
+          isAutoplayEnabled={isAutoplayEnabled}
+          onToggleAutoplay={handleToggleAutoplay}
           visualizerAnalyser={visualizerAnalyser}
           visualizerStyle={visualizerStyle}
           showVisualizer={showVisualizer}
@@ -3859,13 +4420,18 @@ const App = () => {
           playQueue={playQueue}
           playQueueIndex={playQueueIndex}
           onQueueSelect={playQueueAt}
+          onClearQueue={handleClearPlayQueue}
+          onAddSongsToQueue={() => navigate('/tracks')}
           onQueueTracks={handleQueueTracks}
           onStartMusicMix={handleStartMusicMix}
           onQueueReorder={handleQueueReorder}
           onShareTrack={handleShareTrack}
           onCreateArtistPlaylist={handleCreateArtistPlaylist}
           trackIsDesktopSynced={Boolean(
-            isAndroidApp && currentTrack && !currentTrack.androidAlbumId && !currentTrack.streamingProvider
+            isAndroidApp &&
+            currentTrack &&
+            !currentTrack.androidAlbumId &&
+            !currentTrack.streamingProvider
           )}
           isDesktopApp={Boolean(window.electronAPI)}
           androidPlayBarStyle={androidPlayBarStyle}
@@ -3912,5 +4478,3 @@ const App = () => {
 };
 
 export default App;
-
-
